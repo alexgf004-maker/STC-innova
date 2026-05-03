@@ -4,41 +4,37 @@
  * Exporta: init(container, session)
  */
 
-/**
- * @param {HTMLElement} container
- * @param {Object} session - { uid, displayName, role, asignacion }
- */
 export function init(container, session) {
-  const { role, asignacion } = session;
-  const area = asignacion?.area;
+  const { role, asignacionActual } = session;
+  const area = asignacionActual?.area || null;
 
   if (role === 'tecnico') {
     if (!area) return renderNoAsignacion(container, session);
     return renderHomeTecnico(container, session, area);
   }
-  if (role === 'madelyn')   return renderHomeMadelyn(container, session);
+  if (role === 'admin')     return renderHomeAdmin(container, session);
   if (role === 'asistente') return renderHomeAsistente(container, session);
 
   container.innerHTML = `<p style="color:var(--text-3);padding:24px">Rol no reconocido.</p>`;
 }
 
-// ── Home Técnico (CM u OTC) ───────────────────────
+// ── Home Técnico ──────────────────────────────────
 function renderHomeTecnico(container, session, area) {
-  const isCM        = area === 'CM';
-  const color       = isCM ? 'cm' : 'otc';
-  const accentColor = isCM ? '#2dd4bf' : '#60a5fa';
-  const rgbAccent   = isCM ? '13,148,136' : '37,99,235';
-  const label       = isCM ? 'Cambios de Medidor' : 'Órdenes Técnicas de Campo';
-  const pareja      = session.asignacion?.pareja;
+  const isCambios   = area === 'CAMBIOS';
+  const color       = isCambios ? 'cm' : 'otc';
+  const accentColor = isCambios ? '#2dd4bf' : '#60a5fa';
+  const rgbAccent   = isCambios ? '13,148,136' : '37,99,235';
+  const areaLabel   = isCambios ? 'Cambios de Medidor' : 'Órdenes Técnicas de Campo';
+  const destino     = session.asignacionActual?.destino || null;
 
   container.innerHTML = `
     <div class="flex-col gap-12" style="padding-top:4px">
 
       <div class="welcome-card ${color} anim-up">
-        <div class="welcome-area-label">${area} · ${label}</div>
+        <div class="welcome-area-label">${area} · ${areaLabel}</div>
         <div class="welcome-name">${session.displayName}</div>
         <div class="welcome-role">
-          Área asignada para hoy${pareja ? ` · Pareja ${pareja}` : ''}
+          ${destino ? `${isCambios ? 'Pareja' : 'Supervisor'}: ${destino}` : 'Área asignada para hoy'}
         </div>
       </div>
 
@@ -68,7 +64,7 @@ function renderHomeTecnico(container, session, area) {
             </svg>
           </div>
           <div class="qc-title">Mis órdenes</div>
-          <div class="qc-sub">Ver listado completo</div>
+          <div class="qc-sub">Ver listado del día</div>
         </div>
 
         <div class="quick-card" onclick="window.__router.navigateTo('mapa')">
@@ -94,9 +90,9 @@ function renderHomeTecnico(container, session, area) {
           <div class="qc-sub">Material asignado</div>
         </div>
 
-        ${!isCM ? `
-        <div class="quick-card" style="border-color:var(--crit-light,rgba(239,68,68,.2));background:rgba(239,68,68,.05)">
-          <div class="qc-icon" style="background:rgba(239,68,68,.1)">
+        ${!isCambios ? `
+        <div class="quick-card" style="border-color:rgba(239,68,68,.25);background:rgba(239,68,68,.05)">
+          <div class="qc-icon" style="background:rgba(239,68,68,.12)">
             <svg viewBox="0 0 24 24" fill="none" stroke="var(--crit-light)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <circle cx="12" cy="12" r="10"/>
               <line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
@@ -115,7 +111,6 @@ function renderHomeTecnico(container, session, area) {
 
     </div>
   `;
-  // TODO Fase 2: cargar stats reales desde Firestore
 }
 
 // ── Sin asignación ────────────────────────────────
@@ -137,8 +132,8 @@ function renderNoAsignacion(container, session) {
   `;
 }
 
-// ── Home Madelyn ──────────────────────────────────
-function renderHomeMadelyn(container, session) {
+// ── Home Admin ────────────────────────────────────
+function renderHomeAdmin(container, session) {
   container.innerHTML = `
     <div class="flex-col gap-12" style="padding-top:4px">
 
@@ -211,7 +206,6 @@ function renderHomeMadelyn(container, session) {
 
     </div>
   `;
-  // TODO Fase 2: cargar stats reales
 }
 
 // ── Home Asistente ────────────────────────────────
@@ -234,7 +228,7 @@ function renderHomeAsistente(container, session) {
           <div class="val" id="a-stat-otc">—</div>
           <div class="lbl">OTC</div>
         </div>
-        <div class="stat-chip purple">
+        <div class="stat-chip" style="border-color:var(--purple-border);background:var(--purple-glass)">
           <div class="val" style="color:var(--purple)" id="a-stat-sol">—</div>
           <div class="lbl">Solicitudes</div>
         </div>
