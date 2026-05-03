@@ -21,7 +21,7 @@ const PAREJA_COLORS = {
 
 const ESTADO_COLORS = {
   'hecha':   '#22c55e',
-  'visita':  '#f59e0b',
+  'visita':  '#111827',
   null:      null, // usa color de pareja
 };
 
@@ -107,6 +107,52 @@ function renderShell(container) {
         <div id="mapa-panel-content"></div>
       </div>
 
+      <!-- Sheet motivo visita -->
+      <div class="sheet-backdrop" id="sheet-visita">
+        <div class="sheet">
+          <div class="sheet-handle"></div>
+          <div class="sheet-title">Motivo de visita</div>
+          <div class="sheet-body">
+            <div class="form-label" style="margin-bottom:8px">Motivo principal</div>
+            <div class="select-row flex-wrap" id="visita-motivo-row" style="margin-bottom:16px">
+              <div class="select-chip" data-val="Medidor interno">Medidor interno</div>
+              <div class="select-chip" data-val="Medidor sobre techo">Medidor sobre techo</div>
+              <div class="select-chip" data-val="Panal de abejas cerca">Panal de abejas</div>
+              <div class="select-chip" data-val="Cliente ausente">Cliente ausente</div>
+            </div>
+            <div class="form-label" style="margin-bottom:8px">Observación adicional (opcional)</div>
+            <input class="form-input" id="visita-obs" type="text" placeholder="Describe la situación…" style="margin-bottom:16px"/>
+            <div id="visita-error" class="form-error"></div>
+            <button class="btn-primary full" id="btn-confirmar-visita">
+              <span id="btn-visita-label">Registrar visita</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Sheet confirmación realizada -->
+      <div class="sheet-backdrop" id="sheet-realizada">
+        <div class="sheet">
+          <div class="sheet-handle"></div>
+          <div class="sheet-title">¿Ya actualizaste en DELSUR?</div>
+          <div class="sheet-body">
+            <p style="font-size:13px;color:var(--text-3);margin-bottom:20px;line-height:1.6">
+              Confirma si ya ingresaste esta orden en el sistema de DELSUR.
+            </p>
+            <div style="display:flex;flex-direction:column;gap:8px">
+              <button class="btn-action cm" id="btn-si-delsur">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                Sí, ya actualicé en DELSUR
+              </button>
+              <button class="btn-action outline" id="btn-no-delsur">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                No, lo actualizaré después
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- Sheet asignar zona -->
       <div class="sheet-backdrop" id="sheet-zona">
         <div class="sheet">
@@ -152,12 +198,27 @@ function renderShell(container) {
   document.getElementById('btn-confirmar-zona')?.addEventListener('click', confirmarZona);
   document.getElementById('btn-cancelar-zona')?.addEventListener('click', cancelarZona);
 
-  // Select chips pareja
+  // Select chips
   setupSelectChips('zona-pareja-row');
+  setupSelectChips('visita-motivo-row');
+
+  // Visita
+  document.getElementById('btn-confirmar-visita')?.addEventListener('click', confirmarVisita);
+
+  // Realizada
+  document.getElementById('btn-si-delsur')?.addEventListener('click', () => confirmarRealizada(true));
+  document.getElementById('btn-no-delsur')?.addEventListener('click', () => confirmarRealizada(false));
 
   // Cerrar sheet zona
   document.getElementById('sheet-zona')?.addEventListener('click', e => {
     if (e.target === document.getElementById('sheet-zona')) cancelarZona();
+  });
+
+  // Cerrar sheets genéricos
+  ['sheet-visita', 'sheet-realizada'].forEach(id => {
+    document.getElementById(id)?.addEventListener('click', e => {
+      if (e.target === document.getElementById(id)) closeSheet(id);
+    });
   });
 
   // Cerrar panel al tocar fuera
@@ -307,26 +368,35 @@ function verOrden(id) {
   if (!o) return;
   selectedOrden_ = o;
 
-  const isTecnico  = role_ === 'tecnico';
-  const c          = PAREJA_COLORS[o.pareja] || '#6b7280';
-  const blocked    = false; // simplificado para mapa
+  const isTecnico = role_ === 'tecnico';
+  const c = PAREJA_COLORS[o.pareja] || '#6b7280';
 
-  const panel  = document.getElementById('mapa-panel');
+  const panel   = document.getElementById('mapa-panel');
   const content = document.getElementById('mapa-panel-content');
 
   content.innerHTML = `
     <div class="panel-orden-header">
-      <div>
+      <div style="flex:1;min-width:0">
         <div class="panel-orden-wo">WO ${o.wo || '—'}</div>
         <div class="panel-orden-cliente">${o.cliente || '—'}</div>
         <div class="panel-orden-dir">${o.direccion || ''}</div>
       </div>
-      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">
+      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0">
         ${o.pareja ? `<div class="pareja-chip" style="color:${c};border-color:${c}33;background:${c}15">${o.pareja}</div>` : ''}
-        ${o.estadoCampo === 'hecha'  ? '<div class="estado-badge ok">Realizada</div>'       : ''}
-        ${o.estadoCampo === 'visita' ? '<div class="estado-badge warn">Visita</div>'          : ''}
-        ${!o.estadoCampo             ? '<div class="estado-badge muted">Pendiente</div>'      : ''}
+        ${o.estadoCampo === 'hecha'  ? '<div class="estado-badge ok">Realizada</div>'    : ''}
+        ${o.estadoCampo === 'visita' ? '<div class="estado-badge warn">Visita</div>'     : ''}
+        ${!o.estadoCampo             ? '<div class="estado-badge muted">Pendiente</div>' : ''}
       </div>
+    </div>
+
+    <!-- Info técnica -->
+    <div class="panel-detail-grid">
+      ${o.nc       ? `<div class="panel-detail-item"><div class="panel-detail-key">NC</div><div class="panel-detail-val">${o.nc}</div></div>` : ''}
+      ${o.serie    ? `<div class="panel-detail-item"><div class="panel-detail-key">Serie</div><div class="panel-detail-val">${o.serie}</div></div>` : ''}
+      ${o.dsct     ? `<div class="panel-detail-item"><div class="panel-detail-key">DSCT</div><div class="panel-detail-val">${o.dsct}</div></div>` : ''}
+      ${o.unidadLectura ? `<div class="panel-detail-item"><div class="panel-detail-key">MRU</div><div class="panel-detail-val">${o.unidadLectura}</div></div>` : ''}
+      ${o.concepto ? `<div class="panel-detail-item full"><div class="panel-detail-key">Concepto</div><div class="panel-detail-val">${o.concepto}</div></div>` : ''}
+      ${o.motivoVisita ? `<div class="panel-detail-item full"><div class="panel-detail-key">Motivo visita</div><div class="panel-detail-val" style="color:#fbbf24">${o.motivoVisita}${o.observacionVisita ? ' — ' + o.observacionVisita : ''}</div></div>` : ''}
     </div>
 
     ${o.telefono ? `
@@ -338,7 +408,7 @@ function verOrden(id) {
     </div>` : ''}
 
     <div class="panel-orden-actions">
-      ${isTecnico && !o.estadoCampo ? `
+      ${isTecnico && (!o.estadoCampo || o.estadoCampo === 'visita') ? `
         <button class="btn-action cm" onclick="window.__mapa.marcarHecha('${o.id}')">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
           Realizada
@@ -364,42 +434,94 @@ function closePanel() {
 }
 
 // ── Acciones desde mapa ───────────────────────────
-async function marcarHecha(id) {
+function marcarHecha(id) {
+  const o = ordenes_.find(x => x.id === id);
+  if (!o) return;
+  selectedOrden_ = o;
+  closePanel();
+  openSheet('sheet-realizada');
+}
+
+async function confirmarRealizada(actualizadaDelsur) {
+  if (!selectedOrden_) return;
+  const id = selectedOrden_.id;
+  closeSheet('sheet-realizada');
+
   try {
     const now = firebase.firestore.Timestamp.now();
     await db.collection('cambios_ordenes').doc(id).update({
       estadoCampo:       'hecha',
       fechaHecha:        now,
       hechaPor:          session_.displayName,
-      actualizadaDelsur: false,
+      actualizadaDelsur,
     });
     const o = ordenes_.find(x => x.id === id);
-    if (o) { o.estadoCampo = 'hecha'; o.actualizadaDelsur = false; }
+    if (o) { o.estadoCampo = 'hecha'; o.actualizadaDelsur = actualizadaDelsur; }
     plotMarkers();
     updateStatChip();
-    closePanel();
-    toast('Orden marcada como realizada', 'ok');
+    toast(actualizadaDelsur ? 'Orden realizada y actualizada en DELSUR' : 'Orden realizada — pendiente actualizar en DELSUR', 'ok');
   } catch (err) {
+    console.error('[mapa] Error marcando hecha:', err);
     toast('Error al guardar', 'error');
   }
 }
 
-async function marcarVisita(id) {
+function marcarVisita(id) {
+  const o = ordenes_.find(x => x.id === id);
+  if (!o) return;
+  selectedOrden_ = o;
+  closePanel();
+
+  // Limpiar sheet
+  document.querySelectorAll('#visita-motivo-row .select-chip').forEach(c => c.classList.remove('active'));
+  document.getElementById('visita-obs').value = '';
+  document.getElementById('visita-error').style.display = 'none';
+
+  openSheet('sheet-visita');
+}
+
+async function confirmarVisita() {
+  if (!selectedOrden_) return;
+
+  const motivo = getSelectedChip('visita-motivo-row');
+  const obs    = document.getElementById('visita-obs').value.trim();
+  const errEl  = document.getElementById('visita-error');
+
+  if (!motivo) {
+    errEl.textContent = 'Selecciona un motivo de visita.';
+    errEl.style.display = 'block';
+    return;
+  }
+
+  setLoading('btn-visita-label', 'Registrando…', true);
+
   try {
     const now = firebase.firestore.Timestamp.now();
-    await db.collection('cambios_ordenes').doc(id).update({
-      estadoCampo: 'visita',
-      fechaVisita: now,
-      visitadoPor: session_.displayName,
+    await db.collection('cambios_ordenes').doc(selectedOrden_.id).update({
+      estadoCampo:       'visita',
+      fechaVisita:       now,
+      visitadoPor:       session_.displayName,
+      motivoVisita:      motivo,
+      observacionVisita: obs || null,
     });
-    const o = ordenes_.find(x => x.id === id);
-    if (o) o.estadoCampo = 'visita';
+
+    const o = ordenes_.find(x => x.id === selectedOrden_.id);
+    if (o) {
+      o.estadoCampo       = 'visita';
+      o.motivoVisita      = motivo;
+      o.observacionVisita = obs || null;
+    }
+
     plotMarkers();
     updateStatChip();
-    closePanel();
-    toast('Visita registrada', 'ok');
+    closeSheet('sheet-visita');
+    toast(`Visita registrada — ${motivo}`, 'ok');
   } catch (err) {
-    toast('Error al guardar', 'error');
+    console.error('[mapa] Error registrando visita:', err);
+    errEl.textContent = 'Error al guardar. Intenta de nuevo.';
+    errEl.style.display = 'block';
+  } finally {
+    setLoading('btn-visita-label', 'Registrar visita', false);
   }
 }
 
