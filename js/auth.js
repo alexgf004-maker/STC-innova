@@ -14,8 +14,7 @@ import { db, auth } from './firebase.js';
 import { hashPin, derivePassword, SEED } from './crypto.js';
 
 const SESSION_KEY = 'innova_session';
-const BASE_PATH   = '/innova-stc-v2/';
-
+const BASE_PATH = '/STC-innova/';
 // ── Verificar si ya hay sesión activa ────────────
 const existingSession = localStorage.getItem(SESSION_KEY);
 if (existingSession) {
