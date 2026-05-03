@@ -1,8 +1,8 @@
 {
-  "name": "INNOVA STC v2",
+  "name": "INNOVA STC",
   "short_name": "INNOVA STC",
   "description": "Servicios Técnicos y Comerciales — DELSUR",
-  "start_url": "/innova-stc-v2/",
+  "start_url": "/innova-stc/",
   "display": "standalone",
   "background_color": "#070c12",
   "theme_color": "#0a1628",
