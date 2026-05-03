@@ -79,6 +79,11 @@ function renderShell(container) {
           </svg>
           Asignar zona
         </button>` : ''}
+        <button class="mapa-btn-icon" id="btn-mi-ubicacion" title="Mi ubicación">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
+            <circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/>
+          </svg>
+        </button>
       </div>
 
       <!-- Leyenda -->
@@ -206,6 +211,13 @@ function renderShell(container) {
 
   // Eventos del mapa-wrapper
   document.getElementById('btn-asignar-zona')?.addEventListener('click', activarModoZona);
+  document.getElementById('btn-mi-ubicacion')?.addEventListener('click', () => {
+    if (geoMarker_) {
+      map_.setView(geoMarker_.getLatLng(), 17);
+    } else {
+      toast('Obteniendo ubicación…', 'ok');
+    }
+  });
 
   // Cerrar panel al tocar fuera
   document.getElementById('mapa-panel')?.addEventListener('click', e => {
@@ -315,6 +327,58 @@ function initMap() {
 
   // Actualizar stat chip
   updateStatChip();
+
+  // Geolocalización — mostrar posición actual
+  iniciarGeolocalizacion();
+}
+
+// ── Geolocalización ───────────────────────────────
+let geoMarker_ = null;
+let geoCircle_ = null;
+
+function iniciarGeolocalizacion() {
+  if (!navigator.geolocation) return;
+
+  const iconHtml = `
+    <div style="
+      width:16px; height:16px;
+      background:#3b82f6;
+      border:3px solid white;
+      border-radius:50%;
+      box-shadow:0 0 0 4px rgba(59,130,246,.3);
+    "></div>
+  `;
+
+  navigator.geolocation.watchPosition(
+    pos => {
+      const { latitude: lat, longitude: lng, accuracy } = pos.coords;
+
+      if (geoMarker_) {
+        geoMarker_.setLatLng([lat, lng]);
+        geoCircle_.setLatLng([lat, lng]).setRadius(accuracy);
+      } else {
+        geoMarker_ = L.marker([lat, lng], {
+          icon: L.divIcon({
+            className: '',
+            html: iconHtml,
+            iconSize:   [16, 16],
+            iconAnchor: [8, 8],
+          }),
+          zIndexOffset: 1000,
+        }).addTo(map_);
+
+        geoCircle_ = L.circle([lat, lng], {
+          radius:      accuracy,
+          color:       '#3b82f6',
+          fillColor:   '#3b82f6',
+          fillOpacity: 0.08,
+          weight:      1,
+        }).addTo(map_);
+      }
+    },
+    err => console.warn('[mapa] Geolocalización:', err.message),
+    { enableHighAccuracy: true, maximumAge: 5000, timeout: 10000 }
+  );
 }
 
 // ── Marcadores ────────────────────────────────────
