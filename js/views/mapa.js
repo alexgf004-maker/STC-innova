@@ -204,37 +204,33 @@ function renderShell(container) {
   // Insertar en body directamente
   document.body.insertAdjacentHTML('beforeend', sheetsHTML);
 
-  // Eventos
+  // Eventos del mapa-wrapper
   document.getElementById('btn-asignar-zona')?.addEventListener('click', activarModoZona);
+
+  // Cerrar panel al tocar fuera
+  document.getElementById('mapa-panel')?.addEventListener('click', e => {
+    if (e.target === document.getElementById('mapa-panel')) closePanel();
+  });
+
+  // Eventos de sheets (ahora ya existen en el DOM)
   document.getElementById('btn-confirmar-zona')?.addEventListener('click', confirmarZona);
   document.getElementById('btn-cancelar-zona')?.addEventListener('click', cancelarZona);
+  document.getElementById('btn-confirmar-visita')?.addEventListener('click', confirmarVisita);
+  document.getElementById('btn-si-delsur')?.addEventListener('click', () => confirmarRealizada(true));
+  document.getElementById('btn-no-delsur')?.addEventListener('click', () => confirmarRealizada(false));
 
   // Select chips
   setupSelectChips('zona-pareja-row');
   setupSelectChips('visita-motivo-row');
 
-  // Visita
-  document.getElementById('btn-confirmar-visita')?.addEventListener('click', confirmarVisita);
-
-  // Realizada
-  document.getElementById('btn-si-delsur')?.addEventListener('click', () => confirmarRealizada(true));
-  document.getElementById('btn-no-delsur')?.addEventListener('click', () => confirmarRealizada(false));
-
-  // Cerrar sheet zona
+  // Cerrar sheets al tocar backdrop
   document.getElementById('sheet-zona')?.addEventListener('click', e => {
     if (e.target === document.getElementById('sheet-zona')) cancelarZona();
   });
-
-  // Cerrar sheets genéricos
   ['sheet-visita', 'sheet-realizada'].forEach(id => {
     document.getElementById(id)?.addEventListener('click', e => {
       if (e.target === document.getElementById(id)) closeSheet(id);
     });
-  });
-
-  // Cerrar panel al tocar fuera
-  document.getElementById('mapa-panel')?.addEventListener('click', e => {
-    if (e.target === document.getElementById('mapa-panel')) closePanel();
   });
 
   window.__mapa = { verOrden, marcarHecha, marcarVisita, abrirGoogleMaps };
