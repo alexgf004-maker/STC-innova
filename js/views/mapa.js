@@ -169,31 +169,51 @@ function renderShell(container) {
       </div>
     </div>
 
-    <!-- Sheet zona -->
-    <div class="sheet-backdrop" id="sheet-zona">
+    <!-- Sheet asignación individual -->
+    <div class="sheet-backdrop" id="sheet-asignar-individual">
       <div class="sheet">
         <div class="sheet-handle"></div>
-        <div class="sheet-title">Asignar zona a pareja</div>
+        <div class="sheet-title" id="sheet-indiv-title">Asignar pareja</div>
         <div class="sheet-body">
-          <p style="font-size:12px;color:var(--text-3);margin-bottom:16px">
-            Dibuja un rectángulo en el mapa sobre las órdenes que quieres asignar, luego selecciona la pareja.
-          </p>
-          <div class="form-label">Pareja destino</div>
-          <div class="select-row" id="zona-pareja-row" style="margin-bottom:16px">
+          <div class="form-label" style="margin-bottom:8px">Selecciona la pareja</div>
+          <div class="select-row flex-wrap" id="indiv-pareja-row" style="margin-bottom:16px">
             <div class="select-chip" data-val="Pareja 1">Pareja 1</div>
             <div class="select-chip" data-val="Pareja 2">Pareja 2</div>
             <div class="select-chip" data-val="Pareja 3">Pareja 3</div>
             <div class="select-chip" data-val="Pareja 4">Pareja 4</div>
+            <div class="select-chip" data-val="null" style="color:var(--text-4)">Sin pareja</div>
           </div>
+          <div id="indiv-error" class="form-error"></div>
+          <button class="btn-primary full" onclick="window.__mapa.confirmarIndividual()">
+            <span id="btn-indiv-label">Confirmar</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Sheet zona -->
+    <div class="sheet-backdrop" id="sheet-zona">
+      <div class="sheet">
+        <div class="sheet-handle"></div>
+        <div class="sheet-title">Asignar zona</div>
+        <div class="sheet-body">
           <div id="zona-preview" style="display:none" class="zona-preview-box">
             <div class="zona-preview-num" id="zona-count">0</div>
-            <div class="zona-preview-label">órdenes en la zona</div>
+            <div class="zona-preview-label">órdenes en la zona seleccionada</div>
+          </div>
+          <div class="form-label" style="margin:12px 0 8px">Asignar a</div>
+          <div class="select-row flex-wrap" id="zona-pareja-row" style="margin-bottom:16px">
+            <div class="select-chip" data-val="Pareja 1">Pareja 1</div>
+            <div class="select-chip" data-val="Pareja 2">Pareja 2</div>
+            <div class="select-chip" data-val="Pareja 3">Pareja 3</div>
+            <div class="select-chip" data-val="Pareja 4">Pareja 4</div>
+            <div class="select-chip" data-val="null" style="color:var(--text-4)">Sin pareja</div>
           </div>
           <div id="zona-error" class="form-error"></div>
-          <button class="btn-primary full" id="btn-confirmar-zona">
+          <button class="btn-primary full" id="btn-confirmar-zona" onclick="window.__mapa.confirmarZona()">
             <span id="btn-zona-label">Confirmar asignación</span>
           </button>
-          <button class="btn-action outline" id="btn-cancelar-zona" style="margin-top:8px;width:100%;height:44px">
+          <button class="btn-action outline" id="btn-cancelar-zona" onclick="window.__mapa.cancelarZona()" style="margin-top:8px;width:100%;height:44px">
             Cancelar y borrar zona
           </button>
         </div>
@@ -234,18 +254,19 @@ function renderShell(container) {
   // Select chips
   setupSelectChips('zona-pareja-row');
   setupSelectChips('visita-motivo-row');
+  setupSelectChips('indiv-pareja-row');
 
   // Cerrar sheets al tocar backdrop
   document.getElementById('sheet-zona')?.addEventListener('click', e => {
     if (e.target === document.getElementById('sheet-zona')) cancelarZona();
   });
-  ['sheet-visita', 'sheet-realizada'].forEach(id => {
+  ['sheet-visita', 'sheet-realizada', 'sheet-asignar-individual'].forEach(id => {
     document.getElementById(id)?.addEventListener('click', e => {
       if (e.target === document.getElementById(id)) closeSheet(id);
     });
   });
 
-  window.__mapa = { verOrden, marcarHecha, marcarVisita, abrirGoogleMaps, confirmarRealizada, confirmarVisita };
+  window.__mapa = { verOrden, marcarHecha, marcarVisita, abrirGoogleMaps, confirmarRealizada, confirmarVisita, asignarIndividual, confirmarIndividual, confirmarZona, cancelarZona };
 }
 
 // ── Cargar órdenes ────────────────────────────────
@@ -492,6 +513,11 @@ function verOrden(id) {
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
           Visita
         </button>` : ''}
+      ${!isTecnico ? `
+        <button class="btn-action cm" onclick="window.__mapa.asignarIndividual('${o.id}')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M17 3a2.828 2.828 0 114 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>
+          Asignar pareja
+        </button>` : ''}
       <button class="btn-action outline" onclick="window.__mapa.abrirGoogleMaps(${o.latitud},${o.longitud})">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg>
         Navegar
@@ -607,25 +633,74 @@ function abrirGoogleMaps(lat, lng) {
   window.open(`https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`, '_blank');
 }
 
+// ── Asignación individual ─────────────────────────
+function asignarIndividual(id) {
+  const o = ordenes_.find(x => x.id === id);
+  if (!o) return;
+  closePanel();
+  selectedOrden_ = o;
+
+  // Pre-seleccionar pareja actual si existe
+  document.querySelectorAll('#indiv-pareja-row .select-chip').forEach(c => {
+    c.classList.toggle('active', c.dataset.val === (o.pareja || 'null'));
+  });
+  document.getElementById('indiv-error').style.display = 'none';
+  document.getElementById('sheet-indiv-title').textContent = `Asignar: WO ${o.wo || '—'}`;
+  openSheet('sheet-asignar-individual');
+}
+
+async function confirmarIndividual() {
+  if (!selectedOrden_) return;
+  const parejaVal = getSelectedChip('indiv-pareja-row');
+  if (!parejaVal) {
+    document.getElementById('indiv-error').textContent = 'Selecciona una pareja.';
+    document.getElementById('indiv-error').style.display = 'block';
+    return;
+  }
+
+  const pareja = parejaVal === 'null' ? null : parejaVal;
+  const id     = selectedOrden_.id;
+
+  setLoading('btn-indiv-label', 'Guardando…', true);
+  try {
+    await db.collection('cambios_ordenes').doc(id).update({
+      pareja,
+      asignadoEn: firebase.firestore.FieldValue.serverTimestamp(),
+    });
+    const o = ordenes_.find(x => x.id === id);
+    if (o) o.pareja = pareja;
+    selectedOrden_ = null;
+    plotMarkers();
+    updateStatChip();
+    closeSheet('sheet-asignar-individual');
+    toast(pareja ? `Asignada a ${pareja}` : 'Orden desasignada', 'ok');
+  } catch (err) {
+    console.error('[mapa] Error asignando:', err);
+    document.getElementById('indiv-error').textContent = 'Error al guardar.';
+    document.getElementById('indiv-error').style.display = 'block';
+  } finally {
+    setLoading('btn-indiv-label', 'Confirmar', false);
+  }
+}
+
 // ── Asignación por zona ───────────────────────────
 let zonaActual_ = null;
 
 function activarModoZona() {
   if (!map_ || !drawControl_) return;
   map_.addControl(drawControl_);
+  closePanel();
   toast('Dibuja un rectángulo sobre las órdenes a asignar', 'ok', 4000);
 }
 
 function onZonaCreada(e) {
-  // Limpiar zona anterior
   drawnItems_.clearLayers();
   zonaActual_ = e.layer;
   drawnItems_.addLayer(zonaActual_);
   map_.removeControl(drawControl_);
 
-  // Contar órdenes dentro del polígono
-  const bounds  = zonaActual_.getBounds();
-  const dentro  = ordenes_.filter(o =>
+  const bounds = zonaActual_.getBounds();
+  const dentro = ordenes_.filter(o =>
     o.latitud && o.longitud &&
     bounds.contains(L.latLng(o.latitud, o.longitud))
   );
@@ -634,22 +709,28 @@ function onZonaCreada(e) {
   document.getElementById('zona-preview').style.display = dentro.length ? '' : 'none';
   document.getElementById('zona-error').style.display = 'none';
 
+  // Reset selección de pareja
+  document.querySelectorAll('#zona-pareja-row .select-chip').forEach(c => c.classList.remove('active'));
+
   openSheet('sheet-zona');
 }
 
 async function confirmarZona() {
-  const pareja = getSelectedChip('zona-pareja-row');
-  if (!pareja) {
-    document.getElementById('zona-error').textContent = 'Selecciona una pareja.';
-    document.getElementById('zona-error').style.display = 'block';
+  const parejaVal = getSelectedChip('zona-pareja-row');
+  const errEl     = document.getElementById('zona-error');
+
+  if (!parejaVal) {
+    errEl.textContent = 'Selecciona una pareja o "Sin pareja".';
+    errEl.style.display = 'block';
     return;
   }
   if (!zonaActual_) {
-    document.getElementById('zona-error').textContent = 'Dibuja una zona primero.';
-    document.getElementById('zona-error').style.display = 'block';
+    errEl.textContent = 'Dibuja una zona primero.';
+    errEl.style.display = 'block';
     return;
   }
 
+  const pareja = parejaVal === 'null' ? null : parejaVal;
   const bounds = zonaActual_.getBounds();
   const dentro = ordenes_.filter(o =>
     o.latitud && o.longitud &&
@@ -657,21 +738,23 @@ async function confirmarZona() {
   );
 
   if (!dentro.length) {
-    document.getElementById('zona-error').textContent = 'No hay órdenes en esa zona.';
-    document.getElementById('zona-error').style.display = 'block';
+    errEl.textContent = 'No hay órdenes en esa zona.';
+    errEl.style.display = 'block';
     return;
   }
 
   setLoading('btn-zona-label', 'Asignando…', true);
-
   try {
-    // Batch update — máx 500 por batch
+    const ts = firebase.firestore.FieldValue.serverTimestamp();
     let batch = db.batch();
     let count = 0;
     const batches = [];
 
     for (const o of dentro) {
-      batch.update(db.collection('cambios_ordenes').doc(o.id), { pareja });
+      batch.update(db.collection('cambios_ordenes').doc(o.id), {
+        pareja,
+        asignadoEn: ts,
+      });
       count++;
       if (count === 499) {
         batches.push(batch.commit());
@@ -682,20 +765,19 @@ async function confirmarZona() {
     if (count > 0) batches.push(batch.commit());
     await Promise.all(batches);
 
-    // Actualizar local
     dentro.forEach(o => { o.pareja = pareja; });
-    plotMarkers();
-    updateStatChip();
-
     drawnItems_.clearLayers();
     zonaActual_ = null;
+    plotMarkers();
+    updateStatChip();
     closeSheet('sheet-zona');
-    toast(`${dentro.length} órdenes asignadas a ${pareja}`, 'ok');
-
+    toast(pareja
+      ? `${dentro.length} órdenes asignadas a ${pareja}`
+      : `${dentro.length} órdenes desasignadas`, 'ok');
   } catch (err) {
     console.error('[mapa] Error asignando zona:', err);
-    document.getElementById('zona-error').textContent = 'Error al asignar. Intenta de nuevo.';
-    document.getElementById('zona-error').style.display = 'block';
+    errEl.textContent = 'Error al asignar. Intenta de nuevo.';
+    errEl.style.display = 'block';
   } finally {
     setLoading('btn-zona-label', 'Confirmar asignación', false);
   }
@@ -704,9 +786,7 @@ async function confirmarZona() {
 function cancelarZona() {
   drawnItems_?.clearLayers();
   zonaActual_ = null;
-  if (drawControl_ && map_.hasControl?.(drawControl_)) {
-    map_.removeControl(drawControl_);
-  }
+  try { map_.removeControl(drawControl_); } catch {}
   closeSheet('sheet-zona');
 }
 
