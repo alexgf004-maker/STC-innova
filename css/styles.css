@@ -1205,3 +1205,17 @@ body {
   border-color: var(--cm-border) !important;
   color: var(--cm-light) !important;
 }
+
+/* Panel detalle grid */
+.panel-detail-grid {
+  display: flex; flex-wrap: wrap; gap: 8px;
+  padding: 10px 0; margin-bottom: 4px;
+  border-bottom: 1px solid var(--border);
+}
+.panel-detail-item { flex: 1; min-width: 80px; }
+.panel-detail-item.full { flex: 100%; }
+.panel-detail-key {
+  font-size: 9px; font-weight: 700; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--text-4); margin-bottom: 2px;
+}
+.panel-detail-val { font-size: 12px; font-weight: 500; color: var(--text-2); }
