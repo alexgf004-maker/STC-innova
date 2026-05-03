@@ -444,8 +444,8 @@ function closePanel() {
 function marcarHecha(id) {
   const o = ordenes_.find(x => x.id === id);
   if (!o) return;
-  selectedOrden_ = o;
-  closePanel();
+  closePanel();           // limpia panel pero también pone selectedOrden_ = null
+  selectedOrden_ = o;     // restaurar después de closePanel
   openSheet('sheet-realizada');
 }
 
@@ -453,6 +453,7 @@ async function confirmarRealizada(actualizadaDelsur) {
   if (!selectedOrden_) return;
   const id = selectedOrden_.id;
   closeSheet('sheet-realizada');
+  selectedOrden_ = null;
 
   try {
     const now = firebase.firestore.Timestamp.now();
@@ -466,7 +467,7 @@ async function confirmarRealizada(actualizadaDelsur) {
     if (o) { o.estadoCampo = 'hecha'; o.actualizadaDelsur = actualizadaDelsur; }
     plotMarkers();
     updateStatChip();
-    toast(actualizadaDelsur ? 'Orden realizada y actualizada en DELSUR' : 'Orden realizada — pendiente actualizar en DELSUR', 'ok');
+    toast(actualizadaDelsur ? 'Realizada y actualizada en DELSUR' : 'Realizada — pendiente actualizar en DELSUR', 'ok');
   } catch (err) {
     console.error('[mapa] Error marcando hecha:', err);
     toast('Error al guardar', 'error');
@@ -476,10 +477,9 @@ async function confirmarRealizada(actualizadaDelsur) {
 function marcarVisita(id) {
   const o = ordenes_.find(x => x.id === id);
   if (!o) return;
-  selectedOrden_ = o;
-  closePanel();
+  closePanel();           // limpia panel pero también pone selectedOrden_ = null
+  selectedOrden_ = o;     // restaurar después de closePanel
 
-  // Limpiar sheet
   document.querySelectorAll('#visita-motivo-row .select-chip').forEach(c => c.classList.remove('active'));
   document.getElementById('visita-obs').value = '';
   document.getElementById('visita-error').style.display = 'none';
@@ -500,11 +500,12 @@ async function confirmarVisita() {
     return;
   }
 
+  const id = selectedOrden_.id;
   setLoading('btn-visita-label', 'Registrando…', true);
 
   try {
     const now = firebase.firestore.Timestamp.now();
-    await db.collection('cambios_ordenes').doc(selectedOrden_.id).update({
+    await db.collection('cambios_ordenes').doc(id).update({
       estadoCampo:       'visita',
       fechaVisita:       now,
       visitadoPor:       session_.displayName,
@@ -512,13 +513,14 @@ async function confirmarVisita() {
       observacionVisita: obs || null,
     });
 
-    const o = ordenes_.find(x => x.id === selectedOrden_.id);
+    const o = ordenes_.find(x => x.id === id);
     if (o) {
       o.estadoCampo       = 'visita';
       o.motivoVisita      = motivo;
       o.observacionVisita = obs || null;
     }
 
+    selectedOrden_ = null;
     plotMarkers();
     updateStatChip();
     closeSheet('sheet-visita');
