@@ -17,8 +17,7 @@ window.__router = { navigateTo };
 const raw = localStorage.getItem(SESSION_KEY);
 if (!raw) {
   window.location.replace(LOGIN_PATH);
-  throw new Error('No session'); // detiene ejecución
-}
+} else {
 
 let session;
 try {
@@ -82,3 +81,4 @@ window.addEventListener('DOMContentLoaded', () => {
     setTimeout(() => splash.remove(), 400);
   }, 600);
 });
+}
