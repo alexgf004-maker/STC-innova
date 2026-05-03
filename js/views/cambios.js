@@ -60,8 +60,8 @@ export async function init(container, session) {
 function renderShell() {
   const isTecnico = role_ === 'tecnico';
   const tabs = isTecnico
-    ? [{ id:'ordenes', label:'Órdenes' }, { id:'panel', label:'Resumen' }]
-    : [{ id:'panel',   label:'Panel'   }, { id:'ordenes', label:'Órdenes' }];
+    ? [{ id:'ordenes', label:'Órdenes' }, { id:'panel', label:'Resumen'  }, { id:'mapa', label:'Mapa' }]
+    : [{ id:'panel',   label:'Panel'   }, { id:'ordenes', label:'Órdenes' }, { id:'mapa', label:'Mapa' }];
 
   container_.innerHTML = `
     <!-- Tabs -->
@@ -243,8 +243,27 @@ function priorizarOrdenes(lista) {
 
 // ── Render tab activo ─────────────────────────────
 function renderTab() {
-  if (activeTab === 'panel') renderPanel();
+  if (activeTab === 'panel')   renderPanel();
+  else if (activeTab === 'mapa') renderMapaTab();
   else renderOrdenes();
+}
+
+// ── Mapa dentro de Cambios ────────────────────────
+async function renderMapaTab() {
+  const content = document.getElementById('cambios-content');
+  content.innerHTML = '<div style="height:calc(100vh - 180px);min-height:300px;" id="cambios-mapa-container"></div>';
+
+  // Importar y renderizar módulo mapa
+  try {
+    const mapaModule = await import('./mapa.js');
+    mapaModule.init(document.getElementById('cambios-mapa-container'), session_);
+  } catch (err) {
+    console.error('[cambios] Error cargando mapa:', err);
+    content.innerHTML = `<div class="dev-module" style="margin-top:16px">
+      <div class="dev-title">Error al cargar mapa</div>
+      <p>${err.message}</p>
+    </div>`;
+  }
 }
 
 // ── PANEL (admin/asistente) ───────────────────────
