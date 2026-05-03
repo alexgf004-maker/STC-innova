@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
+<meta name="theme-color" content="#0a1628"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+<title>INNOVA STC · Acceso</title>
+<link rel="stylesheet" href="css/styles.css"/>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet"/>
+</head>
+<body class="login-page">
+
+<div id="bg"></div>
+
+<div id="login-wrapper">
+
+  <!-- Logo -->
+  <div class="login-logo">
+    <div class="login-logo-mark">
+      <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+      </svg>
+    </div>
+    <h1>INNOVA STC</h1>
+    <p>Servicios Técnicos y Comerciales · v2</p>
+  </div>
+
+  <!-- Card de login -->
+  <div class="login-card">
+
+    <!-- Campo usuario -->
+    <div class="login-field anim-up d1">
+      <div class="login-field-label">Usuario</div>
+      <input id="inp-user" class="login-input" type="text"
+             placeholder="Nombre de usuario"
+             autocomplete="off" autocorrect="off"
+             autocapitalize="off" spellcheck="false"/>
+    </div>
+
+    <!-- PIN display -->
+    <div class="login-field anim-up d2">
+      <div class="login-field-label">PIN de acceso</div>
+      <div class="pin-row" id="pin-display">
+        <div class="pin-digit" data-pos="0"></div>
+        <div class="pin-digit" data-pos="1"></div>
+        <div class="pin-digit" data-pos="2"></div>
+        <div class="pin-digit" data-pos="3"></div>
+      </div>
+    </div>
+
+    <!-- Teclado numérico -->
+    <div class="numpad anim-up d3">
+      <div class="numpad-key" data-n="1">1</div>
+      <div class="numpad-key" data-n="2">2</div>
+      <div class="numpad-key" data-n="3">3</div>
+      <div class="numpad-key" data-n="4">4</div>
+      <div class="numpad-key" data-n="5">5</div>
+      <div class="numpad-key" data-n="6">6</div>
+      <div class="numpad-key" data-n="7">7</div>
+      <div class="numpad-key" data-n="8">8</div>
+      <div class="numpad-key" data-n="9">9</div>
+      <div class="numpad-key empty"></div>
+      <div class="numpad-key" data-n="0">0</div>
+      <div class="numpad-key del" id="pin-del">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+             stroke-linecap="round" stroke-linejoin="round" width="18" height="18">
+          <path d="M21 4H8l-7 8 7 8h13a2 2 0 002-2V6a2 2 0 00-2-2z"/>
+          <line x1="18" y1="9" x2="13" y2="14"/>
+          <line x1="13" y1="9" x2="18" y2="14"/>
+        </svg>
+      </div>
+    </div>
+
+    <!-- Error -->
+    <div id="login-error" class="login-error anim-up d4"></div>
+
+    <!-- Botón ingresar -->
+    <button id="btn-login" class="btn-login anim-up d4" disabled>
+      <span id="btn-login-label">Ingresar</span>
+    </button>
+
+  </div>
+</div>
+
+<script type="module" src="js/auth.js"></script>
+</body>
+</html>
