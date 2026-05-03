@@ -9,8 +9,7 @@ import { initRouter, navigateTo } from './router.js';
 import { toast } from './ui.js';
 
 const SESSION_KEY = 'innova_session';
-const LOGIN_PATH  = '/innova-stc-v2/login.html';
-
+const LOGIN_PATH = '/STC-innova/login.html';
 // Exponer navigateTo globalmente para los onclick de la navbar
 window.__router = { navigateTo };
 
