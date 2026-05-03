@@ -134,7 +134,7 @@ function renderShell(container) {
           <div class="form-label" style="margin-bottom:8px">Observación adicional (opcional)</div>
           <input class="form-input" id="visita-obs" type="text" placeholder="Describe la situación…" style="margin-bottom:16px"/>
           <div id="visita-error" class="form-error"></div>
-          <button class="btn-primary full" id="btn-confirmar-visita">
+          <button class="btn-primary full" id="btn-confirmar-visita" onclick="window.__mapa.confirmarVisita()">
             <span id="btn-visita-label">Registrar visita</span>
           </button>
         </div>
@@ -151,11 +151,11 @@ function renderShell(container) {
             Confirma si ya ingresaste esta orden en el sistema de DELSUR.
           </p>
           <div style="display:flex;flex-direction:column;gap:8px">
-            <button class="btn-action cm" id="btn-si-delsur">
+            <button class="btn-action cm" id="btn-si-delsur" onclick="window.__mapa.confirmarRealizada(true)">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
               Sí, ya actualicé en DELSUR
             </button>
-            <button class="btn-action outline" id="btn-no-delsur">
+            <button class="btn-action outline" id="btn-no-delsur" onclick="window.__mapa.confirmarRealizada(false)">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
               No, lo actualizaré después
             </button>
@@ -233,7 +233,7 @@ function renderShell(container) {
     });
   });
 
-  window.__mapa = { verOrden, marcarHecha, marcarVisita, abrirGoogleMaps };
+  window.__mapa = { verOrden, marcarHecha, marcarVisita, abrirGoogleMaps, confirmarRealizada, confirmarVisita };
 }
 
 // ── Cargar órdenes ────────────────────────────────
