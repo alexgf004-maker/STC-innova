@@ -53,7 +53,7 @@ function getSubtitle(role, area) {
     if (!area) return 'Técnico · Sin asignación hoy';
     return `Técnico · Área ${area}`;
   }
-  return 'INNOVA STC v2';
+  return 'INNOVA STC';
 }
 
 // ── Logout ────────────────────────────────────────
