@@ -7,8 +7,9 @@
 import { db, auth } from './firebase.js';
 import { hashPin, derivePassword, SEED } from './crypto.js';
 
-const SESSION_KEY = 'innova_session';
-const BASE_PATH   = '/STC-innova/';
+const SESSION_KEY  = 'innova_session';
+const REMEMBER_KEY = 'innova_remember_user';
+const BASE_PATH    = '/STC-innova/';
 
 // Redirigir si ya hay sesión
 const existingSession = localStorage.getItem(SESSION_KEY);
@@ -17,11 +18,20 @@ if (existingSession) {
 }
 
 // ── Elementos ─────────────────────────────────────
-const inpUser  = document.getElementById('inp-user');
-const inpPin   = document.getElementById('inp-pin');
-const btnLogin = document.getElementById('btn-login');
-const btnLabel = document.getElementById('btn-login-label');
-const errEl    = document.getElementById('login-error');
+const inpUser    = document.getElementById('inp-user');
+const inpPin     = document.getElementById('inp-pin');
+const btnLogin   = document.getElementById('btn-login');
+const btnLabel   = document.getElementById('btn-login-label');
+const errEl      = document.getElementById('login-error');
+const chkRemember = document.getElementById('chk-remember');
+
+// Restaurar usuario recordado
+const savedUser = localStorage.getItem(REMEMBER_KEY);
+if (savedUser) {
+  inpUser.value = savedUser;
+  chkRemember.checked = true;
+  inpPin.focus();
+}
 
 // ── Validación ────────────────────────────────────
 function checkReady() {
@@ -109,6 +119,13 @@ async function doLogin() {
       role:        data.role,
       asignacion:  data.asignacion || { area: null, pareja: null },
     };
+
+    // Guardar o limpiar usuario recordado
+    if (chkRemember.checked) {
+      localStorage.setItem(REMEMBER_KEY, username);
+    } else {
+      localStorage.removeItem(REMEMBER_KEY);
+    }
 
     localStorage.setItem(SESSION_KEY, JSON.stringify(session));
     window.location.replace(BASE_PATH);
