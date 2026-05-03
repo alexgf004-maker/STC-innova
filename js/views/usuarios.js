@@ -372,7 +372,7 @@ function updateDestinoRow(area, selectedDestino = null) {
   }
 
   wrap.style.display = '';
-  label.textContent = area === 'CAMBIOS' ? 'Pareja' : 'Supervisor';
+  label.textContent = area === 'CAMBIOS' ? 'Pareja' : 'Usuario';
 
   const destinos = DESTINOS[area] || [];
   row.innerHTML = destinos.map(d => `
