@@ -467,6 +467,7 @@ async function confirmarRealizada(actualizadaDelsur) {
     if (o) { o.estadoCampo = 'hecha'; o.actualizadaDelsur = actualizadaDelsur; }
     plotMarkers();
     updateStatChip();
+    window.dispatchEvent(new CustomEvent('cambios:updated'));
     toast(actualizadaDelsur ? 'Realizada y actualizada en DELSUR' : 'Realizada — pendiente actualizar en DELSUR', 'ok');
   } catch (err) {
     console.error('[mapa] Error marcando hecha:', err);
@@ -523,6 +524,7 @@ async function confirmarVisita() {
     selectedOrden_ = null;
     plotMarkers();
     updateStatChip();
+    window.dispatchEvent(new CustomEvent('cambios:updated'));
     closeSheet('sheet-visita');
     toast(`Visita registrada — ${motivo}`, 'ok');
   } catch (err) {
