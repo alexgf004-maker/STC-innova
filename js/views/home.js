@@ -34,7 +34,7 @@ function renderHomeTecnico(container, session, area) {
         <div class="welcome-area-label">${area} · ${areaLabel}</div>
         <div class="welcome-name">${session.displayName}</div>
         <div class="welcome-role">
-          ${destino ? `${isCambios ? 'Pareja' : 'Supervisor'}: ${destino}` : 'Área asignada para hoy'}
+          ${destino ? `${isCambios ? 'Pareja' : 'Usuario'}: ${destino}` : 'Área asignada para hoy'}
         </div>
       </div>
 
