@@ -48,6 +48,12 @@ export async function init(container, session) {
 
   renderShell();
   await Promise.all([loadCalendario(), loadOrdenes()]);
+
+  // Escuchar actualizaciones desde el mapa
+  window.addEventListener('cambios:updated', () => {
+    invalidateOrdenes();
+    loadOrdenes();
+  });
 }
 
 // ── Shell ─────────────────────────────────────────
