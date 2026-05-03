@@ -5,7 +5,10 @@
  */
 
 // ── Toast ─────────────────────────────────────────
-const toastContainer = document.getElementById('toast-container');
+let toastContainer = null;
+document.addEventListener('DOMContentLoaded', () => {
+  toastContainer = document.getElementById('toast-container');
+});
 
 /**
  * Muestra un toast.
@@ -14,6 +17,7 @@ const toastContainer = document.getElementById('toast-container');
  * @param {number} duration ms
  */
 export function toast(msg, type = 'ok', duration = 3000) {
+  if (!toastContainer) return;
   const el = document.createElement('div');
   el.className = `toast ${type}`;
   el.innerHTML = `<div class="toast-dot"></div><span>${msg}</span>`;
