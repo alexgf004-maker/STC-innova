@@ -108,7 +108,7 @@ function renderShell(container) {
 
       <!-- Panel inferior (detalle orden) -->
       <div class="mapa-panel" id="mapa-panel">
-        <div class="mapa-panel-handle"></div>
+        <div class="mapa-panel-handle" onclick="document.getElementById('mapa-panel').classList.remove('open')"></div>
         <div id="mapa-panel-content"></div>
       </div>
 
@@ -292,6 +292,9 @@ function initMap() {
   // Zoom control en posición correcta
   L.control.zoom({ position: 'bottomright' }).addTo(map_);
 
+  // Cerrar panel al tocar el mapa
+  map_.on('click', closePanel);
+
   // Inicializar capa de dibujo (solo admin/asistente)
   if (role_ !== 'tecnico') {
     drawnItems_ = new L.FeatureGroup();
@@ -313,7 +316,7 @@ function initMap() {
     });
     // No agregar control automáticamente — se activa al presionar "Asignar zona"
 
-    map_.on(L.Draw.Event.CREATED, onZonaCreada);
+    map_.on('click', closePanel);
   }
 
   // Dibujar marcadores
