@@ -4,13 +4,33 @@
  * Exporta: init(container, session)
  */
 
-export function init(container, session) {
+import { db } from '../firebase.js';
+
+export async function init(container, session) {
   const { role, asignacionActual } = session;
-  const area = asignacionActual?.area || null;
+  const area    = asignacionActual?.area    || null;
+  const destino = asignacionActual?.destino || null;
 
   if (role === 'tecnico') {
     if (!area) return renderNoAsignacion(container, session);
-    return renderHomeTecnico(container, session, area);
+
+    // Buscar compañeros con mismo destino
+    let companeros = [];
+    try {
+      if (destino) {
+        const snap = await db.collection('users')
+          .where('asignacionActual.destino', '==', destino)
+          .where('active', '==', true)
+          .get();
+        companeros = snap.docs
+          .map(d => d.data().displayName)
+          .filter(n => n !== session.displayName);
+      }
+    } catch (err) {
+      console.warn('[home] No se pudieron cargar compañeros:', err);
+    }
+
+    return renderHomeTecnico(container, session, area, companeros);
   }
   if (role === 'admin')     return renderHomeAdmin(container, session);
   if (role === 'asistente') return renderHomeAsistente(container, session);
@@ -19,7 +39,7 @@ export function init(container, session) {
 }
 
 // ── Home Técnico ──────────────────────────────────
-function renderHomeTecnico(container, session, area) {
+function renderHomeTecnico(container, session, area, companeros = []) {
   const isCambios   = area === 'CAMBIOS';
   const color       = isCambios ? 'cm' : 'otc';
   const accentColor = isCambios ? '#2dd4bf' : '#60a5fa';
@@ -27,15 +47,26 @@ function renderHomeTecnico(container, session, area) {
   const areaLabel   = isCambios ? 'Cambios de Medidor' : 'Órdenes Técnicas de Campo';
   const destino     = session.asignacionActual?.destino || null;
 
+  const hoy = new Date().toLocaleDateString('es-SV', {
+    weekday: 'long', day: 'numeric', month: 'long'
+  });
+  const fechaLabel = hoy.charAt(0).toUpperCase() + hoy.slice(1);
+
   container.innerHTML = `
     <div class="flex-col gap-12" style="padding-top:4px">
 
       <div class="welcome-card ${color} anim-up">
-        <div class="welcome-area-label">${area} · ${areaLabel}</div>
+        <div class="welcome-area-label">${fechaLabel}</div>
         <div class="welcome-name">${session.displayName}</div>
-        <div class="welcome-role">
-          ${destino ? `${isCambios ? 'Pareja' : 'Usuario'}: ${destino}` : 'Área asignada para hoy'}
-        </div>
+        <div class="welcome-role">${area} · ${areaLabel}</div>
+        ${destino ? `
+        <div class="companeros-row">
+          <div class="companero-chip self">${destino}</div>
+          ${companeros.length
+            ? companeros.map(c => `<div class="companero-chip">${c}</div>`).join('')
+            : '<div class="companero-chip muted">Sin compañero asignado</div>'
+          }
+        </div>` : ''}
       </div>
 
       <div class="stat-row anim-up d1">
