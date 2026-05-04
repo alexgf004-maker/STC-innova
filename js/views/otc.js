@@ -151,7 +151,7 @@ function priorizar(lista) {
 function renderShell() {
   const isTecnico = role_ === 'tecnico';
   const tabs = isTecnico
-    ? [{ id:'ordenes', label:'Órdenes' }, { id:'panel', label:'Resumen' }]
+    ? [{ id:'ordenes', label:'Órdenes' }, { id:'panel', label:'Resumen' }, { id:'mapa', label:'Mapa' }]
     : [{ id:'panel',   label:'Panel'   }, { id:'ordenes', label:'Órdenes' }, { id:'mapa', label:'Mapa' }];
 
   container_.innerHTML = `
