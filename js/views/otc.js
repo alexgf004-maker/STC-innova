@@ -53,6 +53,18 @@ export async function init(container, session) {
   session_   = session;
   role_      = session.role;
   destino_   = session.asignacionActual?.destino || null;
+  activeTab_ = role_ === 'tecnico' ? 'ordenes' : 'panel';
+
+  renderShell();
+  await loadOrdenes();
+}
+
+export async function initConTab(container, session, tab) {
+  container_ = container;
+  session_   = session;
+  role_      = session.role;
+  destino_   = session.asignacionActual?.destino || null;
+  activeTab_ = tab;
 
   renderShell();
   await loadOrdenes();
@@ -144,8 +156,8 @@ function renderShell() {
 
   container_.innerHTML = `
     <div class="cambios-tabs">
-      ${tabs.map((t, i) => `
-        <div class="cambios-tab otc ${i === 0 ? 'active' : ''}" data-tab="${t.id}">${t.label}</div>
+      ${tabs.map(t => `
+        <div class="cambios-tab otc ${t.id === activeTab_ ? 'active' : ''}" data-tab="${t.id}">${t.label}</div>
       `).join('')}
     </div>
     <div id="otc-content" style="padding-top:12px">
