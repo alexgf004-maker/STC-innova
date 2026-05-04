@@ -705,7 +705,8 @@ async function crearOrden() {
     renderTab();
     toast('Orden creada', 'ok');
   } catch (err) {
-    errEl.textContent = 'Error al crear. Intenta de nuevo.';
+    console.error('[otc] Error creando orden:', err);
+    errEl.textContent = `Error: ${err.message}`;
     errEl.style.display = 'block';
   } finally {
     setLoading('btn-otc-label', 'Crear orden', false);
