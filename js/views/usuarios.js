@@ -226,6 +226,7 @@ function renderLista(filtro) {
                 <path d="M17 3a2.828 2.828 0 114 4L7.5 20.5 2 22l1.5-5.5L17 3z"/>
               </svg>
             </button>` : ''}
+          ${puedeToggle(u) ? `
           <button class="icon-btn ${u.active ? 'danger' : 'ok'}"
                   onclick="window.__usuarios.toggleActive('${u.id}', ${u.active})"
                   title="${u.active ? 'Desactivar' : 'Activar'}">
@@ -234,11 +235,22 @@ function renderLista(filtro) {
                 ? '<circle cx="12" cy="12" r="10"/><line x1="8" y1="8" x2="16" y2="16"/><line x1="16" y1="8" x2="8" y2="16"/>'
                 : '<path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>'}
             </svg>
-          </button>
+          </button>` : ''}
         </div>
       </div>
     `;
   }).join('');
+}
+
+// ── Permisos ──────────────────────────────────────
+function puedeToggle(u) {
+  // Nadie puede desactivarse a sí mismo
+  if (u.id === session_.uid) return false;
+  // Admin puede togglear a cualquiera menos a sí mismo
+  if (session_.role === 'admin') return true;
+  // Asistente solo puede togglear técnicos
+  if (session_.role === 'asistente') return u.role === 'tecnico';
+  return false;
 }
 
 // ── Crear usuario ─────────────────────────────────
@@ -372,7 +384,7 @@ function updateDestinoRow(area, selectedDestino = null) {
   }
 
   wrap.style.display = '';
-  label.textContent = area === 'CAMBIOS' ? 'Pareja' : 'Usuario';
+  label.textContent = area === 'CAMBIOS' ? 'Pareja' : 'Supervisor';
 
   const destinos = DESTINOS[area] || [];
   row.innerHTML = destinos.map(d => `
