@@ -213,6 +213,24 @@ function renderShell() {
       </div>
     </div>
 
+    <!-- Sheet reasignar orden -->
+    <div class="sheet-backdrop" id="sheet-reasignar">
+      <div class="sheet">
+        <div class="sheet-handle"></div>
+        <div class="sheet-title" id="sheet-reasignar-title">Reasignar orden</div>
+        <div class="sheet-body">
+          <div class="form-label" style="margin-bottom:8px">Asignar a técnico</div>
+          <div class="select-row" id="reasignar-tec-row" style="margin-bottom:16px">
+            ${TECNICOS.map(t => `<div class="select-chip" data-val="${t}">${t}</div>`).join('')}
+          </div>
+          <div id="reasignar-error" class="form-error"></div>
+          <button class="btn-primary full otc" onclick="window.__otc.confirmarReasignar()">
+            <span id="btn-reasignar-label">Confirmar reasignación</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
     <!-- Sheet detalle orden -->
     <div class="sheet-backdrop" id="sheet-otc-detalle">
       <div class="sheet">
@@ -251,13 +269,15 @@ function renderShell() {
   const fechaSapEl = document.getElementById('otc-fecha-sap');
   if (fechaSapEl) fechaSapEl.value = hoy;
 
-  ['sheet-nueva-otc', 'sheet-otc-detalle'].forEach(id => {
+  ['sheet-nueva-otc', 'sheet-otc-detalle', 'sheet-reasignar'].forEach(id => {
     document.getElementById(id)?.addEventListener('click', e => {
       if (e.target === document.getElementById(id)) closeSheet(id);
     });
   });
 
-  window.__otc = { verOrden, marcarHecha, aprobar, rechazar, openNueva };
+  setupSelectChips('reasignar-tec-row');
+
+  window.__otc = { verOrden, marcarHecha, aprobar, rechazar, openNueva, verTecnico, verUrgencias, _volverPanel, reasignar, confirmarReasignar, _filtroTec, _renderOrdenes: renderOrdenes };
 }
 
 // ── Cargar órdenes ────────────────────────────────
@@ -360,15 +380,20 @@ function renderPanelTecnico() {
 }
 
 function renderPanelAdmin() {
-  const content = document.getElementById('otc-content');
-  const activas = ordenes_.filter(o => o.estadoCampo !== 'aprobada');
-  const { reconexiones, porVencer, sinActualizar } = priorizar(activas);
+  const content   = document.getElementById('otc-content');
+  const activas   = ordenes_.filter(o => o.estadoCampo !== 'aprobada');
   const aprobadas = ordenes_.filter(o => o.estadoCampo === 'aprobada').length;
-  const hechas    = ordenes_.filter(o => o.estadoCampo === 'hecha').length;
+
+  // Contadores globales de urgencia
+  const reconGlobal   = activas.filter(o => o.tipo === 'reconexion' && !o.estadoCampo && o.fechaPago);
+  const hoyGlobal     = activas.filter(o => !o.estadoCampo && getUrgencia(o) === 'hoy');
+  const mananaGlobal  = activas.filter(o => !o.estadoCampo && getUrgencia(o) === 'naranja' && diasHabilesRestantes(calcularVencimiento(o)) === 1);
+  const hechasSinConf = ordenes_.filter(o => o.estadoCampo === 'hecha');
 
   content.innerHTML = `
     <div class="flex-col gap-12">
 
+      <!-- Header -->
       <div class="panel-header anim-up">
         <div>
           <div class="section-title">Panel OTC</div>
@@ -381,40 +406,172 @@ function renderPanelAdmin() {
         </button>
       </div>
 
-      ${reconexiones.length ? `
-      <div class="otc-alert-card crit anim-up d1">
-        <div class="otc-alert-header">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-          ${reconexiones.length} reconexión${reconexiones.length > 1 ? 'es' : ''} activa${reconexiones.length > 1 ? 's' : ''}
+      <!-- Tablero de urgencias globales -->
+      <div class="otc-tablero anim-up d1">
+        <div class="otc-tablero-item ${reconGlobal.length ? 'crit' : 'ok'}" onclick="window.__otc.verUrgencias('reconexion')">
+          <div class="otc-tablero-num">${reconGlobal.length}</div>
+          <div class="otc-tablero-label">Reconexiones</div>
+          ${reconGlobal.length ? `<div class="otc-tablero-sub">activas ahora</div>` : '<div class="otc-tablero-sub">✓ Al día</div>'}
         </div>
-        ${reconexiones.map(o => renderOrdenAlerta(o)).join('')}
-      </div>` : ''}
-
-      ${porVencer.length ? `
-      <div class="otc-alert-card warn anim-up d1">
-        <div class="otc-alert-header">⏰ ${porVencer.length} por vencer</div>
-        ${porVencer.map(o => renderOrdenAlerta(o)).join('')}
-      </div>` : ''}
-
-      ${sinActualizar.length ? `
-      <div class="otc-alert-card warn-soft anim-up d2">
-        <div class="otc-alert-header">⚠ ${sinActualizar.length} sin actualizar en DELSUR</div>
-        ${sinActualizar.map(o => renderOrdenAlerta(o)).join('')}
-      </div>` : ''}
-
-      <div class="section-label anim-up d2">Por técnico</div>
-      <div class="flex-col gap-8 anim-up d2">
-        ${TECNICOS.map(t => renderTecnicoCard(t)).join('')}
+        <div class="otc-tablero-item ${hoyGlobal.length ? 'crit' : 'ok'}" onclick="window.__otc.verUrgencias('hoy')">
+          <div class="otc-tablero-num">${hoyGlobal.length}</div>
+          <div class="otc-tablero-label">Vencen hoy</div>
+          ${hoyGlobal.length ? `<div class="otc-tablero-sub">urgente</div>` : '<div class="otc-tablero-sub">✓ Sin vencer</div>'}
+        </div>
+        <div class="otc-tablero-item ${mananaGlobal.length ? 'warn' : 'ok'}" onclick="window.__otc.verUrgencias('manana')">
+          <div class="otc-tablero-num">${mananaGlobal.length}</div>
+          <div class="otc-tablero-label">Vencen mañana</div>
+          ${mananaGlobal.length ? `<div class="otc-tablero-sub">atención</div>` : '<div class="otc-tablero-sub">✓ Sin riesgo</div>'}
+        </div>
+        <div class="otc-tablero-item ${hechasSinConf.length ? 'warn' : 'ok'}" onclick="window.__otc.verUrgencias('confirmar')">
+          <div class="otc-tablero-num">${hechasSinConf.length}</div>
+          <div class="otc-tablero-label">Por confirmar</div>
+          ${hechasSinConf.length ? `<div class="otc-tablero-sub">pendientes</div>` : '<div class="otc-tablero-sub">✓ Al día</div>'}
+        </div>
       </div>
 
-      ${hechas ? `
-      <div class="section-label anim-up d3">Por verificar</div>
-      <div class="flex-col gap-8 anim-up d3">
-        ${ordenes_.filter(o => o.estadoCampo === 'hecha').map(o => renderOrdenCard(o)).join('')}
-      </div>` : ''}
+      <!-- Semáforo por técnico -->
+      <div class="section-label anim-up d2">Estado por técnico</div>
+      <div class="flex-col gap-8 anim-up d2">
+        ${TECNICOS.map(t => renderSemaforoTecnico(t)).join('')}
+      </div>
 
     </div>
   `;
+}
+
+function getSemaforoTecnico(tec) {
+  const lista   = ordenes_.filter(o => o.tecnicoDestino === tec && o.estadoCampo !== 'aprobada');
+  const recon   = lista.filter(o => o.tipo === 'reconexion' && !o.estadoCampo && o.fechaPago).length;
+  const hoy     = lista.filter(o => !o.estadoCampo && getUrgencia(o) === 'hoy').length;
+  const naranja = lista.filter(o => !o.estadoCampo && getUrgencia(o) === 'naranja').length;
+
+  if (recon > 0 || hoy > 0) return 'crit';
+  if (naranja > 0)           return 'warn';
+  return 'ok';
+}
+
+function renderSemaforoTecnico(tec) {
+  const c       = TECNICO_COLORS[tec];
+  const lista   = ordenes_.filter(o => o.tecnicoDestino === tec && o.estadoCampo !== 'aprobada');
+  const recon   = lista.filter(o => o.tipo === 'reconexion' && !o.estadoCampo && o.fechaPago).length;
+  const hoy     = lista.filter(o => !o.estadoCampo && getUrgencia(o) === 'hoy').length;
+  const naranja = lista.filter(o => !o.estadoCampo && getUrgencia(o) === 'naranja').length;
+  const total   = lista.filter(o => !o.estadoCampo).length;
+  const hechas  = lista.filter(o => o.estadoCampo === 'hecha').length;
+  const semaforo= getSemaforoTecnico(tec);
+
+  const semaforoColor = { crit: '#ef4444', warn: '#f59e0b', ok: '#22c55e' }[semaforo];
+  const semaforoBg    = { crit: 'rgba(239,68,68,.1)', warn: 'rgba(245,158,11,.1)', ok: 'rgba(34,197,94,.08)' }[semaforo];
+  const semaforoBorder= { crit: 'rgba(239,68,68,.3)', warn: 'rgba(245,158,11,.3)', ok: 'rgba(34,197,94,.2)' }[semaforo];
+
+  return `
+    <div class="otc-semaforo-card" style="border-color:${semaforoBorder};background:${semaforoBg}"
+         onclick="window.__otc.verTecnico('${tec}')">
+      <div style="display:flex;align-items:center;gap:12px;flex:1">
+        <!-- Semáforo -->
+        <div style="width:12px;height:12px;border-radius:50%;background:${semaforoColor};flex-shrink:0;
+             box-shadow:0 0 8px ${semaforoColor}"></div>
+        <!-- Info -->
+        <div style="flex:1;min-width:0">
+          <div style="font-size:14px;font-weight:800;color:${c.accent}">${tec}</div>
+          <div style="font-size:11px;color:var(--text-3);margin-top:2px">
+            ${total} pendientes · ${hechas} realizadas
+            ${recon ? `<span style="color:#ef4444;font-weight:700"> · 🔴 ${recon} reconex.</span>` : ''}
+            ${hoy   ? `<span style="color:#ef4444;font-weight:700"> · ${hoy} vence${hoy>1?'n':''} hoy</span>` : ''}
+            ${naranja && !hoy ? `<span style="color:#f59e0b"> · ${naranja} en riesgo</span>` : ''}
+          </div>
+        </div>
+      </div>
+      <svg viewBox="0 0 24 24" fill="none" stroke="${c.accent}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
+        <polyline points="9 18 15 12 9 6"/>
+      </svg>
+    </div>
+  `;
+}
+
+// ── Ver urgencias globales ────────────────────────
+let _vistaUrgencia = null;
+
+function verUrgencias(tipo) {
+  _vistaUrgencia = tipo;
+  const content  = document.getElementById('otc-content');
+  let lista = [];
+  let titulo = '';
+
+  if (tipo === 'reconexion') {
+    lista  = ordenes_.filter(o => o.tipo === 'reconexion' && !o.estadoCampo && o.fechaPago);
+    titulo = '🔴 Reconexiones activas';
+  } else if (tipo === 'hoy') {
+    lista  = ordenes_.filter(o => !o.estadoCampo && getUrgencia(o) === 'hoy');
+    titulo = '🔴 Vencen hoy';
+  } else if (tipo === 'manana') {
+    lista  = ordenes_.filter(o => !o.estadoCampo && getUrgencia(o) === 'naranja' && diasHabilesRestantes(calcularVencimiento(o)) === 1);
+    titulo = '🟠 Vencen mañana';
+  } else if (tipo === 'confirmar') {
+    lista  = ordenes_.filter(o => o.estadoCampo === 'hecha');
+    titulo = 'Por confirmar';
+  }
+
+  content.innerHTML = `
+    <div class="flex-col gap-12">
+      <div class="panel-header anim-up">
+        <div>
+          <div class="section-title">${titulo}</div>
+          <div class="section-sub">${lista.length} órdenes</div>
+        </div>
+        <button class="icon-btn" onclick="window.__otc._volverPanel()" title="Volver">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
+            <polyline points="15 18 9 12 15 6"/>
+          </svg>
+        </button>
+      </div>
+      <div class="flex-col gap-8 anim-up d1">
+        ${lista.map(o => renderOrdenCard(o, tipo === 'confirmar' ? 'hecha' : 'crit')).join('')}
+      </div>
+    </div>
+  `;
+}
+
+// ── Ver técnico específico ────────────────────────
+let _tecnicoActual = null;
+
+function verTecnico(tec) {
+  _tecnicoActual = tec;
+  const c        = TECNICO_COLORS[tec];
+  const content  = document.getElementById('otc-content');
+  const lista    = ordenes_.filter(o => o.tecnicoDestino === tec && o.estadoCampo !== 'aprobada');
+  const { reconexiones, porVencer, sinActualizar, hechas, pendientes, anomalias } = priorizar(lista);
+
+  content.innerHTML = `
+    <div class="flex-col gap-12">
+      <div class="panel-header anim-up">
+        <div>
+          <div class="section-title" style="color:${c.accent}">${tec}</div>
+          <div class="section-sub">${lista.filter(o=>!o.estadoCampo).length} pendientes · ${hechas.length} realizadas</div>
+        </div>
+        <button class="icon-btn" onclick="window.__otc._volverPanel()" title="Volver">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
+            <polyline points="15 18 9 12 15 6"/>
+          </svg>
+        </button>
+      </div>
+
+      ${!lista.length ? `<div class="dev-module"><div class="dev-title">Sin órdenes</div><p>${tec} no tiene órdenes activas.</p></div>` : ''}
+      ${reconexiones.length  ? renderGrupoOtc('🔴 Reconexiones', reconexiones, 'crit')     : ''}
+      ${porVencer.length     ? renderGrupoOtc('Por vencer', porVencer, 'warn')              : ''}
+      ${sinActualizar.length ? renderGrupoOtc('⚠ Sin actualizar', sinActualizar, 'warn-soft'): ''}
+      ${hechas.length        ? renderGrupoOtc('Realizadas — confirmar', hechas, 'hecha')    : ''}
+      ${pendientes.length    ? renderGrupoOtc('Pendientes', pendientes, 'pendiente')        : ''}
+      ${anomalias.length     ? renderGrupoOtc('Anomalías', anomalias, 'anomalia')           : ''}
+    </div>
+  `;
+}
+
+function _volverPanel() {
+  _tecnicoActual  = null;
+  _vistaUrgencia  = null;
+  renderPanelAdmin();
 }
 
 function renderTecnicoCard(tec) {
@@ -758,6 +915,11 @@ function verOrden(id) {
           Rechazar — volver a pendiente
         </button>
       </div>` : ''}
+      ${!isTecnico && !o.estadoCampo ? `
+      <button class="btn-action outline" onclick="window.__otc.reasignar('${o.id}')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><path d="M17 3a2.828 2.828 0 114 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>
+        Reasignar técnico
+      </button>` : ''}
 
     </div>
   `;
@@ -1066,6 +1228,46 @@ async function crearOrden() {
     errEl.style.display = 'block';
   } finally {
     setLoading('btn-otc-label', 'Crear orden', false);
+  }
+}
+
+// ── Reasignar orden ───────────────────────────────
+let _reasignarId = null;
+
+function reasignar(id) {
+  const o = ordenes_.find(x => x.id === id);
+  if (!o) return;
+  _reasignarId = id;
+  document.getElementById('sheet-reasignar-title').textContent = `Reasignar WO ${o.wo || '—'}`;
+  // Pre-seleccionar técnico actual
+  document.querySelectorAll('#reasignar-tec-row .select-chip').forEach(c => {
+    c.classList.toggle('active', c.dataset.val === o.tecnicoDestino);
+  });
+  document.getElementById('reasignar-error').style.display = 'none';
+  closeSheet('sheet-otc-detalle');
+  openSheet('sheet-reasignar');
+}
+
+async function confirmarReasignar() {
+  const tec = getSelectedChip('reasignar-tec-row');
+  if (!tec) {
+    document.getElementById('reasignar-error').textContent = 'Selecciona un técnico.';
+    document.getElementById('reasignar-error').style.display = 'block';
+    return;
+  }
+  setLoading('btn-reasignar-label', 'Guardando…', true);
+  try {
+    await db.collection('otc_ordenes').doc(_reasignarId).update({ tecnicoDestino: tec });
+    const o = ordenes_.find(x => x.id === _reasignarId);
+    if (o) o.tecnicoDestino = tec;
+    closeSheet('sheet-reasignar');
+    renderTab();
+    toast(`Orden reasignada a ${tec}`, 'ok');
+  } catch (err) {
+    document.getElementById('reasignar-error').textContent = 'Error al guardar.';
+    document.getElementById('reasignar-error').style.display = 'block';
+  } finally {
+    setLoading('btn-reasignar-label', 'Confirmar reasignación', false);
   }
 }
 
