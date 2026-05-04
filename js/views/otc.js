@@ -658,6 +658,9 @@ async function renderMapaOtc() {
 }
 
 function renderMapaSimple(content) {
+  console.log('[otc-mapa] Total ordenes:', ordenes_.length);
+  console.log('[otc-mapa] Con coords:', ordenes_.filter(o => o.latitud && o.longitud).map(o => ({ wo: o.wo, lat: o.latitud, lng: o.longitud })));
+  console.log('[otc-mapa] L disponible:', typeof L);
   const topbar = document.querySelector('.topbar');
   const navbar  = document.querySelector('.navbar');
   const tabsH   = 48;
