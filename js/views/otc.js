@@ -653,7 +653,9 @@ function verOrden(id) {
 
 // ── Mapa OTC ──────────────────────────────────────
 async function renderMapaOtc() {
+  console.log('[otc] renderMapaOtc llamado');
   const content = document.getElementById('otc-content');
+  console.log('[otc] content:', content);
   renderMapaSimple(content);
 }
 
