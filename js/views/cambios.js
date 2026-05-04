@@ -174,7 +174,7 @@ function renderShell() {
   document.getElementById('btn-confirmar-import')?.addEventListener('click', confirmarImport);
 
   // Exponer para onclick
-  window.__cambios = { verOrden, marcarHecha, marcarVisita, actualizadaDelsur, aprobar, rechazar, openCampo, openImport };
+  window.__cambios = { verOrden, marcarHecha, marcarVisita, actualizadaDelsur, aprobar, rechazar, openCampo, openImport, toggleAcordeon };
 }
 
 // ── Cargar datos ──────────────────────────────────
@@ -269,75 +269,203 @@ async function renderMapaTab() {
 // ── PANEL (admin/asistente) ───────────────────────
 function renderPanel() {
   const content = document.getElementById('cambios-content');
-  const { sinActualizar, hechas, visitas, pendientes } = priorizarOrdenes(ordenes);
-  const total = ordenes.length;
 
   // Stats globales
-  const totalHechas    = hechas.length + sinActualizar.length;
-  const totalPendientes = pendientes.length + visitas.length;
-  const pct = total ? Math.round((totalHechas / total) * 100) : 0;
+  const todasHechas   = ordenes.filter(o => o.estadoCampo === 'hecha');
+  const todasVisitas  = ordenes.filter(o => o.estadoCampo === 'visita');
+  const todasAprobadas= ordenes.filter(o => o.estadoCampo === 'aprobada');
+  const pendientes    = ordenes.filter(o => !o.estadoCampo);
+  const total         = ordenes.length;
+  const pct = total ? Math.round((todasAprobadas.length / total) * 100) : 0;
 
   content.innerHTML = `
     <div class="flex-col gap-12">
 
-      <!-- Header con acciones -->
+      <!-- Header -->
       <div class="panel-header anim-up">
         <div>
           <div class="section-title">Panel Cambios</div>
-          <div class="section-sub">
-            ${totalHechas} de ${total} realizadas · ${pct}%
-          </div>
+          <div class="section-sub">${todasAprobadas.length} confirmadas · ${todasHechas.length} por verificar · ${pendientes.length} pendientes</div>
         </div>
-        <div style="display:flex;gap:8px">
-          <button class="icon-btn" onclick="window.__cambios.openImport()" title="Importar Excel">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
-              <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
-              <polyline points="17 8 12 3 7 8"/>
-              <line x1="12" y1="3" x2="12" y2="15"/>
-            </svg>
-          </button>
-        </div>
+        <button class="icon-btn" onclick="window.__cambios.openImport()" title="Importar Excel">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
+            <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+            <polyline points="17 8 12 3 7 8"/>
+            <line x1="12" y1="3" x2="12" y2="15"/>
+          </svg>
+        </button>
       </div>
 
-      <!-- Barra de progreso global -->
+      <!-- Barra progreso global -->
       <div class="progress-card anim-up d1">
         <div class="progress-bar-bg">
           <div class="progress-bar-fill cm" style="width:${pct}%"></div>
         </div>
         <div class="progress-stats">
-          <span><span class="stat-dot ok"></span>${totalHechas} realizadas</span>
-          <span><span class="stat-dot warn"></span>${visitas.length} visitas</span>
-          <span><span class="stat-dot muted"></span>${totalPendientes} pendientes</span>
+          <span><span class="stat-dot ok"></span>${todasAprobadas.length} confirmadas</span>
+          <span><span class="stat-dot warn" style="background:#fbbf24"></span>${todasHechas.length} por verificar</span>
+          <span><span class="stat-dot" style="background:#111827;border:1px solid #4b5563"></span>${todasVisitas.length} visitas</span>
+          <span><span class="stat-dot muted"></span>${pendientes.length} pendientes</span>
         </div>
       </div>
 
-      <!-- Sin actualizar (alerta) -->
-      ${sinActualizar.length ? `
-      <div class="alert-section anim-up d1">
-        <div class="alert-header">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14">
-            <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
-          </svg>
-          ${sinActualizar.length} sin actualizar en DELSUR
-        </div>
-        ${sinActualizar.map(o => renderOrdenCard(o, 'sin-actualizar')).join('')}
-      </div>` : ''}
-
-      <!-- Stats por pareja -->
-      <div class="section-label anim-up d2">Por pareja</div>
-      <div class="flex-col gap-8 anim-up d2">
-        ${PAREJAS.map(p => renderParejaCard(p)).join('')}
+      <!-- Acordeón por pareja -->
+      <div class="section-label anim-up d2">Verificación por pareja</div>
+      <div class="flex-col gap-8 anim-up d2" id="acordeon-parejas">
+        ${PAREJAS.map(p => renderAcordeonPareja(p)).join('')}
       </div>
-
-      <!-- Realizadas hoy -->
-      ${hechas.length ? `
-      <div class="section-label anim-up d3">Realizadas</div>
-      <div class="flex-col gap-8 anim-up d3">
-        ${hechas.map(o => renderOrdenCard(o, 'hecha')).join('')}
-      </div>` : ''}
 
     </div>
   `;
+
+  // Inicializar búsquedas
+  PAREJAS.forEach(p => {
+    const inputId = `buscar-${p.replace(' ','-')}`;
+    document.getElementById(inputId)?.addEventListener('input', e => {
+      filtrarOrdenesPareja(p, e.target.value.trim());
+    });
+  });
+}
+
+function renderAcordeonPareja(pareja) {
+  const c         = PAREJA_COLORS[pareja] || PAREJA_COLORS['Pareja 1'];
+  const hechas    = ordenes.filter(o => o.pareja === pareja && o.estadoCampo === 'hecha');
+  const visitas   = ordenes.filter(o => o.pareja === pareja && o.estadoCampo === 'visita');
+  const aprobadas = ordenes.filter(o => o.pareja === pareja && o.estadoCampo === 'aprobada');
+  const total     = ordenes.filter(o => o.pareja === pareja).length;
+  const inputId   = `buscar-${pareja.replace(' ','-')}`;
+  const listaId   = `lista-${pareja.replace(' ','-')}`;
+
+  if (!total) return '';
+
+  return `
+    <div class="acordeon-card" style="border-color:${c.border};background:${c.glass}">
+
+      <!-- Header acordeón -->
+      <div class="acordeon-header" onclick="window.__cambios.toggleAcordeon('${pareja}')">
+        <div>
+          <div class="acordeon-title" style="color:${c.accent}">${pareja}</div>
+          <div class="acordeon-sub">
+            ${aprobadas.length}/${total} confirmadas
+            ${hechas.length ? `· <span style="color:#fbbf24">${hechas.length} por verificar</span>` : ''}
+            ${visitas.length ? `· <span style="color:var(--text-4)">${visitas.length} visitas</span>` : ''}
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <div class="acordeon-pct" style="color:${c.accent}">
+            ${total ? Math.round((aprobadas.length/total)*100) : 0}%
+          </div>
+          <svg id="chevron-${pareja.replace(' ','-')}" viewBox="0 0 24 24" fill="none" stroke="${c.accent}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" style="transition:transform .2s">
+            <polyline points="6 9 12 15 18 9"/>
+          </svg>
+        </div>
+      </div>
+
+      <!-- Contenido acordeón -->
+      <div class="acordeon-body" id="body-${pareja.replace(' ','-')}" style="display:none">
+
+        <!-- Barra progreso pareja -->
+        <div class="progress-bar-bg" style="margin-bottom:12px">
+          <div class="progress-bar-fill" style="width:${total ? Math.round((aprobadas.length/total)*100) : 0}%;background:${c.accent}"></div>
+        </div>
+
+        <!-- Buscador -->
+        ${hechas.length ? `
+        <div class="buscar-wrap">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14" style="color:var(--text-4);flex-shrink:0">
+            <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+          </svg>
+          <input class="buscar-input" id="${inputId}" type="text"
+                 placeholder="Buscar WO o cliente…"
+                 autocomplete="off" autocorrect="off"/>
+        </div>` : ''}
+
+        <!-- Órdenes por verificar -->
+        ${hechas.length ? `
+        <div class="section-label" style="margin:8px 0 6px;font-size:8px">Por verificar</div>
+        <div class="flex-col gap-6" id="${listaId}">
+          ${hechas.map(o => renderOrdenVerificacion(o, c)).join('')}
+        </div>` : `
+        <div style="text-align:center;padding:12px 0;font-size:12px;color:var(--text-4)">
+          ${aprobadas.length ? '✓ Todas confirmadas' : 'Sin órdenes realizadas aún'}
+        </div>`}
+
+        <!-- Visitas -->
+        ${visitas.length ? `
+        <div class="section-label" style="margin:12px 0 6px;font-size:8px">Visitas registradas</div>
+        <div class="flex-col gap-6">
+          ${visitas.map(o => renderOrdenVisitaPanel(o)).join('')}
+        </div>` : ''}
+
+      </div>
+    </div>
+  `;
+}
+
+function renderOrdenVerificacion(o, c) {
+  return `
+    <div class="orden-verif-card" id="verif-${o.id}">
+      <div class="orden-verif-info" onclick="window.__cambios.verOrden('${o.id}')">
+        <div class="orden-wo" style="font-size:12px">WO ${o.wo || '—'}</div>
+        <div class="orden-cliente" style="font-size:10px">${o.cliente || '—'}</div>
+        ${o.actualizadaDelsur
+          ? '<div style="font-size:9px;color:var(--ok);margin-top:2px">✓ Actualizada en DELSUR</div>'
+          : '<div style="font-size:9px;color:#fbbf24;margin-top:2px">⚠ Pendiente actualizar DELSUR</div>'}
+      </div>
+      <button class="btn-confirmar-orden" onclick="window.__cambios.aprobar('${o.id}')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="14" height="14">
+          <path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
+        </svg>
+        Confirmar
+      </button>
+    </div>
+  `;
+}
+
+function renderOrdenVisitaPanel(o) {
+  return `
+    <div class="orden-visita-panel" onclick="window.__cambios.verOrden('${o.id}')">
+      <div class="status-dot" style="background:#111827;border:1px solid #4b5563;flex-shrink:0"></div>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:12px;font-weight:700">WO ${o.wo || '—'}</div>
+        <div style="font-size:10px;color:var(--text-3)">${o.motivoVisita || 'Sin motivo registrado'}</div>
+      </div>
+    </div>
+  `;
+}
+
+// ── Toggle acordeón ───────────────────────────────
+function toggleAcordeon(pareja) {
+  const key    = pareja.replace(' ', '-');
+  const body   = document.getElementById(`body-${key}`);
+  const chevron= document.getElementById(`chevron-${key}`);
+  if (!body) return;
+  const open = body.style.display === 'none';
+  body.style.display    = open ? '' : 'none';
+  if (chevron) chevron.style.transform = open ? 'rotate(180deg)' : '';
+}
+
+// ── Filtrar órdenes por WO/cliente ───────────────
+function filtrarOrdenesPareja(pareja, query) {
+  const listaId = `lista-${pareja.replace(' ','-')}`;
+  const lista   = document.getElementById(listaId);
+  if (!lista) return;
+
+  const hechas = ordenes.filter(o => o.pareja === pareja && o.estadoCampo === 'hecha');
+  const c      = PAREJA_COLORS[pareja] || PAREJA_COLORS['Pareja 1'];
+
+  const filtradas = query
+    ? hechas.filter(o =>
+        (o.wo      || '').toLowerCase().includes(query.toLowerCase()) ||
+        (o.cliente || '').toLowerCase().includes(query.toLowerCase())
+      )
+    : hechas;
+
+  if (!filtradas.length) {
+    lista.innerHTML = `<div style="text-align:center;padding:8px;font-size:11px;color:var(--text-4)">Sin resultados</div>`;
+    return;
+  }
+  lista.innerHTML = filtradas.map(o => renderOrdenVerificacion(o, c)).join('');
 }
 
 function renderParejaCard(pareja) {
@@ -606,12 +734,39 @@ async function actualizadaDelsur(id) {
 
 async function aprobar(id) {
   const now = firebase.firestore.Timestamp.now();
-  await updateOrden(id, {
-    estadoCampo:      'aprobada',
-    actualizadaDelsur: true,
-    aprobadoPor:      session_.displayName,
-    fechaAprobacion:  now,
-  }, 'Orden aprobada');
+  try {
+    await db.collection('cambios_ordenes').doc(id).update({
+      estadoCampo:       'aprobada',
+      actualizadaDelsur:  true,
+      aprobadoPor:       session_.displayName,
+      fechaAprobacion:   now,
+    });
+    const idx = ordenes.findIndex(o => o.id === id);
+    if (idx !== -1) ordenes[idx] = { ...ordenes[idx], estadoCampo: 'aprobada', actualizadaDelsur: true, aprobadoPor: session_.displayName };
+    invalidateOrdenes();
+
+    // Quitar card del acordeón sin recargar todo el panel
+    const card = document.getElementById(`verif-${id}`);
+    if (card) {
+      card.style.transition = 'opacity .2s, transform .2s';
+      card.style.opacity = '0';
+      card.style.transform = 'translateX(20px)';
+      setTimeout(() => {
+        card.remove();
+        // Actualizar subtítulo del acordeón
+        renderPanel();
+      }, 200);
+    } else {
+      closeSheet('sheet-orden');
+      renderTab();
+    }
+
+    window.dispatchEvent(new CustomEvent('cambios:updated'));
+    toast('Orden confirmada', 'ok');
+  } catch (err) {
+    console.error('[cambios] Error aprobando:', err);
+    toast('Error al confirmar', 'error');
+  }
 }
 
 async function rechazar(id) {
