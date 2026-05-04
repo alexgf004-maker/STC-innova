@@ -626,13 +626,13 @@ async function updateOrden(id, data, msg) {
   try {
     await db.collection('cambios_ordenes').doc(id).update(data);
 
-    // Actualizar local
     const idx = ordenes.findIndex(o => o.id === id);
     if (idx !== -1) ordenes[idx] = { ...ordenes[idx], ...data };
     invalidateOrdenes();
 
     closeSheet('sheet-orden');
     renderTab();
+    window.dispatchEvent(new CustomEvent('cambios:updated'));
     toast(msg, 'ok');
   } catch (err) {
     console.error('[cambios] Error actualizando:', err);
