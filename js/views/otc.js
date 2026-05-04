@@ -715,6 +715,18 @@ function renderMapaSimple(content) {
   L.tileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', { maxZoom: 20 }).addTo(map);
   L.control.zoom({ position: 'bottomright' }).addTo(map);
 
+  // Forzar recalculo de tamaño después de que el DOM esté visible
+  setTimeout(() => {
+    map.invalidateSize();
+
+    // Ajustar bounds después de invalidar
+    const conCoords2 = ordenes_.filter(o => o.latitud && o.longitud && o.estadoCampo !== 'aprobada');
+    if (conCoords2.length) {
+      const group = L.featureGroup(conCoords2.map(o => L.marker([o.latitud, o.longitud])));
+      map.fitBounds(group.getBounds().pad(0.15));
+    }
+  }, 150);
+
   // Cerrar panel al tocar mapa
   map.on('click', () => document.getElementById('otc-panel-inf')?.classList.remove('open'));
 
@@ -741,11 +753,6 @@ function renderMapaSimple(content) {
       })
       .addTo(map);
   });
-
-  if (conCoords.length) {
-    const group = L.featureGroup(conCoords.map(o => L.marker([o.latitud, o.longitud])));
-    map.fitBounds(group.getBounds().pad(0.15));
-  }
 
   // Stat chip
   const sinCoords = ordenes_.filter(o => !o.latitud && o.estadoCampo !== 'aprobada').length;
