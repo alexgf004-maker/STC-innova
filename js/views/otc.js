@@ -195,10 +195,10 @@ function renderShell() {
               <input class="form-input" id="otc-lng" type="number" step="any" placeholder="Longitud" style="flex:1"/>
             </div>
           </div>
-          <div class="form-field">
+          <div class="form-field" ${role_ === 'tecnico' ? 'style="display:none"' : ''}>
             <div class="form-label">Técnico asignado</div>
             <div class="select-row" id="otc-tec-row">
-              ${TECNICOS.map(t => `<div class="select-chip" data-val="${t}">${t}</div>`).join('')}
+              ${TECNICOS.map(t => `<div class="select-chip ${role_ === 'tecnico' && t === destino_ ? 'active' : ''}" data-val="${t}">${t}</div>`).join('')}
             </div>
           </div>
           <div class="form-field" id="otc-pago-wrap" style="display:none">
@@ -284,8 +284,82 @@ function renderTab() {
   else                               renderOrdenes();
 }
 
-// ── PANEL admin/asistente ─────────────────────────
+// ── PANEL ─────────────────────────────────────────
 function renderPanel() {
+  if (role_ === 'tecnico') renderPanelTecnico();
+  else renderPanelAdmin();
+}
+
+function renderPanelTecnico() {
+  const content  = document.getElementById('otc-content');
+  const misList  = ordenes_.filter(o => o.tecnicoDestino === destino_);
+  const activas  = misList.filter(o => o.estadoCampo !== 'aprobada');
+  const { reconexiones, porVencer, sinActualizar, hechas, pendientes } = priorizar(activas);
+
+  content.innerHTML = `
+    <div class="flex-col gap-12">
+
+      <div class="panel-header anim-up">
+        <div>
+          <div class="section-title">${destino_ || 'Mis órdenes'}</div>
+          <div class="section-sub">${activas.length} activas · ${hechas.length} realizadas</div>
+        </div>
+        <button class="icon-btn otc" onclick="window.__otc.openNueva()" title="Nueva orden">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="15" height="15">
+            <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+          </svg>
+        </button>
+      </div>
+
+      <!-- Stats -->
+      <div class="stat-row anim-up d1">
+        <div class="stat-chip otc-accent">
+          <div class="val">${pendientes.length + porVencer.length}</div>
+          <div class="lbl">Pendientes</div>
+        </div>
+        <div class="stat-chip otc-accent">
+          <div class="val">${hechas.length}</div>
+          <div class="lbl">Realizadas</div>
+        </div>
+        <div class="stat-chip ${reconexiones.length ? 'crit-accent' : ''}">
+          <div class="val">${reconexiones.length}</div>
+          <div class="lbl">Reconexiones</div>
+        </div>
+      </div>
+
+      <!-- Alertas -->
+      ${reconexiones.length ? `
+      <div class="otc-alert-card crit anim-up d1">
+        <div class="otc-alert-header">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          ${reconexiones.length} reconexión${reconexiones.length > 1 ? 'es' : ''} activa${reconexiones.length > 1 ? 's' : ''}
+        </div>
+        ${reconexiones.map(o => renderOrdenAlerta(o)).join('')}
+      </div>` : ''}
+
+      ${porVencer.length ? `
+      <div class="otc-alert-card warn anim-up d2">
+        <div class="otc-alert-header">⏰ ${porVencer.length} por vencer pronto</div>
+        ${porVencer.map(o => renderOrdenAlerta(o)).join('')}
+      </div>` : ''}
+
+      ${sinActualizar.length ? `
+      <div class="otc-alert-card warn-soft anim-up d2">
+        <div class="otc-alert-header">⚠ ${sinActualizar.length} sin actualizar en DELSUR</div>
+        ${sinActualizar.map(o => renderOrdenAlerta(o)).join('')}
+      </div>` : ''}
+
+      ${!activas.length ? `
+      <div class="dev-module anim-up d2">
+        <div class="dev-title">Sin órdenes activas</div>
+        <p>No tienes órdenes pendientes asignadas.</p>
+      </div>` : ''}
+
+    </div>
+  `;
+}
+
+function renderPanelAdmin() {
   const content = document.getElementById('otc-content');
   const activas = ordenes_.filter(o => o.estadoCampo !== 'aprobada');
   const { reconexiones, porVencer, sinActualizar } = priorizar(activas);
@@ -307,7 +381,6 @@ function renderPanel() {
         </button>
       </div>
 
-      <!-- Alertas críticas -->
       ${reconexiones.length ? `
       <div class="otc-alert-card crit anim-up d1">
         <div class="otc-alert-header">
@@ -319,10 +392,7 @@ function renderPanel() {
 
       ${porVencer.length ? `
       <div class="otc-alert-card warn anim-up d1">
-        <div class="otc-alert-header">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-          ${porVencer.length} orden${porVencer.length > 1 ? 'es' : ''} por vencer
-        </div>
+        <div class="otc-alert-header">⏰ ${porVencer.length} por vencer</div>
         ${porVencer.map(o => renderOrdenAlerta(o)).join('')}
       </div>` : ''}
 
@@ -332,13 +402,11 @@ function renderPanel() {
         ${sinActualizar.map(o => renderOrdenAlerta(o)).join('')}
       </div>` : ''}
 
-      <!-- Por técnico -->
       <div class="section-label anim-up d2">Por técnico</div>
       <div class="flex-col gap-8 anim-up d2">
         ${TECNICOS.map(t => renderTecnicoCard(t)).join('')}
       </div>
 
-      <!-- Realizadas por verificar -->
       ${hechas ? `
       <div class="section-label anim-up d3">Por verificar</div>
       <div class="flex-col gap-8 anim-up d3">
