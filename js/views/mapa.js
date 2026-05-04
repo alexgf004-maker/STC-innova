@@ -267,6 +267,13 @@ function renderShell(container) {
   });
 
   window.__mapa = { verOrden, marcarHecha, marcarVisita, abrirGoogleMaps, confirmarRealizada, confirmarVisita, asignarIndividual, confirmarIndividual, confirmarZona, cancelarZona };
+
+  // Escuchar aprobaciones desde cambios.js para actualizar marcadores
+  window.addEventListener('cambios:updated', async () => {
+    await loadOrdenes();
+    plotMarkers();
+    updateStatChip();
+  });
 }
 
 // ── Cargar órdenes ────────────────────────────────
@@ -407,11 +414,13 @@ function iniciarGeolocalizacion() {
 
 // ── Marcadores ────────────────────────────────────
 function plotMarkers() {
-  // Limpiar marcadores anteriores
   markers_.forEach(m => map_.removeLayer(m));
   markers_ = [];
 
-  ordenes_.forEach(orden => {
+  // Solo mostrar órdenes NO aprobadas
+  const visibles = ordenes_.filter(o => o.estadoCampo !== 'aprobada');
+
+  visibles.forEach(orden => {
     if (!orden.latitud || !orden.longitud) return;
 
     const color = ESTADO_COLORS[orden.estadoCampo] || PAREJA_COLORS[orden.pareja] || PAREJA_COLORS[null];
@@ -441,18 +450,23 @@ function plotMarkers() {
 }
 
 function updateStatChip() {
-  const total   = ordenes_.length;
-  const hechas  = ordenes_.filter(o => o.estadoCampo === 'hecha').length;
-  const sinAsig = ordenes_.filter(o => !o.pareja).length;
+  const activas  = ordenes_.filter(o => o.estadoCampo !== 'aprobada');
+  const total    = activas.length;
+  const hechas   = activas.filter(o => o.estadoCampo === 'hecha').length;
+  const sinAsig  = activas.filter(o => !o.pareja).length;
+  const aprobadas = ordenes_.filter(o => o.estadoCampo === 'aprobada').length;
 
   const txt = document.getElementById('mapa-stat-txt');
   if (!txt) return;
 
   if (sinAsig > 0) {
-    txt.textContent = `${sinAsig} sin asignar · ${hechas}/${total} realizadas`;
+    txt.textContent = `${sinAsig} sin asignar · ${hechas}/${total} pendientes`;
     document.querySelector('.mapa-stat-dot').style.background = '#f59e0b';
+  } else if (total === 0) {
+    txt.textContent = `${aprobadas} órdenes aprobadas ✓`;
+    document.querySelector('.mapa-stat-dot').style.background = '#22c55e';
   } else {
-    txt.textContent = `${hechas} de ${total} realizadas`;
+    txt.textContent = `${hechas} realizadas · ${total - hechas} pendientes · ${aprobadas} aprobadas`;
     document.querySelector('.mapa-stat-dot').style.background = '#22c55e';
   }
 }
