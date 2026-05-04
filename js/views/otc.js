@@ -654,39 +654,161 @@ function verOrden(id) {
 // ── Mapa OTC ──────────────────────────────────────
 async function renderMapaOtc() {
   const content = document.getElementById('otc-content');
-  content.innerHTML = '<div style="height:calc(100vh - 180px);min-height:300px;" id="otc-mapa-container"></div>';
-  try {
-    const mapaModule = await import('./mapa_otc.js');
-    mapaModule.init(document.getElementById('otc-mapa-container'), session_, ordenes_);
-  } catch {
-    // Fallback — mapa simple con Leaflet
-    renderMapaSimple(content);
-  }
+  renderMapaSimple(content);
 }
 
 function renderMapaSimple(content) {
-  content.innerHTML = `<div id="otc-mapa-simple" style="height:calc(100vh - 180px);min-height:300px;border-radius:var(--radius);overflow:hidden;"></div>`;
-  const map = L.map('otc-mapa-simple', { center: [13.7942, -88.8965], zoom: 10, zoomControl: false });
+  const topbar = document.querySelector('.topbar');
+  const navbar  = document.querySelector('.navbar');
+  const tabsH   = 48;
+  const topH    = topbar ? topbar.offsetHeight : 62;
+  const botH    = navbar  ? navbar.offsetHeight  : 72;
+  const h       = `calc(100vh - ${topH + botH + tabsH + 24}px)`;
+
+  content.innerHTML = `
+    <div style="position:relative;height:${h};min-height:280px;border-radius:var(--radius);overflow:hidden;">
+      <div id="otc-mapa-simple" style="width:100%;height:100%;"></div>
+
+      <!-- Stat chip -->
+      <div class="mapa-controls-top">
+        <div class="mapa-stat-chip">
+          <div class="mapa-stat-dot" id="otc-map-dot"></div>
+          <span id="otc-map-stat">Cargando…</span>
+        </div>
+        <button class="mapa-btn-icon" id="otc-btn-loc" title="Mi ubicación">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
+            <circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/>
+          </svg>
+        </button>
+      </div>
+
+      <!-- Leyenda -->
+      <div class="mapa-leyenda">
+        ${TECNICOS.map(t => `
+          <div class="leyenda-item">
+            <div class="leyenda-dot" style="background:${TECNICO_COLORS[t].accent}"></div>
+            <span>${t}</span>
+          </div>`).join('')}
+        <div class="leyenda-item">
+          <div class="leyenda-dot" style="background:#22c55e"></div>
+          <span>Realizada</span>
+        </div>
+      </div>
+
+      <!-- Panel inferior -->
+      <div class="mapa-panel" id="otc-panel-inf">
+        <div class="mapa-panel-handle" onclick="document.getElementById('otc-panel-inf').classList.remove('open')"></div>
+        <div id="otc-panel-content"></div>
+      </div>
+    </div>
+  `;
+
+  const map = L.map('otc-mapa-simple', {
+    center: [13.7942, -88.8965], zoom: 10,
+    zoomControl: false,
+  });
   L.tileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', { maxZoom: 20 }).addTo(map);
   L.control.zoom({ position: 'bottomright' }).addTo(map);
 
-  const conCoords = ordenes_.filter(o => o.latitud && o.longitud && o.estadoCampo !== 'aprobada');
+  // Cerrar panel al tocar mapa
+  map.on('click', () => document.getElementById('otc-panel-inf')?.classList.remove('open'));
+
+  // Marcadores
+  const conCoords = ordenes_.filter(o =>
+    o.latitud && o.longitud && o.estadoCampo !== 'aprobada'
+  );
+
   conCoords.forEach(o => {
-    const c = TECNICO_COLORS[o.tecnicoDestino] || TECNICO_COLORS[null];
+    const color = o.estadoCampo === 'hecha'
+      ? '#22c55e'
+      : (TECNICO_COLORS[o.tecnicoDestino] || TECNICO_COLORS[null]).accent;
+
     const icon = L.divIcon({
       className: '',
-      html: `<div style="width:12px;height:12px;background:${c.accent};border:2px solid white;border-radius:50%;box-shadow:0 2px 4px rgba(0,0,0,.4)"></div>`,
-      iconSize: [12,12], iconAnchor: [6,6],
+      html: `<div style="width:13px;height:13px;background:${color};border:2px solid white;border-radius:50%;box-shadow:0 2px 4px rgba(0,0,0,.4);${o.estadoCampo==='hecha'?'opacity:.7':''}"></div>`,
+      iconSize: [13,13], iconAnchor: [6,6],
     });
+
     L.marker([o.latitud, o.longitud], { icon })
-      .on('click', () => verOrden(o.id))
+      .on('click', e => {
+        L.DomEvent.stopPropagation(e);
+        mostrarPanelOtc(o);
+      })
       .addTo(map);
   });
 
   if (conCoords.length) {
     const group = L.featureGroup(conCoords.map(o => L.marker([o.latitud, o.longitud])));
-    map.fitBounds(group.getBounds().pad(0.1));
+    map.fitBounds(group.getBounds().pad(0.15));
   }
+
+  // Stat chip
+  const sinCoords = ordenes_.filter(o => !o.latitud && o.estadoCampo !== 'aprobada').length;
+  const statEl    = document.getElementById('otc-map-stat');
+  const dotEl     = document.getElementById('otc-map-dot');
+  if (statEl) {
+    statEl.textContent = sinCoords
+      ? `${conCoords.length} en mapa · ${sinCoords} sin coords`
+      : `${conCoords.length} órdenes en mapa`;
+    if (dotEl) dotEl.style.background = sinCoords ? '#f59e0b' : '#22c55e';
+  }
+
+  // Geolocalización
+  let geoMarker = null;
+  navigator.geolocation?.watchPosition(pos => {
+    const { latitude: lat, longitude: lng } = pos.coords;
+    const geoIcon = L.divIcon({
+      className: '',
+      html: `<div style="width:14px;height:14px;background:#3b82f6;border:3px solid white;border-radius:50%;box-shadow:0 0 0 4px rgba(59,130,246,.3)"></div>`,
+      iconSize: [14,14], iconAnchor: [7,7],
+    });
+    if (geoMarker) geoMarker.setLatLng([lat, lng]);
+    else geoMarker = L.marker([lat, lng], { icon: geoIcon, zIndexOffset: 1000 }).addTo(map);
+  }, null, { enableHighAccuracy: true, maximumAge: 5000 });
+
+  document.getElementById('otc-btn-loc')?.addEventListener('click', () => {
+    if (geoMarker) map.setView(geoMarker.getLatLng(), 17);
+    else toast('Obteniendo ubicación…', 'ok');
+  });
+}
+
+function mostrarPanelOtc(o) {
+  const isTecnico = role_ === 'tecnico';
+  const c = TECNICO_COLORS[o.tecnicoDestino] || TECNICO_COLORS[null];
+  const panel = document.getElementById('otc-panel-inf');
+  const panelContent = document.getElementById('otc-panel-content');
+
+  panelContent.innerHTML = `
+    <div class="panel-orden-header">
+      <div style="flex:1;min-width:0">
+        <div class="panel-orden-wo">WO ${o.wo || '—'}</div>
+        <div class="panel-orden-cliente">${o.cliente || '—'}</div>
+        <div class="panel-orden-dir">${TIPO_LABELS[o.tipo] || o.tipo || ''}</div>
+      </div>
+      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0">
+        <div class="pareja-chip" style="color:${c.accent};border-color:${c.border};background:${c.glass}">${o.tecnicoDestino || '—'}</div>
+        ${o.estadoCampo === 'hecha' ? '<div class="estado-badge ok">Realizada</div>' : '<div class="estado-badge muted">Pendiente</div>'}
+      </div>
+    </div>
+    <div class="panel-orden-actions">
+      ${isTecnico && !o.estadoCampo ? `
+        <button class="btn-action cm" style="border-color:var(--otc-border);background:var(--otc-glass);color:var(--otc-light)" onclick="window.__otc.marcarHecha('${o.id}');document.getElementById('otc-panel-inf').classList.remove('open')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+          Realizada
+        </button>` : ''}
+      ${!isTecnico && o.estadoCampo === 'hecha' ? `
+        <button class="btn-action cm" style="border-color:var(--otc-border);background:var(--otc-glass);color:var(--otc-light)" onclick="window.__otc.aprobar('${o.id}');document.getElementById('otc-panel-inf').classList.remove('open')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+          Confirmar
+        </button>` : ''}
+      <button class="btn-action outline" onclick="window.open('https://www.google.com/maps/dir/?api=1&destination=${o.latitud},${o.longitud}','_blank')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg>
+        Navegar
+      </button>
+    </div>
+  `;
+
+  panel.classList.add('open');
 }
 
 // ── Acciones ──────────────────────────────────────
