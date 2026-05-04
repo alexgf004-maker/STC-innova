@@ -464,7 +464,7 @@ function renderOrdenCard(o, tipo) {
         ${tipo === 'sin-actualizar' && isTecnico ? `
           <button class="action-chip warn" onclick="event.stopPropagation();window.__cambios.actualizadaDelsur('${o.id}')">Ya actualicé</button>
         ` : ''}
-        ${tipo === 'sin-actualizar' && !isTecnico ? `
+        ${(tipo === 'sin-actualizar' || tipo === 'hecha') && !isTecnico ? `
           <div style="display:flex;gap:4px">
             <button class="action-chip ok" onclick="event.stopPropagation();window.__cambios.aprobar('${o.id}')">✓</button>
             <button class="action-chip danger" onclick="event.stopPropagation();window.__cambios.rechazar('${o.id}')">✕</button>
@@ -560,15 +560,15 @@ function verOrden(id) {
       </div>` : ''}
 
       <!-- Acciones admin/asistente -->
-      ${!isTecnico && o.estadoCampo === 'hecha' && !o.actualizadaDelsur ? `
+      ${!isTecnico && o.estadoCampo === 'hecha' ? `
       <div class="flex-col gap-8">
         <button class="btn-action cm" onclick="window.__cambios.aprobar('${o.id}')">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-          Confirmar actualización
+          Confirmar realizada
         </button>
         <button class="btn-action danger" onclick="window.__cambios.rechazar('${o.id}')">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
-          Rechazar
+          Rechazar — volver a pendiente
         </button>
       </div>` : ''}
 
@@ -615,11 +615,13 @@ async function aprobar(id) {
 }
 
 async function rechazar(id) {
-  if (!confirm('¿Rechazar la actualización? La orden volverá a estado "hecha sin actualizar".')) return;
+  if (!confirm('¿Rechazar esta orden? Volverá a pendiente para que el técnico la ejecute nuevamente.')) return;
   await updateOrden(id, {
+    estadoCampo:       null,
     actualizadaDelsur: false,
-    estadoCampo:      'hecha',
-  }, 'Orden rechazada — pendiente de actualizar');
+    fechaHecha:        null,
+    hechaPor:          null,
+  }, 'Orden rechazada — regresa a pendiente');
 }
 
 async function updateOrden(id, data, msg) {
