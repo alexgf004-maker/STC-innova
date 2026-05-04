@@ -30,7 +30,7 @@ const NAV_CONFIGS = {
   tecnico_otc: [
     { id: 'home',    label: 'Inicio',  icon: 'home' },
     { id: 'otc',     label: 'Órdenes', icon: 'list', color: 'otc' },
-    { id: 'mapa',    label: 'Mapa',    icon: 'map',  color: 'otc' },
+    { id: 'otc_mapa',label: 'Mapa',    icon: 'map',  color: 'otc' },
     { id: 'bodega',  label: 'Bodega',  icon: 'box'  },
   ],
   tecnico_none: [
@@ -61,6 +61,24 @@ export async function navigateTo(tabId) {
 
   contentArea.scrollTop = 0;
   contentArea.innerHTML = '';
+
+  // otc_mapa — carga otc.js y activa la tab mapa internamente
+  if (tabId === 'otc_mapa') {
+    try {
+      if (!viewCache['otc']) {
+        viewCache['otc'] = await import('./views/otc.js');
+      }
+      await viewCache['otc'].init(contentArea, currentSession);
+      // Activar la tab mapa dentro de OTC
+      setTimeout(() => {
+        const mapaTab = contentArea.querySelector('.cambios-tab.otc[data-tab="mapa"]');
+        if (mapaTab) mapaTab.click();
+      }, 100);
+    } catch (err) {
+      console.warn('[router] Error cargando otc_mapa:', err.message);
+    }
+    return;
+  }
 
   try {
     if (!viewCache[tabId]) {
