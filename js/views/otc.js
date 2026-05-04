@@ -829,55 +829,52 @@ function renderMapaSimple(content) {
   L.tileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', { maxZoom: 20 }).addTo(map);
   L.control.zoom({ position: 'bottomright' }).addTo(map);
 
-  // Forzar recalculo de tamaño después de que el DOM esté visible
-  setTimeout(() => {
-    map.invalidateSize();
-
-    // Ajustar bounds después de invalidar
-    const conCoords2 = ordenes_.filter(o => o.latitud && o.longitud && o.estadoCampo !== 'aprobada');
-    if (conCoords2.length) {
-      const group = L.featureGroup(conCoords2.map(o => L.marker([o.latitud, o.longitud])));
-      map.fitBounds(group.getBounds().pad(0.15));
-    }
-  }, 150);
-
   // Cerrar panel al tocar mapa
   map.on('click', () => document.getElementById('otc-panel-inf')?.classList.remove('open'));
 
-  // Marcadores
-  const conCoords = ordenes_.filter(o =>
-    o.latitud && o.longitud && o.estadoCampo !== 'aprobada'
-  );
+  // Todo dentro del setTimeout para que el mapa tenga dimensiones
+  setTimeout(() => {
+    map.invalidateSize();
 
-  conCoords.forEach(o => {
-    const color = o.estadoCampo === 'hecha'
-      ? '#22c55e'
-      : (TECNICO_COLORS[o.tecnicoDestino] || TECNICO_COLORS[null]).accent;
+    const conCoords = ordenes_.filter(o =>
+      o.latitud && o.longitud && o.estadoCampo !== 'aprobada'
+    );
 
-    const icon = L.divIcon({
-      className: '',
-      html: `<div style="width:13px;height:13px;background:${color};border:2px solid white;border-radius:50%;box-shadow:0 2px 4px rgba(0,0,0,.4);${o.estadoCampo==='hecha'?'opacity:.7':''}"></div>`,
-      iconSize: [13,13], iconAnchor: [6,6],
+    conCoords.forEach(o => {
+      const color = o.estadoCampo === 'hecha'
+        ? '#22c55e'
+        : (TECNICO_COLORS[o.tecnicoDestino] || TECNICO_COLORS[null]).accent;
+
+      const icon = L.divIcon({
+        className: '',
+        html: `<div style="width:13px;height:13px;background:${color};border:2px solid white;border-radius:50%;box-shadow:0 2px 4px rgba(0,0,0,.4);${o.estadoCampo==='hecha'?'opacity:.7':''}"></div>`,
+        iconSize: [13,13], iconAnchor: [6,6],
+      });
+
+      L.marker([parseFloat(o.latitud), parseFloat(o.longitud)], { icon })
+        .on('click', e => {
+          L.DomEvent.stopPropagation(e);
+          mostrarPanelOtc(o);
+        })
+        .addTo(map);
     });
 
-    L.marker([o.latitud, o.longitud], { icon })
-      .on('click', e => {
-        L.DomEvent.stopPropagation(e);
-        mostrarPanelOtc(o);
-      })
-      .addTo(map);
-  });
+    if (conCoords.length) {
+      const group = L.featureGroup(conCoords.map(o => L.marker([parseFloat(o.latitud), parseFloat(o.longitud)])));
+      map.fitBounds(group.getBounds().pad(0.15));
+    }
 
-  // Stat chip
-  const sinCoords = ordenes_.filter(o => !o.latitud && o.estadoCampo !== 'aprobada').length;
-  const statEl    = document.getElementById('otc-map-stat');
-  const dotEl     = document.getElementById('otc-map-dot');
-  if (statEl) {
-    statEl.textContent = sinCoords
-      ? `${conCoords.length} en mapa · ${sinCoords} sin coords`
-      : `${conCoords.length} órdenes en mapa`;
-    if (dotEl) dotEl.style.background = sinCoords ? '#f59e0b' : '#22c55e';
-  }
+    // Stat chip
+    const sinCoords = ordenes_.filter(o => !o.latitud && o.estadoCampo !== 'aprobada').length;
+    const statEl    = document.getElementById('otc-map-stat');
+    const dotEl     = document.getElementById('otc-map-dot');
+    if (statEl) {
+      statEl.textContent = sinCoords
+        ? `${conCoords.length} en mapa · ${sinCoords} sin coords`
+        : `${conCoords.length} órdenes en mapa`;
+      if (dotEl) dotEl.style.background = sinCoords ? '#f59e0b' : '#22c55e';
+    }
+  }, 300);
 
   // Geolocalización
   let geoMarker = null;
