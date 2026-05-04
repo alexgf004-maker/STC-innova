@@ -39,14 +39,16 @@ export async function init(container, session) {
   role_    = session.role;
   pareja_  = session.asignacionActual?.destino || null;
 
-  // Destruir mapa anterior si existe
-  if (map_) {
-    map_.remove();
-    map_ = null;
-    markers_ = [];
-  }
+  // Cancelar listener anterior si el módulo se reinicia
+  if (unsubscribe_) { unsubscribe_(); unsubscribe_ = null; }
+  if (map_) { map_.remove(); map_ = null; markers_ = []; }
 
   renderShell(container);
+
+  // Iniciar listener en tiempo real ANTES de initMap
+  suscribirOrdenes();
+
+  // Esperar primera carga antes de inicializar el mapa
   await loadOrdenes();
   initMap();
 }
@@ -268,34 +270,45 @@ function renderShell(container) {
 
   window.__mapa = { verOrden, marcarHecha, marcarVisita, abrirGoogleMaps, confirmarRealizada, confirmarVisita, asignarIndividual, confirmarIndividual, confirmarZona, cancelarZona };
 
-  // Escuchar aprobaciones desde cambios.js para actualizar marcadores
-  window.addEventListener('cambios:updated', async () => {
-    await loadOrdenes();
-    plotMarkers();
-    updateStatChip();
+  // onSnapshot ya maneja actualizaciones en tiempo real
+  // Este listener es fallback para cambios desde cambios.js
+  window.addEventListener('cambios:updated', () => {
+    // onSnapshot se encarga automáticamente
   });
 }
 
-// ── Cargar órdenes ────────────────────────────────
-async function loadOrdenes() {
-  try {
-    let query = db.collection('cambios_ordenes')
-      .where('latitud',  '!=', null);
+// ── Listener en tiempo real ───────────────────────
+let unsubscribe_ = null; // para cancelar el listener al salir del módulo
 
-    if (role_ === 'tecnico' && pareja_) {
-      query = db.collection('cambios_ordenes')
-        .where('pareja', '==', pareja_);
-    }
+function suscribirOrdenes() {
+  // Cancelar listener anterior si existe
+  if (unsubscribe_) { unsubscribe_(); unsubscribe_ = null; }
 
-    const snap = await query.get();
+  let query = role_ === 'tecnico' && pareja_
+    ? db.collection('cambios_ordenes').where('pareja', '==', pareja_)
+    : db.collection('cambios_ordenes');
+
+  unsubscribe_ = query.onSnapshot(snap => {
     ordenes_ = snap.docs
       .map(d => ({ id: d.id, ...d.data() }))
       .filter(o => o.latitud && o.longitud);
 
-  } catch (err) {
-    console.error('[mapa] Error cargando órdenes:', err);
-    ordenes_ = [];
-  }
+    plotMarkers();
+    updateStatChip();
+  }, err => {
+    console.error('[mapa] Error en listener:', err);
+  });
+}
+
+async function loadOrdenes() {
+  // Mantener compatibilidad — la carga inicial la hace suscribirOrdenes
+  return new Promise(resolve => {
+    if (ordenes_.length) { resolve(); return; }
+    const timer = setTimeout(resolve, 3000); // máx 3s de espera
+    const check = setInterval(() => {
+      if (ordenes_.length) { clearTimeout(timer); clearInterval(check); resolve(); }
+    }, 100);
+  });
 }
 
 // ── Inicializar mapa Leaflet ──────────────────────
