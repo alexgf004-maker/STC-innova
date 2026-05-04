@@ -62,18 +62,14 @@ export async function navigateTo(tabId) {
   contentArea.scrollTop = 0;
   contentArea.innerHTML = '';
 
-  // otc_mapa — activa la tab mapa dentro de OTC
+  // otc_mapa — siempre reinicializa OTC en la tab mapa
   if (tabId === 'otc_mapa') {
     try {
       if (!viewCache['otc']) {
         viewCache['otc'] = await import('./views/otc.js');
-        await viewCache['otc'].init(contentArea, currentSession);
       }
-      // Activar tab mapa dentro de OTC
-      setTimeout(() => {
-        const mapaTab = contentArea.querySelector('.cambios-tab.otc[data-tab="mapa"]');
-        if (mapaTab) mapaTab.click();
-      }, 100);
+      // Reinicializar con tab mapa activa por defecto
+      viewCache['otc'].initConTab(contentArea, currentSession, 'mapa');
     } catch (err) {
       console.warn('[router] Error cargando otc_mapa:', err.message);
     }
