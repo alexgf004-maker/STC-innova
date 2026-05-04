@@ -1325,3 +1325,41 @@ body {
   color: rgba(255,255,255,.3);
   font-style: italic;
 }
+
+/* ════════════════════════════════════════════════
+   MÓDULO OTC
+════════════════════════════════════════════════ */
+
+/* Tab OTC activo en azul */
+.cambios-tab.otc.active {
+  background: rgba(37,99,235,.15);
+  color: var(--otc-light);
+}
+
+/* Alertas OTC */
+.otc-alert-card {
+  border-radius: var(--radius); border: 1px solid;
+  padding: 12px; display: flex; flex-direction: column; gap: 6px;
+}
+.otc-alert-card.crit      { background: rgba(239,68,68,.06); border-color: rgba(239,68,68,.25); }
+.otc-alert-card.warn      { background: rgba(245,158,11,.06); border-color: rgba(245,158,11,.25); }
+.otc-alert-card.warn-soft { background: rgba(255,255,255,.04); border-color: var(--border); }
+.otc-alert-header {
+  font-size: 11px; font-weight: 700; letter-spacing: .05em;
+  text-transform: uppercase;
+  display: flex; align-items: center; gap: 6px;
+}
+.otc-alert-card.crit .otc-alert-header { color: #ef4444; }
+.otc-alert-card.warn .otc-alert-header { color: #fbbf24; }
+.otc-alert-card.warn-soft .otc-alert-header { color: var(--text-3); }
+
+/* Icon btn OTC */
+.icon-btn.otc { color: var(--otc-light); border-color: var(--otc-border); background: var(--otc-glass); }
+
+/* Btn primary OTC */
+.btn-primary.otc {
+  border-color: var(--otc-border);
+  color: var(--otc-light);
+  background: var(--otc-glass);
+}
+.btn-primary.otc:active { background: rgba(37,99,235,.2); }
