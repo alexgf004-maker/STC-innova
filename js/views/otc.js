@@ -177,12 +177,23 @@ function renderShell() {
             </div>
           </div>
           <div class="form-field">
+            <div class="form-label">Fecha de ingreso al SAP</div>
+            <input class="form-input" id="otc-fecha-sap" type="date"/>
+          </div>
+          <div class="form-field">
             <div class="form-label">Cliente</div>
             <input class="form-input" id="otc-cliente" type="text" placeholder="Nombre del cliente"/>
           </div>
           <div class="form-field">
             <div class="form-label">Dirección</div>
             <input class="form-input" id="otc-dir" type="text" placeholder="Dirección"/>
+          </div>
+          <div class="form-field">
+            <div class="form-label">Coordenadas (opcional)</div>
+            <div style="display:flex;gap:8px">
+              <input class="form-input" id="otc-lat" type="number" step="any" placeholder="Latitud" style="flex:1"/>
+              <input class="form-input" id="otc-lng" type="number" step="any" placeholder="Longitud" style="flex:1"/>
+            </div>
           </div>
           <div class="form-field">
             <div class="form-label">Técnico asignado</div>
@@ -234,6 +245,11 @@ function renderShell() {
   });
 
   document.getElementById('btn-crear-otc').addEventListener('click', crearOrden);
+
+  // Fecha SAP por defecto: hoy
+  const hoy = new Date().toISOString().split('T')[0];
+  const fechaSapEl = document.getElementById('otc-fecha-sap');
+  if (fechaSapEl) fechaSapEl.value = hoy;
 
   ['sheet-nueva-otc', 'sheet-otc-detalle'].forEach(id => {
     document.getElementById(id)?.addEventListener('click', e => {
@@ -458,7 +474,13 @@ function renderOrdenCard(o, tipo = '') {
           <div class="orden-cliente">${o.cliente || '—'}</div>
           <div class="orden-dir">${TIPO_LABELS[o.tipo] || o.tipo || '—'}</div>
           ${countdown ? `<div style="font-size:10px;color:#ef4444;font-weight:700">⏱ ${countdown}</div>` : ''}
-          ${dias !== null && dias <= 2 && !countdown ? `<div style="font-size:10px;color:#fbbf24">${dias === 0 ? 'Vence hoy' : `${dias} día${dias>1?'s':''} hábil${dias>1?'es':''}`}</div>` : ''}
+          ${!countdown && (o.tipo === 'servicio_nuevo' || o.tipo === 'cambio_voltaje') && !o.estadoCampo ? (() => {
+            const d = diasHabilesRestantes(calcularVencimiento(o));
+            if (d === null) return '';
+            const color = d === 0 ? '#ef4444' : d <= 2 ? '#fbbf24' : 'var(--text-3)';
+            const label = d === 0 ? 'Vence hoy' : `${d} día${d>1?'s':''} hábil${d>1?'es':''}`;
+            return `<div style="font-size:10px;color:${color};font-weight:${d<=2?'700':'400'}">${label}</div>`;
+          })() : ''}
         </div>
       </div>
       <div class="orden-card-right">
@@ -660,12 +682,15 @@ async function rechazar(id) {
 function openNueva() { openSheet('sheet-nueva-otc'); }
 
 async function crearOrden() {
-  const wo      = document.getElementById('otc-wo').value.trim();
-  const tipo    = getSelectedChip('otc-tipo-row');
-  const cliente = document.getElementById('otc-cliente').value.trim();
-  const dir     = document.getElementById('otc-dir').value.trim();
-  const tec     = getSelectedChip('otc-tec-row');
-  const errEl   = document.getElementById('otc-nueva-error');
+  const wo       = document.getElementById('otc-wo').value.trim();
+  const tipo     = getSelectedChip('otc-tipo-row');
+  const fechaSap = document.getElementById('otc-fecha-sap').value;
+  const cliente  = document.getElementById('otc-cliente').value.trim();
+  const dir      = document.getElementById('otc-dir').value.trim();
+  const latVal   = document.getElementById('otc-lat').value.trim();
+  const lngVal   = document.getElementById('otc-lng').value.trim();
+  const tec      = getSelectedChip('otc-tec-row');
+  const errEl    = document.getElementById('otc-nueva-error');
 
   errEl.style.display = 'none';
   if (!wo || !tipo || !tec) {
@@ -673,8 +698,15 @@ async function crearOrden() {
     errEl.style.display = 'block';
     return;
   }
+  if (!fechaSap) {
+    errEl.textContent = 'La fecha de ingreso al SAP es obligatoria.';
+    errEl.style.display = 'block';
+    return;
+  }
 
-  const ahora = firebase.firestore.Timestamp.now();
+  // Fecha SAP como Timestamp
+  const fechaIngreso = firebase.firestore.Timestamp.fromDate(new Date(fechaSap + 'T00:00:00'));
+
   let fechaPago = null;
   if (tipo === 'reconexion') {
     const pagoVal = document.getElementById('otc-pago').value;
@@ -686,22 +718,33 @@ async function crearOrden() {
     fechaPago = firebase.firestore.Timestamp.fromDate(new Date(pagoVal));
   }
 
+  const latitud  = latVal ? parseFloat(latVal)  : null;
+  const longitud = lngVal ? parseFloat(lngVal)  : null;
+
   setLoading('btn-otc-label', 'Creando…', true);
   try {
     const data = {
       wo, tipo, cliente, direccion: dir,
       tecnicoDestino:    tec,
-      fechaIngreso:      ahora,
+      fechaIngreso,
+      latitud,
+      longitud,
       estadoCampo:       null,
       actualizadaDelsur: false,
-      latitud:           null,
-      longitud:          null,
       fechaPago,
       diasHabilesLimite: tipo === 'servicio_nuevo' ? 5 : tipo === 'cambio_voltaje' ? 10 : null,
     };
     const ref = await db.collection('otc_ordenes').add(data);
     ordenes_.push({ id: ref.id, ...data });
     closeSheet('sheet-nueva-otc');
+
+    // Limpiar formulario
+    ['otc-wo','otc-cliente','otc-dir','otc-lat','otc-lng','otc-fecha-sap'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.value = '';
+    });
+    document.querySelectorAll('#otc-tipo-row .select-chip, #otc-tec-row .select-chip').forEach(c => c.classList.remove('active'));
+
     renderTab();
     toast('Orden creada', 'ok');
   } catch (err) {
