@@ -471,6 +471,13 @@ function renderOrdenes() {
     ? ordenes_.filter(o => o.tecnicoDestino === destino_)
     : (_filtroTec ? ordenes_.filter(o => o.tecnicoDestino === _filtroTec) : ordenes_);
 
+  // Para técnico: ordenar por urgencia y renderizar sin secciones
+  if (isTecnico) {
+    renderOrdenesTecnico(content, lista);
+    return;
+  }
+
+  // Para admin/asistente: secciones con títulos
   const { reconexiones, porVencer, sinActualizar, hechas, pendientes, anomalias } = priorizar(lista);
 
   content.innerHTML = `
@@ -478,11 +485,11 @@ function renderOrdenes() {
 
       <div class="panel-header anim-up">
         <div>
-          <div class="section-title">${isTecnico ? (destino_ || 'Mis órdenes') : (_filtroTec || 'Todas las órdenes')}</div>
+          <div class="section-title">${_filtroTec || 'Todas las órdenes'}</div>
           <div class="section-sub">${lista.filter(o=>o.estadoCampo!=='aprobada').length} activas</div>
         </div>
         <div style="display:flex;gap:8px">
-          ${!isTecnico && _filtroTec ? `
+          ${_filtroTec ? `
           <button class="icon-btn" onclick="window.__otc._filtroTec=null;window.__otc._renderOrdenes()" title="Ver todas">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           </button>` : ''}
@@ -495,14 +502,129 @@ function renderOrdenes() {
       </div>
 
       ${!lista.length ? `<div class="dev-module"><div class="dev-title">Sin órdenes</div><p>No hay órdenes asignadas.</p></div>` : ''}
+      ${reconexiones.length  ? renderGrupoOtc('🔴 Reconexiones activas', reconexiones, 'crit') : ''}
+      ${porVencer.length     ? renderGrupoOtc('Por vencer', porVencer, 'warn') : ''}
+      ${sinActualizar.length ? renderGrupoOtc('⚠ Sin actualizar DELSUR', sinActualizar, 'warn-soft') : ''}
+      ${hechas.length        ? renderGrupoOtc('✓ Realizadas', hechas, 'hecha') : ''}
+      ${pendientes.length    ? renderGrupoOtc('Pendientes', pendientes, 'pendiente') : ''}
+      ${anomalias.length     ? renderGrupoOtc('Anomalías', anomalias, 'anomalia') : ''}
+    </div>
+  `;
+}
 
-      ${reconexiones.length ? renderGrupoOtc('🔴 Reconexiones activas', reconexiones, 'crit') : ''}
-      ${porVencer.length    ? renderGrupoOtc('🟠 Por vencer', porVencer, 'warn') : ''}
-      ${sinActualizar.length? renderGrupoOtc('⚠ Sin actualizar DELSUR', sinActualizar, 'warn-soft') : ''}
-      ${hechas.length       ? renderGrupoOtc('✓ Realizadas', hechas, 'hecha') : ''}
-      ${pendientes.length   ? renderGrupoOtc('Pendientes', pendientes, 'pendiente') : ''}
-      ${anomalias.length    ? renderGrupoOtc('Anomalías', anomalias, 'anomalia') : ''}
+// ── Vista técnico con colores de urgencia ─────────
+function getUrgencia(o) {
+  if (o.tipo === 'reconexion' && !o.estadoCampo && o.fechaPago) return 'reconexion';
+  if (o.estadoCampo) return 'hecha';
+  if (o.tipo === 'desconexion' || o.tipo === 'anomalia') return 'sinlimite';
+  const dias = diasHabilesRestantes(calcularVencimiento(o));
+  if (dias === null) return 'sinlimite';
+  if (dias === 0)    return 'hoy';
+  if (dias <= 2)     return 'naranja';
+  if (dias === 3)    return 'amarillo';
+  return 'normal';
+}
 
+const URGENCIA_CONFIG = {
+  reconexion: { bg: 'rgba(239,68,68,.1)',   border: 'rgba(239,68,68,.3)',  dot: '#ef4444', label: null },
+  hoy:        { bg: 'rgba(239,68,68,.08)',  border: 'rgba(239,68,68,.25)', dot: '#ef4444', label: 'Vence hoy' },
+  naranja:    { bg: 'rgba(249,115,22,.08)', border: 'rgba(249,115,22,.25)',dot: '#f97316', label: null },
+  amarillo:   { bg: 'rgba(245,158,11,.07)', border: 'rgba(245,158,11,.2)', dot: '#fbbf24', label: null },
+  normal:     { bg: 'var(--glass)',          border: 'var(--border)',        dot: 'var(--text-4)', label: null },
+  sinlimite:  { bg: 'rgba(255,255,255,.03)',border: 'rgba(255,255,255,.05)',dot: '#4b5563', label: null },
+  hecha:      { bg: 'rgba(34,197,94,.04)',  border: 'rgba(34,197,94,.15)', dot: '#22c55e', label: null },
+};
+
+function renderOrdenesTecnico(content, lista) {
+  const activas  = lista.filter(o => o.estadoCampo !== 'aprobada');
+  const hechas   = activas.filter(o => o.estadoCampo === 'hecha');
+  const pendientes = activas.filter(o => !o.estadoCampo);
+
+  // Ordenar pendientes por urgencia
+  const orden = ['reconexion','hoy','naranja','amarillo','normal','sinlimite'];
+  pendientes.sort((a, b) => orden.indexOf(getUrgencia(a)) - orden.indexOf(getUrgencia(b)));
+
+  // Resumen de urgencias
+  const reconCount  = pendientes.filter(o => getUrgencia(o) === 'reconexion').length;
+  const hoyCount    = pendientes.filter(o => getUrgencia(o) === 'hoy').length;
+  const naranjaCount= pendientes.filter(o => getUrgencia(o) === 'naranja').length;
+  const amarilloCount=pendientes.filter(o => getUrgencia(o) === 'amarillo').length;
+
+  content.innerHTML = `
+    <div class="flex-col gap-12">
+
+      <div class="panel-header anim-up">
+        <div>
+          <div class="section-title">${destino_ || 'Mis órdenes'}</div>
+          <div class="section-sub">${pendientes.length} pendientes · ${hechas.length} realizadas</div>
+        </div>
+        <button class="icon-btn otc" onclick="window.__otc.openNueva()" title="Nueva orden">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="15" height="15">
+            <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+          </svg>
+        </button>
+      </div>
+
+      <!-- Resumen de urgencias -->
+      ${reconCount || hoyCount || naranjaCount || amarilloCount ? `
+      <div class="urgencia-resumen anim-up d1">
+        ${reconCount   ? `<div class="urgencia-badge rojo">🔴 ${reconCount} reconexión${reconCount>1?'es':''}</div>` : ''}
+        ${hoyCount     ? `<div class="urgencia-badge rojo">${hoyCount} vence${hoyCount>1?'n':''} hoy</div>` : ''}
+        ${naranjaCount ? `<div class="urgencia-badge naranja">${naranjaCount} en 1-2 días</div>` : ''}
+        ${amarilloCount? `<div class="urgencia-badge amarillo">${amarilloCount} en 3 días</div>` : ''}
+      </div>` : ''}
+
+      <!-- Listado priorizado -->
+      <div class="flex-col gap-8 anim-up d2">
+        ${pendientes.map(o => renderOrdenCardTecnico(o)).join('')}
+      </div>
+
+      <!-- Realizadas -->
+      ${hechas.length ? `
+      <div class="section-label anim-up d3">Realizadas hoy</div>
+      <div class="flex-col gap-8 anim-up d3">
+        ${hechas.map(o => renderOrdenCardTecnico(o)).join('')}
+      </div>` : ''}
+
+    </div>
+  `;
+}
+
+function renderOrdenCardTecnico(o) {
+  const urgencia = getUrgencia(o);
+  const cfg      = URGENCIA_CONFIG[urgencia];
+  const dias     = diasHabilesRestantes(calcularVencimiento(o));
+  const countdown= o.tipo === 'reconexion' ? countdownReconexion(o.fechaPago) : null;
+
+  let diasLabel = '';
+  if (countdown) {
+    diasLabel = `<div style="font-size:11px;color:#ef4444;font-weight:800;margin-top:3px">⏱ ${countdown}</div>`;
+  } else if (urgencia === 'hoy') {
+    diasLabel = `<div style="font-size:11px;color:#ef4444;font-weight:700;margin-top:3px">🔴 Vence hoy</div>`;
+  } else if (urgencia === 'naranja' && dias !== null) {
+    diasLabel = `<div style="font-size:11px;color:#f97316;font-weight:700;margin-top:3px">🟠 ${dias} día${dias>1?'s':''} hábil${dias>1?'es':''}</div>`;
+  } else if (urgencia === 'amarillo' && dias !== null) {
+    diasLabel = `<div style="font-size:11px;color:#fbbf24;font-weight:600;margin-top:3px">🟡 ${dias} días hábiles</div>`;
+  } else if (urgencia === 'normal' && dias !== null) {
+    diasLabel = `<div style="font-size:11px;color:var(--text-4);margin-top:3px">${dias} días hábiles</div>`;
+  }
+
+  return `
+    <div class="orden-card-tec" style="background:${cfg.bg};border-color:${cfg.border}"
+         onclick="window.__otc.verOrden('${o.id}')">
+      <div style="display:flex;align-items:center;gap:10px;flex:1;min-width:0">
+        <div style="width:10px;height:10px;border-radius:50%;background:${cfg.dot};flex-shrink:0"></div>
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;align-items:center;gap:8px">
+            <div class="orden-wo">WO ${o.wo || '—'}</div>
+            <div style="font-size:10px;font-weight:600;color:var(--text-4);text-transform:uppercase;letter-spacing:.04em">${TIPO_LABELS[o.tipo] || ''}</div>
+          </div>
+          <div class="orden-cliente">${o.cliente || '—'}</div>
+          <div class="orden-dir">${o.direccion || ''}</div>
+          ${diasLabel}
+        </div>
+      </div>
+      ${o.estadoCampo === 'hecha' ? '<div class="status-dot ok" style="flex-shrink:0"></div>' : ''}
     </div>
   `;
 }
@@ -521,7 +643,6 @@ function renderGrupoOtc(titulo, lista, tipo) {
 function renderOrdenCard(o, tipo = '') {
   const c        = TECNICO_COLORS[o.tecnicoDestino] || TECNICO_COLORS[null];
   const countdown= o.tipo === 'reconexion' ? countdownReconexion(o.fechaPago) : null;
-  const dias     = diasHabilesRestantes(calcularVencimiento(o));
   const isTecnico= role_ === 'tecnico';
 
   const statusDot = {
@@ -542,13 +663,6 @@ function renderOrdenCard(o, tipo = '') {
           <div class="orden-cliente">${o.cliente || '—'}</div>
           <div class="orden-dir">${TIPO_LABELS[o.tipo] || o.tipo || '—'}</div>
           ${countdown ? `<div style="font-size:10px;color:#ef4444;font-weight:700">⏱ ${countdown}</div>` : ''}
-          ${!countdown && (o.tipo === 'servicio_nuevo' || o.tipo === 'cambio_voltaje') && !o.estadoCampo ? (() => {
-            const d = diasHabilesRestantes(calcularVencimiento(o));
-            if (d === null) return '';
-            const color = d === 0 ? '#ef4444' : d <= 2 ? '#fbbf24' : 'var(--text-3)';
-            const label = d === 0 ? 'Vence hoy' : `${d} día${d>1?'s':''} hábil${d>1?'es':''}`;
-            return `<div style="font-size:10px;color:${color};font-weight:${d<=2?'700':'400'}">${label}</div>`;
-          })() : ''}
         </div>
       </div>
       <div class="orden-card-right">
