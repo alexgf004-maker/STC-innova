@@ -338,6 +338,9 @@ function renderAcordeonPareja(pareja) {
 
   if (!total) return '';
 
+  // Agrupar hechas por fecha
+  const hechasPorFecha = agruparPorFecha(hechas);
+
   return `
     <div class="acordeon-card" style="border-color:${c.border};background:${c.glass}">
 
@@ -380,11 +383,17 @@ function renderAcordeonPareja(pareja) {
                  autocomplete="off" autocorrect="off"/>
         </div>` : ''}
 
-        <!-- Órdenes por verificar -->
+        <!-- Órdenes por verificar agrupadas por fecha -->
         ${hechas.length ? `
-        <div class="section-label" style="margin:8px 0 6px;font-size:8px">Por verificar</div>
-        <div class="flex-col gap-6" id="${listaId}">
-          ${hechas.map(o => renderOrdenVerificacion(o, c)).join('')}
+        <div class="flex-col gap-10" id="${listaId}">
+          ${hechasPorFecha.map(({ fecha, ordenes: grupo }) => `
+            <div>
+              <div class="fecha-grupo-label">${fecha}</div>
+              <div class="flex-col gap-6">
+                ${grupo.map(o => renderOrdenVerificacion(o, c)).join('')}
+              </div>
+            </div>
+          `).join('')}
         </div>` : `
         <div style="text-align:center;padding:12px 0;font-size:12px;color:var(--text-4)">
           ${aprobadas.length ? '✓ Todas confirmadas' : 'Sin órdenes realizadas aún'}
@@ -434,7 +443,36 @@ function renderOrdenVisitaPanel(o) {
   `;
 }
 
-// ── Toggle acordeón ───────────────────────────────
+// ── Agrupar por fecha ─────────────────────────────
+function agruparPorFecha(lista) {
+  const grupos = {};
+  const hoy    = new Date();
+  const ayer   = new Date(hoy); ayer.setDate(ayer.getDate() - 1);
+
+  lista.forEach(o => {
+    const ts = o.fechaHecha?.toDate ? o.fechaHecha.toDate() : null;
+    let etiqueta = 'Sin fecha';
+    if (ts) {
+      const d = ts.toLocaleDateString('es-SV', { weekday:'long', day:'2-digit', month:'short' });
+      if (ts.toDateString() === hoy.toDateString())  etiqueta = `Hoy · ${d}`;
+      else if (ts.toDateString() === ayer.toDateString()) etiqueta = `Ayer · ${d}`;
+      else etiqueta = d.charAt(0).toUpperCase() + d.slice(1);
+    }
+    if (!grupos[etiqueta]) grupos[etiqueta] = [];
+    grupos[etiqueta].push(o);
+  });
+
+  // Ordenar: Hoy primero, luego Ayer, luego más antiguas
+  return Object.entries(grupos)
+    .sort(([a], [b]) => {
+      if (a.startsWith('Hoy'))  return -1;
+      if (b.startsWith('Hoy'))  return 1;
+      if (a.startsWith('Ayer')) return -1;
+      if (b.startsWith('Ayer')) return 1;
+      return 0;
+    })
+    .map(([fecha, ordenes]) => ({ fecha, ordenes }));
+}
 function toggleAcordeon(pareja) {
   const key    = pareja.replace(' ', '-');
   const body   = document.getElementById(`body-${key}`);
@@ -465,7 +503,21 @@ function filtrarOrdenesPareja(pareja, query) {
     lista.innerHTML = `<div style="text-align:center;padding:8px;font-size:11px;color:var(--text-4)">Sin resultados</div>`;
     return;
   }
-  lista.innerHTML = filtradas.map(o => renderOrdenVerificacion(o, c)).join('');
+
+  // Mantener agrupación por fecha si no hay búsqueda activa
+  if (!query) {
+    const grupos = agruparPorFecha(filtradas);
+    lista.innerHTML = grupos.map(({ fecha, ordenes: grupo }) => `
+      <div>
+        <div class="fecha-grupo-label">${fecha}</div>
+        <div class="flex-col gap-6">
+          ${grupo.map(o => renderOrdenVerificacion(o, c)).join('')}
+        </div>
+      </div>
+    `).join('');
+  } else {
+    lista.innerHTML = `<div class="flex-col gap-6">${filtradas.map(o => renderOrdenVerificacion(o, c)).join('')}</div>`;
+  }
 }
 
 function renderParejaCard(pareja) {
@@ -663,8 +715,9 @@ function verOrden(id) {
       <div class="detail-section">
         <div class="detail-label">Historial</div>
         ${o.fechaHecha  ? `<div class="detail-field full"><div class="detail-key">Realizada</div><div class="detail-val">${formatDate(o.fechaHecha)} · ${o.hechaPor || '—'}</div></div>` : ''}
+        ${o.parejaDelDia?.length > 1 ? `<div class="detail-field full"><div class="detail-key">Trabajaron ese día</div><div class="detail-val">${o.parejaDelDia.join(' · ')}</div></div>` : ''}
         ${o.fechaVisita ? `<div class="detail-field full"><div class="detail-key">Visita</div><div class="detail-val">${formatDate(o.fechaVisita)} · ${o.visitadoPor || '—'}</div></div>` : ''}
-        ${o.aprobadoPor ? `<div class="detail-field full"><div class="detail-key">Aprobada por</div><div class="detail-val">${o.aprobadoPor}</div></div>` : ''}
+        ${o.aprobadoPor ? `<div class="detail-field full"><div class="detail-key">Confirmada por</div><div class="detail-val">${o.aprobadoPor}</div></div>` : ''}
       </div>` : ''}
 
       <!-- Acciones técnico -->
@@ -709,11 +762,26 @@ function verOrden(id) {
 // ── Acciones ──────────────────────────────────────
 async function marcarHecha(id) {
   const now = firebase.firestore.Timestamp.now();
+
+  // Buscar compañeros con el mismo destino hoy
+  let parejaDelDia = [session_.displayName];
+  try {
+    const destino = session_.asignacion?.destino || session_.asignacionActual?.destino;
+    if (destino) {
+      const snap = await db.collection('users')
+        .where('asignacionActual.destino', '==', destino)
+        .where('active', '==', true)
+        .get();
+      parejaDelDia = snap.docs.map(d => d.data().displayName);
+    }
+  } catch { /* sin conexión — usar solo nombre propio */ }
+
   await updateOrden(id, {
-    estadoCampo:      'hecha',
-    fechaHecha:       now,
-    hechaPor:         session_.displayName,
+    estadoCampo:       'hecha',
+    fechaHecha:        now,
+    hechaPor:          session_.displayName,
     actualizadaDelsur: false,
+    parejaDelDia,
   }, 'Orden marcada como realizada');
 }
 
