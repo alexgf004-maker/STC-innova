@@ -1290,3 +1290,12 @@ body {
   border-radius: 8px; background: rgba(255,255,255,.03);
   border: 1px solid rgba(255,255,255,.05);
 }
+
+/* Fecha grupo en acordeón */
+.fecha-grupo-label {
+  font-size: 9px; font-weight: 700; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--text-4);
+  padding: 8px 0 6px;
+  border-bottom: 1px solid rgba(255,255,255,.04);
+  margin-bottom: 6px;
+}
