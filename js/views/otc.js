@@ -159,7 +159,7 @@ function priorizar(lista) {
 function renderShell() {
   const isTecnico = role_ === 'tecnico';
   const tabs = isTecnico
-    ? [{ id:'ordenes', label:'Órdenes' }, { id:'panel', label:'Resumen' }]
+    ? [{ id:'ordenes', label:'Órdenes' }, { id:'resumen', label:'Resumen' }]
     : [{ id:'panel',   label:'Panel'   }, { id:'ordenes', label:'Órdenes' }, { id:'mapa', label:'Mapa' }];
 
   container_.innerHTML = `
@@ -321,7 +321,111 @@ async function loadOrdenes() {
 function renderTab() {
   if      (activeTab_ === 'panel')   renderPanel();
   else if (activeTab_ === 'mapa')    renderMapaOtc();
+  else if (activeTab_ === 'resumen') renderResumenTecnicoOtc();
   else                               renderOrdenes();
+}
+
+// ── Resumen técnico OTC ───────────────────────────
+function renderResumenTecnicoOtc() {
+  const content   = document.getElementById('otc-content');
+  const miLista   = ordenes_.filter(o => o.tecnicoDestino === destino_);
+  const hoy       = new Date(); hoy.setHours(0,0,0,0);
+
+  const reconexiones  = miLista.filter(o => o.tipo === 'reconexion' && !o.estadoCampo && o.fechaPago);
+  const hechasHoy     = miLista.filter(o => {
+    if (o.estadoCampo !== 'hecha' && o.estadoCampo !== 'aprobada') return false;
+    const f = o.fechaHecha?.toDate ? o.fechaHecha.toDate() : null;
+    return f && f >= hoy;
+  });
+  const vencenHoy     = miLista.filter(o => !o.estadoCampo && getUrgencia(o) === 'hoy');
+  const vencen1_2     = miLista.filter(o => !o.estadoCampo && getUrgencia(o) === 'naranja');
+  const pendientes    = miLista.filter(o => !o.estadoCampo).length;
+  const sinActualizar = miLista.filter(o => o.estadoCampo === 'hecha' && !o.actualizadaDelsur);
+  const fechaLabel    = new Date().toLocaleDateString('es-SV', { weekday:'long', day:'numeric', month:'long' });
+
+  content.innerHTML = `
+    <div class="flex-col gap-12">
+
+      <div class="panel-header anim-up">
+        <div>
+          <div class="section-title">Mi resumen</div>
+          <div class="section-sub">${destino_ || 'OTC'} · ${fechaLabel.charAt(0).toUpperCase() + fechaLabel.slice(1)}</div>
+        </div>
+      </div>
+
+      <!-- Reconexiones activas -->
+      ${reconexiones.length ? `
+      <div class="otc-alert-card crit anim-up d1">
+        <div class="otc-alert-header">🔴 ${reconexiones.length} reconexión${reconexiones.length>1?'es':''} activa${reconexiones.length>1?'s':''}</div>
+        ${reconexiones.map(o => `
+          <div class="orden-verif-card" onclick="window.__otc.verOrden('${o.id}')" style="margin-top:6px">
+            <div class="orden-verif-info">
+              <div style="font-size:12px;font-weight:700">WO ${o.wo || '—'}</div>
+              <div style="font-size:10px;color:var(--text-3)">${o.cliente || '—'}</div>
+              <div style="font-size:11px;color:#ef4444;font-weight:700;margin-top:2px">⏱ ${countdownReconexion(o.fechaPago)}</div>
+            </div>
+          </div>`).join('')}
+      </div>` : ''}
+
+      <!-- Vencen hoy -->
+      ${vencenHoy.length ? `
+      <div class="otc-alert-card crit anim-up d1">
+        <div class="otc-alert-header">🔴 ${vencenHoy.length} vence${vencenHoy.length>1?'n':''} hoy</div>
+        ${vencenHoy.map(o => `
+          <div class="orden-visita-panel" onclick="window.__otc.verOrden('${o.id}')" style="margin-top:6px">
+            <div class="status-dot" style="background:#ef4444"></div>
+            <div>
+              <div style="font-size:12px;font-weight:700">WO ${o.wo || '—'}</div>
+              <div style="font-size:10px;color:var(--text-3)">${TIPO_LABELS[o.tipo] || ''} · ${o.cliente || '—'}</div>
+            </div>
+          </div>`).join('')}
+      </div>` : ''}
+
+      <!-- Vencen en 1-2 días -->
+      ${vencen1_2.length ? `
+      <div class="otc-alert-card warn anim-up d2">
+        <div class="otc-alert-header">🟠 ${vencen1_2.length} vence${vencen1_2.length>1?'n':''} en 1-2 días</div>
+        ${vencen1_2.map(o => `
+          <div class="orden-visita-panel" onclick="window.__otc.verOrden('${o.id}')" style="margin-top:6px">
+            <div class="status-dot" style="background:#f97316"></div>
+            <div>
+              <div style="font-size:12px;font-weight:700">WO ${o.wo || '—'}</div>
+              <div style="font-size:10px;color:var(--text-3)">${TIPO_LABELS[o.tipo] || ''} · ${o.cliente || '—'}</div>
+            </div>
+          </div>`).join('')}
+      </div>` : ''}
+
+      <!-- Stats -->
+      <div class="stat-row anim-up d3">
+        <div class="stat-chip otc-accent">
+          <div class="val">${hechasHoy.length}</div>
+          <div class="lbl">Hechas hoy</div>
+        </div>
+        <div class="stat-chip">
+          <div class="val">${pendientes}</div>
+          <div class="lbl">Pendientes</div>
+        </div>
+        <div class="stat-chip ${sinActualizar.length ? 'warn-accent' : ''}">
+          <div class="val">${sinActualizar.length}</div>
+          <div class="lbl">Sin actualizar</div>
+        </div>
+      </div>
+
+      ${!miLista.length ? `
+      <div class="dev-module anim-up d2">
+        <div class="dev-title">Sin órdenes asignadas</div>
+        <p>No tienes órdenes OTC asignadas.</p>
+      </div>` : ''}
+
+      ${!reconexiones.length && !vencenHoy.length && !vencen1_2.length && miLista.length ? `
+      <div class="card anim-up d2" style="background:rgba(34,197,94,.06);border-color:rgba(34,197,94,.2);text-align:center;padding:20px">
+        <div style="font-size:22px;margin-bottom:6px">✅</div>
+        <div style="font-size:13px;font-weight:700;color:var(--ok)">Todo bajo control</div>
+        <div style="font-size:11px;color:var(--text-3);margin-top:4px">No tienes órdenes urgentes</div>
+      </div>` : ''}
+
+    </div>
+  `;
 }
 
 // ── PANEL ─────────────────────────────────────────
