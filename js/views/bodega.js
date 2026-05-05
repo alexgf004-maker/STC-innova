@@ -288,7 +288,7 @@ function abrirRegistrarConsumo() {
     ov.innerHTML=`
       <div style="max-width:500px;margin:0 auto;padding:0 0 80px">
         <div style="padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px;position:sticky;top:0;background:var(--bg);z-index:10">
-          <button class="icon-btn" onclick="ov.remove();renderTab();">
+          <button class="icon-btn" id="btn-cerrar-consumo">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><polyline points="15 18 9 12 15 6"/></svg>
           </button>
           <div class="section-title">Registrar consumo</div>
@@ -334,7 +334,8 @@ function abrirRegistrarConsumo() {
     `;
 
     // Chips tipo
-    ov.querySelectorAll('#rc-tipos .select-chip').forEach(c=>{
+    ov.querySelector('#btn-cerrar-consumo')?.addEventListener('click', () => { ov.remove(); renderTab(); });
+    ov.querySelector('#rc-tipos')?.querySelectorAll('.select-chip').forEach(c=>{
       c.addEventListener('click',()=>{
         tipoSel=c.dataset.val;
         ov.querySelectorAll('#rc-tipos .select-chip').forEach(x=>x.classList.remove('active'));
@@ -929,7 +930,7 @@ function abrirDespacho(solicitud=null) {
   function renderStep1(){
     ov.innerHTML=`<div style="padding:20px;max-width:500px;margin:0 auto">
       <div style="display:flex;align-items:center;gap:12px;margin-bottom:24px">
-        <button onclick="ov.remove();renderTab();" class="icon-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><polyline points="15 18 9 12 15 6"/></svg></button>
+        <button id="btn-cerrar-despacho" class="icon-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><polyline points="15 18 9 12 15 6"/></svg></button>
         <div class="section-title">Nueva salida — Datos</div>
       </div>
       <div class="flex-col gap-12">
@@ -967,6 +968,7 @@ function abrirDespacho(solicitud=null) {
     </div>`;
 
     setupChipsDyn(ov,'hdr-resp'); setupChipsDyn(ov,'hdr-cont');
+    ov.querySelector('#btn-cerrar-despacho')?.addEventListener('click', () => { ov.remove(); renderTab(); });
     ov.querySelector('#hdr-placa')?.querySelectorAll('.select-chip').forEach(c=>{
       c.addEventListener('click',()=>{ov.querySelectorAll('#hdr-placa .select-chip').forEach(x=>x.classList.remove('active'));c.classList.add('active');ov.querySelector('#hdr-placa-otro').style.display=c.dataset.val==='__otro__'?'':'none';});
     });
