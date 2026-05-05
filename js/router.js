@@ -51,7 +51,7 @@ export function initRouter(session) {
 }
 
 export async function navigateTo(tabId) {
-  if (currentTab === tabId) return;
+  if (currentTab === tabId && tabId !== 'otc_mapa') return;
   currentTab = tabId;
   window.__router.currentTab = tabId;
 
