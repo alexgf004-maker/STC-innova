@@ -1424,3 +1424,22 @@ body {
   -webkit-tap-highlight-color: transparent;
 }
 .otc-semaforo-card:active { filter: brightness(1.15); }
+
+/* ── Stat chips resumen técnico ─────────────────── */
+.stat-row {
+  display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px;
+}
+.stat-chip {
+  background: var(--glass); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); padding: 14px 12px; text-align: center;
+}
+.stat-chip .val { font-size: 28px; font-weight: 800; color: var(--text); }
+.stat-chip .lbl { font-size: 10px; font-weight: 600; color: var(--text-4); text-transform: uppercase; letter-spacing: .08em; margin-top: 2px; }
+.stat-chip.cm-accent   { background: var(--cm-glass);  border-color: var(--cm-border); }
+.stat-chip.cm-accent .val { color: var(--cm-light); }
+.stat-chip.otc-accent  { background: var(--otc-glass); border-color: var(--otc-border); }
+.stat-chip.otc-accent .val { color: var(--otc-light); }
+.stat-chip.warn-accent { background: rgba(245,158,11,.08); border-color: rgba(245,158,11,.25); }
+.stat-chip.warn-accent .val { color: #fbbf24; }
+.stat-chip.crit-accent { background: rgba(239,68,68,.08); border-color: rgba(239,68,68,.25); }
+.stat-chip.crit-accent .val { color: #ef4444; }
