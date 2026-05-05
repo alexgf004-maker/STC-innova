@@ -1,4 +1,3 @@
-
 /**
  * js/views/bodega.js — INNOVA STC v2
  * Reescritura fiel a kardex.js v4. Todos los campos y lógica del original.
@@ -281,7 +280,7 @@ function abrirRegistrarConsumo() {
   let tipoSel = TIPOS_TRABAJO[0];
 
   const ov = document.createElement('div');
-  ov.style.cssText='position:fixed;inset:0;z-index:200;background:var(--bg);overflow-y:auto;';
+  ov.style.cssText='position:fixed;inset:0;z-index:500;background:#0d1117;overflow-y:auto;-webkit-overflow-scrolling:touch;';
   document.body.appendChild(ov);
 
   function render() {
@@ -924,7 +923,7 @@ function abrirDespacho(solicitud=null) {
 
   let step=solicitud?2:1, busq='';
   const ov=document.createElement('div');
-  ov.style.cssText='position:fixed;inset:0;z-index:200;background:var(--bg);overflow-y:auto;';
+  ov.style.cssText='position:fixed;inset:0;z-index:500;background:#0d1117;overflow-y:auto;-webkit-overflow-scrolling:touch;';
   document.body.appendChild(ov);
 
   function renderStep1(){
