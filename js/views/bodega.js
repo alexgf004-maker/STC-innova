@@ -1,3 +1,4 @@
+
 /**
  * js/views/bodega.js — INNOVA STC v2
  * Reescritura fiel a kardex.js v4. Todos los campos y lógica del original.
@@ -661,12 +662,13 @@ function renderStockUsuarios() {
           const criticos=items.filter(e=>e.cant<=0||(e.item.minStock&&e.cant<=e.item.minStock/2)).length;
           const bajos=items.filter(e=>e.cant>0&&e.item.minStock&&e.cant<=e.item.minStock&&e.cant>e.item.minStock/2).length;
           const color=criticos>0?'#ef4444':bajos>0?'#fbbf24':'#22c55e';
+          const alertaTxt = criticos>0 ? ('⚠ '+criticos+' crítico'+(criticos>1?'s':'')) : bajos>0 ? ('⚠ '+bajos+' bajo'+(bajos>1?'s':'')) : '✓ Sin alertas';
           return `<div>
             <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
               <div style="width:36px;height:36px;border-radius:10px;background:rgba(37,99,235,.15);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;color:var(--otc-light)">${u.slice(0,2)}</div>
               <div>
                 <div style="font-size:14px;font-weight:800">${u}</div>
-                <div style="font-size:10px;color:${color}">${criticos>0?`⚠ ${criticos} crítico${criticos>1?'s':''}`:bajos>0?`⚠ ${bajos} bajo${bajos>1?'s':''}':'✓ Sin alertas'}</div>
+                <div style="font-size:10px;color:${color}">${alertaTxt}</div>
               </div>
             </div>
             <div class="flex-col gap-6">
