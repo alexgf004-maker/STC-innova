@@ -66,6 +66,14 @@ export async function initConTab(container, session, tab) {
   destino_   = session.asignacionActual?.destino || null;
   activeTab_ = tab;
 
+  if (tab === 'mapa') {
+    // Renderizar mapa directamente sin sistema de tabs
+    container_.innerHTML = '';
+    await loadOrdenes();
+    renderMapaSimple(container_);
+    return;
+  }
+
   renderShell();
   await loadOrdenes();
 }
@@ -151,7 +159,7 @@ function priorizar(lista) {
 function renderShell() {
   const isTecnico = role_ === 'tecnico';
   const tabs = isTecnico
-    ? [{ id:'ordenes', label:'Órdenes' }, { id:'panel', label:'Resumen' }, { id:'mapa', label:'Mapa' }]
+    ? [{ id:'ordenes', label:'Órdenes' }, { id:'panel', label:'Resumen' }]
     : [{ id:'panel',   label:'Panel'   }, { id:'ordenes', label:'Órdenes' }, { id:'mapa', label:'Mapa' }];
 
   container_.innerHTML = `
