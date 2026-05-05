@@ -62,14 +62,13 @@ export async function navigateTo(tabId) {
   contentArea.scrollTop = 0;
   contentArea.innerHTML = '';
 
-  // otc_mapa — siempre reinicializa OTC en la tab mapa
+  // otc_mapa — renderiza mapa OTC directamente
   if (tabId === 'otc_mapa') {
     try {
       if (!viewCache['otc']) {
         viewCache['otc'] = await import('./views/otc.js');
       }
-      // Reinicializar con tab mapa activa por defecto
-      viewCache['otc'].initConTab(contentArea, currentSession, 'mapa');
+      await viewCache['otc'].initConTab(contentArea, currentSession, 'mapa');
     } catch (err) {
       console.warn('[router] Error cargando otc_mapa:', err.message);
     }
