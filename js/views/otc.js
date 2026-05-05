@@ -956,25 +956,33 @@ async function renderMapaOtc() {
 }
 
 function renderMapaSimple(content) {
-  console.log('[otc-mapa] Total ordenes:', ordenes_.length);
-  console.log('[otc-mapa] Con coords:', ordenes_.filter(o => o.latitud && o.longitud).map(o => ({ wo: o.wo, lat: o.latitud, lng: o.longitud })));
-  console.log('[otc-mapa] L disponible:', typeof L);
+  const isTecnico = role_ === 'tecnico';
+
+  // Filtrar: técnico solo ve sus propias órdenes
+  let visibles = ordenes_.filter(o =>
+    o.latitud && o.longitud && o.estadoCampo !== 'aprobada'
+  );
+  if (isTecnico && destino_) {
+    visibles = visibles.filter(o => o.tecnicoDestino === destino_);
+  }
+
+  // Position:fixed igual que mapa.js de Cambios
   const topbar = document.querySelector('.topbar');
   const navbar  = document.querySelector('.navbar');
-  const tabsH   = 48;
   const topH    = topbar ? topbar.offsetHeight : 62;
   const botH    = navbar  ? navbar.offsetHeight  : 72;
-  const h       = `calc(100vh - ${topH + botH + tabsH + 24}px)`;
 
   content.innerHTML = `
-    <div style="position:relative;height:${h};min-height:280px;border-radius:var(--radius);overflow:hidden;">
+    <div id="otc-mapa-wrapper" style="
+      position:fixed;
+      top:${topH}px; left:0; right:0; bottom:${botH}px;
+      z-index:1;
+    ">
       <div id="otc-mapa-simple" style="width:100%;height:100%;"></div>
-
-      <!-- Stat chip -->
       <div class="mapa-controls-top">
         <div class="mapa-stat-chip">
-          <div class="mapa-stat-dot" id="otc-map-dot"></div>
-          <span id="otc-map-stat">Cargando…</span>
+          <div class="mapa-stat-dot" style="background:${visibles.length ? '#22c55e' : '#f59e0b'}"></div>
+          <span>${visibles.length} en mapa</span>
         </div>
         <button class="mapa-btn-icon" id="otc-btn-loc" title="Mi ubicación">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
@@ -982,21 +990,13 @@ function renderMapaSimple(content) {
           </svg>
         </button>
       </div>
-
-      <!-- Leyenda -->
       <div class="mapa-leyenda">
-        ${TECNICOS.map(t => `
-          <div class="leyenda-item">
-            <div class="leyenda-dot" style="background:${TECNICO_COLORS[t].accent}"></div>
-            <span>${t}</span>
-          </div>`).join('')}
-        <div class="leyenda-item">
-          <div class="leyenda-dot" style="background:#22c55e"></div>
-          <span>Realizada</span>
-        </div>
+        <div class="leyenda-item"><div class="leyenda-dot" style="background:#ef4444"></div><span>Reconex./Hoy</span></div>
+        <div class="leyenda-item"><div class="leyenda-dot" style="background:#f97316"></div><span>1-2 días</span></div>
+        <div class="leyenda-item"><div class="leyenda-dot" style="background:#fbbf24"></div><span>3 días</span></div>
+        <div class="leyenda-item"><div class="leyenda-dot" style="background:#6b7280"></div><span>Normal</span></div>
+        <div class="leyenda-item"><div class="leyenda-dot" style="background:#22c55e"></div><span>Realizada</span></div>
       </div>
-
-      <!-- Panel inferior -->
       <div class="mapa-panel" id="otc-panel-inf">
         <div class="mapa-panel-handle" onclick="document.getElementById('otc-panel-inf').classList.remove('open')"></div>
         <div id="otc-panel-content"></div>
@@ -1005,56 +1005,45 @@ function renderMapaSimple(content) {
   `;
 
   const map = L.map('otc-mapa-simple', {
-    center: [13.7942, -88.8965], zoom: 10,
+    center: [13.7942, -88.8965], zoom: 8,
     zoomControl: false,
   });
   L.tileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', { maxZoom: 20 }).addTo(map);
   L.control.zoom({ position: 'bottomright' }).addTo(map);
-
-  // Cerrar panel al tocar mapa
   map.on('click', () => document.getElementById('otc-panel-inf')?.classList.remove('open'));
 
-  // Todo dentro del setTimeout para que el mapa tenga dimensiones
   setTimeout(() => {
     map.invalidateSize();
 
-    const conCoords = ordenes_.filter(o =>
-      o.latitud && o.longitud && o.estadoCampo !== 'aprobada'
-    );
+    const urgenciaColor = {
+      reconexion: '#ef4444',
+      hoy:        '#ef4444',
+      naranja:    '#f97316',
+      amarillo:   '#fbbf24',
+      normal:     '#6b7280',
+      sinlimite:  '#4b5563',
+      hecha:      '#22c55e',
+    };
 
-    conCoords.forEach(o => {
-      const color = o.estadoCampo === 'hecha'
-        ? '#22c55e'
-        : (TECNICO_COLORS[o.tecnicoDestino] || TECNICO_COLORS[null]).accent;
+    visibles.forEach(o => {
+      const urg   = getUrgencia(o);
+      const color = urgenciaColor[urg] || '#6b7280';
+      const size  = (urg === 'reconexion' || urg === 'hoy') ? 14 : 11;
 
       const icon = L.divIcon({
         className: '',
-        html: `<div style="width:13px;height:13px;background:${color};border:2px solid white;border-radius:50%;box-shadow:0 2px 4px rgba(0,0,0,.4);${o.estadoCampo==='hecha'?'opacity:.7':''}"></div>`,
-        iconSize: [13,13], iconAnchor: [6,6],
+        html: `<div style="width:${size}px;height:${size}px;background:${color};border:2px solid white;border-radius:50%;box-shadow:0 2px 6px rgba(0,0,0,.5)"></div>`,
+        iconSize: [size, size], iconAnchor: [size/2, size/2],
       });
 
       L.marker([parseFloat(o.latitud), parseFloat(o.longitud)], { icon })
-        .on('click', e => {
-          L.DomEvent.stopPropagation(e);
-          mostrarPanelOtc(o);
-        })
+        .on('click', e => { L.DomEvent.stopPropagation(e); mostrarPanelOtc(o); })
         .addTo(map);
     });
 
-    if (conCoords.length) {
-      const group = L.featureGroup(conCoords.map(o => L.marker([parseFloat(o.latitud), parseFloat(o.longitud)])));
-      map.fitBounds(group.getBounds().pad(0.15));
-    }
-
-    // Stat chip
-    const sinCoords = ordenes_.filter(o => !o.latitud && o.estadoCampo !== 'aprobada').length;
-    const statEl    = document.getElementById('otc-map-stat');
-    const dotEl     = document.getElementById('otc-map-dot');
-    if (statEl) {
-      statEl.textContent = sinCoords
-        ? `${conCoords.length} en mapa · ${sinCoords} sin coords`
-        : `${conCoords.length} órdenes en mapa`;
-      if (dotEl) dotEl.style.background = sinCoords ? '#f59e0b' : '#22c55e';
+    if (visibles.length) {
+      const group = L.featureGroup(visibles.map(o => L.marker([parseFloat(o.latitud), parseFloat(o.longitud)])));
+      map.fitBounds(group.getBounds().pad(0.2));
     }
   }, 300);
 
@@ -1062,20 +1051,21 @@ function renderMapaSimple(content) {
   let geoMarker = null;
   navigator.geolocation?.watchPosition(pos => {
     const { latitude: lat, longitude: lng } = pos.coords;
-    const geoIcon = L.divIcon({
+    const icon = L.divIcon({
       className: '',
       html: `<div style="width:14px;height:14px;background:#3b82f6;border:3px solid white;border-radius:50%;box-shadow:0 0 0 4px rgba(59,130,246,.3)"></div>`,
       iconSize: [14,14], iconAnchor: [7,7],
     });
     if (geoMarker) geoMarker.setLatLng([lat, lng]);
-    else geoMarker = L.marker([lat, lng], { icon: geoIcon, zIndexOffset: 1000 }).addTo(map);
+    else geoMarker = L.marker([lat, lng], { icon, zIndexOffset: 1000 }).addTo(map);
   }, null, { enableHighAccuracy: true, maximumAge: 5000 });
 
   document.getElementById('otc-btn-loc')?.addEventListener('click', () => {
-    if (geoMarker) map.setView(geoMarker.getLatLng(), 17);
+    if (geoMarker) map.setView(geoMarker.getLatLng(), 16);
     else toast('Obteniendo ubicación…', 'ok');
   });
 }
+
 
 function mostrarPanelOtc(o) {
   const isTecnico = role_ === 'tecnico';
