@@ -60,7 +60,7 @@ export async function init(container, session) {
 function renderShell() {
   const isTecnico = role_ === 'tecnico';
   const tabs = isTecnico
-    ? [{ id:'ordenes', label:'Órdenes' }, { id:'panel', label:'Resumen'  }]
+    ? [{ id:'ordenes', label:'Órdenes' }, { id:'resumen', label:'Resumen' }]
     : [{ id:'panel',   label:'Panel'   }, { id:'ordenes', label:'Órdenes' }, { id:'mapa', label:'Mapa' }];
 
   container_.innerHTML = `
@@ -243,9 +243,113 @@ function priorizarOrdenes(lista) {
 
 // ── Render tab activo ─────────────────────────────
 function renderTab() {
-  if (activeTab === 'panel')   renderPanel();
-  else if (activeTab === 'mapa') renderMapaTab();
-  else renderOrdenes();
+  if      (activeTab === 'panel')   renderPanel();
+  else if (activeTab === 'mapa')    renderMapaTab();
+  else if (activeTab === 'resumen') renderResumenTecnico();
+  else                              renderOrdenes();
+}
+
+// ── Resumen técnico (Cambios) ─────────────────────
+function renderResumenTecnico() {
+  const content   = document.getElementById('cambios-content');
+  const miLista   = ordenes.filter(o => o.pareja === pareja_);
+  const hoy       = new Date(); hoy.setHours(0,0,0,0);
+
+  const hechasHoy = miLista.filter(o => {
+    if (o.estadoCampo !== 'hecha' && o.estadoCampo !== 'aprobada') return false;
+    const f = o.fechaHecha?.toDate ? o.fechaHecha.toDate() : null;
+    return f && f >= hoy;
+  });
+  const visitasHoy = miLista.filter(o => {
+    if (o.estadoCampo !== 'visita') return false;
+    const f = o.fechaVisita?.toDate ? o.fechaVisita.toDate() : null;
+    return f && f >= hoy;
+  });
+  const pendientes    = miLista.filter(o => !o.estadoCampo && !isBlocked(o));
+  const bloqueadas    = miLista.filter(o => !o.estadoCampo && isBlocked(o));
+  const sinActualizar = miLista.filter(o => o.estadoCampo === 'hecha' && !o.actualizadaDelsur);
+  const total         = miLista.length;
+  const pct           = total ? Math.round((hechasHoy.length / total) * 100) : 0;
+  const fechaLabel    = new Date().toLocaleDateString('es-SV', { weekday:'long', day:'numeric', month:'long' });
+
+  content.innerHTML = `
+    <div class="flex-col gap-12">
+
+      <div class="panel-header anim-up">
+        <div>
+          <div class="section-title">Mi resumen</div>
+          <div class="section-sub">${pareja_ || 'Cambios'} · ${fechaLabel.charAt(0).toUpperCase() + fechaLabel.slice(1)}</div>
+        </div>
+      </div>
+
+      <div class="progress-card anim-up d1">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+          <div style="font-size:13px;font-weight:700">Progreso de hoy</div>
+          <div style="font-size:24px;font-weight:800;color:var(--cm-light)">${pct}%</div>
+        </div>
+        <div class="progress-bar-bg">
+          <div class="progress-bar-fill cm" style="width:${pct}%"></div>
+        </div>
+        <div class="progress-stats" style="margin-top:10px">
+          <span><span class="stat-dot ok"></span>${hechasHoy.length} realizadas hoy</span>
+          <span><span class="stat-dot warn"></span>${visitasHoy.length} visitas</span>
+          <span><span class="stat-dot muted"></span>${pendientes.length} pendientes</span>
+        </div>
+      </div>
+
+      <div class="stat-row anim-up d2">
+        <div class="stat-chip cm-accent">
+          <div class="val">${hechasHoy.length}</div>
+          <div class="lbl">Hechas hoy</div>
+        </div>
+        <div class="stat-chip cm-accent">
+          <div class="val">${visitasHoy.length}</div>
+          <div class="lbl">Visitas hoy</div>
+        </div>
+        <div class="stat-chip">
+          <div class="val">${pendientes.length}</div>
+          <div class="lbl">Pendientes</div>
+        </div>
+        <div class="stat-chip ${bloqueadas.length ? 'warn-accent' : ''}">
+          <div class="val">${bloqueadas.length}</div>
+          <div class="lbl">Bloqueadas</div>
+        </div>
+      </div>
+
+      ${sinActualizar.length ? `
+      <div class="otc-alert-card warn anim-up d2">
+        <div class="otc-alert-header">⚠ ${sinActualizar.length} sin actualizar en DELSUR</div>
+        ${sinActualizar.map(o => `
+          <div class="orden-visita-panel" onclick="window.__cambios.verOrden('${o.id}')" style="margin-top:6px">
+            <div class="status-dot warn pulse"></div>
+            <div>
+              <div style="font-size:12px;font-weight:700">WO ${o.wo || '—'}</div>
+              <div style="font-size:10px;color:var(--text-3)">${o.cliente || '—'}</div>
+            </div>
+          </div>`).join('')}
+      </div>` : ''}
+
+      ${bloqueadas.length ? `
+      <div class="otc-alert-card warn-soft anim-up d3">
+        <div class="otc-alert-header">🔒 ${bloqueadas.length} bloqueadas por lectura</div>
+        ${bloqueadas.map(o => `
+          <div class="orden-visita-panel" style="margin-top:6px">
+            <div class="status-dot muted"></div>
+            <div>
+              <div style="font-size:12px;font-weight:700">WO ${o.wo || '—'}</div>
+              <div style="font-size:10px;color:var(--text-4)">${o.unidadLectura || '—'}</div>
+            </div>
+          </div>`).join('')}
+      </div>` : ''}
+
+      ${!total ? `
+      <div class="dev-module anim-up d2">
+        <div class="dev-title">Sin órdenes asignadas</div>
+        <p>No tienes órdenes para ${pareja_ || 'hoy'}.</p>
+      </div>` : ''}
+
+    </div>
+  `;
 }
 
 // ── Mapa dentro de Cambios ────────────────────────
