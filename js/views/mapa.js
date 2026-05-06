@@ -717,10 +717,22 @@ async function confirmarIndividual() {
 let zonaActual_ = null;
 
 function activarModoZona() {
-  if (!map_ || !drawControl_) return;
-  map_.addControl(drawControl_);
+  if (!map_) return;
   closePanel();
+
+  // Activar el handler de rectángulo directamente
+  const handler = new L.Draw.Rectangle(map_, {
+    shapeOptions: { color: '#2dd4bf', weight: 2, fillOpacity: 0.1 },
+  });
+  handler.enable();
+
   toast('Dibuja un rectángulo sobre las órdenes a asignar', 'ok', 4000);
+
+  // Escuchar el evento una sola vez
+  map_.once(L.Draw.Event.CREATED, e => {
+    handler.disable();
+    onZonaCreada(e);
+  });
 }
 
 function onZonaCreada(e) {
