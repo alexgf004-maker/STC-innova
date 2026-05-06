@@ -1212,23 +1212,22 @@ function mostrarPanelOtc(o) {
 
 // ── Acciones ──────────────────────────────────────
 async function marcarHecha(id) {
-  try {
-    const now = firebase.firestore.Timestamp.now();
-    await db.collection('otc_ordenes').doc(id).update({
-      estadoCampo:       'hecha',
-      fechaHecha:        now,
-      hechaPor:          session_.displayName,
-      actualizadaDelsur: false,
-    });
-    const o = ordenes_.find(x => x.id === id);
-    if (o) { o.estadoCampo = 'hecha'; o.actualizadaDelsur = false; }
-    closeSheet('sheet-otc-detalle');
-    renderTab();
-    toast('Orden marcada como realizada', 'ok');
-  } catch (err) {
-    console.error('[otc] Error:', err);
-    toast('Error al guardar', 'error');
-  }
+  const orden = ordenes_.find(x => x.id === id);
+  if (!orden) return;
+  closeSheet('sheet-otc-detalle');
+
+  const { abrirConsumoOrden } = await import('../consumo.js');
+  abrirConsumoOrden({
+    orden: { ...orden, id },
+    modulo: 'otc',
+    session: session_,
+    db,
+    onSuccess: ({ actualizadoDelsur }) => {
+      const o = ordenes_.find(x => x.id === id);
+      if (o) { o.estadoCampo = 'hecha'; o.actualizadaDelsur = actualizadoDelsur; }
+      renderTab();
+    }
+  });
 }
 
 async function aprobar(id) {
