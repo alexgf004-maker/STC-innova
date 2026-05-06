@@ -748,13 +748,6 @@ function activarModoZona() {
   });
 }
 
-function cancelarZona() {
-  map_.getContainer().style.cursor = '';
-  if (zonaRect_) { map_.removeLayer(zonaRect_); zonaRect_ = null; }
-  zonaActual_ = null;
-  puntoA_     = null;
-}
-
 async function confirmarZona() {
   const parejaVal = getSelectedChip('zona-pareja-row');
   const errEl     = document.getElementById('zona-error');
