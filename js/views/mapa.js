@@ -336,30 +336,8 @@ function initMap() {
   // Cerrar panel al tocar el mapa
   map_.on('click', closePanel);
 
-  // Inicializar capa de dibujo (solo admin/asistente)
+  // Solo admin/asistente tiene el botón de zona
   if (role_ !== 'tecnico') {
-    drawnItems_ = new L.FeatureGroup();
-    map_.addLayer(drawnItems_);
-
-    drawControl_ = new L.Control.Draw({
-      position: 'topright',
-      draw: {
-        rectangle: {
-          shapeOptions: { color: '#2dd4bf', weight: 2, fillOpacity: 0.1 },
-        },
-        polygon:   false,
-        polyline:  false,
-        circle:    false,
-        marker:    false,
-        circlemarker: false,
-      },
-      edit: { featureGroup: drawnItems_, remove: true },
-    });
-    // No agregar control automáticamente — se activa al presionar "Asignar zona"
-
-    // Escuchar evento de zona dibujada
-    map_.on(L.Draw.Event.CREATED, onZonaCreada);
-
     map_.on('click', closePanel);
   }
 
@@ -713,48 +691,68 @@ async function confirmarIndividual() {
   }
 }
 
-// ── Asignación por zona ───────────────────────────
+// ── Asignación por zona (2 clicks) ───────────────
 let zonaActual_ = null;
+let zonaRect_   = null;
+let puntoA_     = null;
 
 function activarModoZona() {
   if (!map_) return;
   closePanel();
+  puntoA_ = null;
+  if (zonaRect_) { map_.removeLayer(zonaRect_); zonaRect_ = null; }
 
-  // Activar el handler de rectángulo directamente
-  const handler = new L.Draw.Rectangle(map_, {
-    shapeOptions: { color: '#2dd4bf', weight: 2, fillOpacity: 0.1 },
-  });
-  handler.enable();
+  // Cambiar cursor
+  map_.getContainer().style.cursor = 'crosshair';
 
-  toast('Dibuja un rectángulo sobre las órdenes a asignar', 'ok', 4000);
+  // Toast instructivo
+  toast('Click 1: esquina inicial — Click 2: esquina final', 'ok', 5000);
 
-  // Escuchar el evento una sola vez
-  map_.once(L.Draw.Event.CREATED, e => {
-    handler.disable();
-    onZonaCreada(e);
+  // Listener de clicks
+  map_.once('click', e => {
+    puntoA_ = e.latlng;
+
+    // Preview mientras mueve el mouse
+    let previewRect = null;
+    function onMove(ev) {
+      const bounds = L.latLngBounds(puntoA_, ev.latlng);
+      if (previewRect) previewRect.setBounds(bounds);
+      else {
+        previewRect = L.rectangle(bounds, { color: '#2dd4bf', weight: 2, fillOpacity: 0.1, dashArray: '6,4' }).addTo(map_);
+      }
+    }
+    map_.on('mousemove', onMove);
+
+    map_.once('click', e2 => {
+      map_.off('mousemove', onMove);
+      if (previewRect) { map_.removeLayer(previewRect); }
+      map_.getContainer().style.cursor = '';
+
+      const bounds = L.latLngBounds(puntoA_, e2.latlng);
+      zonaRect_    = L.rectangle(bounds, { color: '#2dd4bf', weight: 2, fillOpacity: 0.12 }).addTo(map_);
+      zonaActual_  = { getBounds: () => bounds };
+      puntoA_      = null;
+
+      // Contar órdenes dentro
+      const dentro = ordenes_.filter(o =>
+        o.latitud && o.longitud &&
+        bounds.contains(L.latLng(parseFloat(o.latitud), parseFloat(o.longitud)))
+      );
+
+      document.getElementById('zona-count').textContent = dentro.length;
+      document.getElementById('zona-preview').style.display = dentro.length ? '' : 'none';
+      document.getElementById('zona-error').style.display = 'none';
+      document.querySelectorAll('#zona-pareja-row .select-chip').forEach(c => c.classList.remove('active'));
+      openSheet('sheet-zona');
+    });
   });
 }
 
-function onZonaCreada(e) {
-  drawnItems_.clearLayers();
-  zonaActual_ = e.layer;
-  drawnItems_.addLayer(zonaActual_);
-  map_.removeControl(drawControl_);
-
-  const bounds = zonaActual_.getBounds();
-  const dentro = ordenes_.filter(o =>
-    o.latitud && o.longitud &&
-    bounds.contains(L.latLng(o.latitud, o.longitud))
-  );
-
-  document.getElementById('zona-count').textContent = dentro.length;
-  document.getElementById('zona-preview').style.display = dentro.length ? '' : 'none';
-  document.getElementById('zona-error').style.display = 'none';
-
-  // Reset selección de pareja
-  document.querySelectorAll('#zona-pareja-row .select-chip').forEach(c => c.classList.remove('active'));
-
-  openSheet('sheet-zona');
+function cancelarZona() {
+  map_.getContainer().style.cursor = '';
+  if (zonaRect_) { map_.removeLayer(zonaRect_); zonaRect_ = null; }
+  zonaActual_ = null;
+  puntoA_     = null;
 }
 
 async function confirmarZona() {
@@ -808,7 +806,7 @@ async function confirmarZona() {
     await Promise.all(batches);
 
     dentro.forEach(o => { o.pareja = pareja; });
-    drawnItems_.clearLayers();
+    if (zonaRect_) { map_.removeLayer(zonaRect_); zonaRect_ = null; }
     zonaActual_ = null;
     plotMarkers();
     updateStatChip();
@@ -826,9 +824,10 @@ async function confirmarZona() {
 }
 
 function cancelarZona() {
-  drawnItems_?.clearLayers();
+  map_.getContainer().style.cursor = '';
+  if (zonaRect_) { map_.removeLayer(zonaRect_); zonaRect_ = null; }
   zonaActual_ = null;
-  try { map_.removeControl(drawControl_); } catch {}
+  puntoA_     = null;
   closeSheet('sheet-zona');
 }
 
