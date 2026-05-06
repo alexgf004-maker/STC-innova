@@ -865,28 +865,40 @@ function verOrden(id) {
 
 // ── Acciones ──────────────────────────────────────
 async function marcarHecha(id) {
-  const now = firebase.firestore.Timestamp.now();
+  const orden = ordenes.find(o => o.id === id);
+  if (!orden) return;
 
-  // Buscar compañeros con el mismo destino hoy
-  let parejaDelDia = [session_.displayName];
-  try {
-    const destino = session_.asignacion?.destino || session_.asignacionActual?.destino;
-    if (destino) {
-      const snap = await db.collection('users')
-        .where('asignacionActual.destino', '==', destino)
-        .where('active', '==', true)
-        .get();
-      parejaDelDia = snap.docs.map(d => d.data().displayName);
+  const { abrirConsumoOrden } = await import('../consumo.js');
+  abrirConsumoOrden({
+    orden: { ...orden, id },
+    modulo: 'cambios',
+    session: session_,
+    db,
+    onSuccess: async ({ actualizadoDelsur }) => {
+      // Actualizar pareja del día
+      let parejaDelDia = [session_.displayName];
+      try {
+        const destino = session_.asignacionActual?.destino;
+        if (destino) {
+          const snap = await db.collection('users')
+            .where('asignacionActual.destino', '==', destino)
+            .where('active', '==', true).get();
+          parejaDelDia = snap.docs.map(d => d.data().displayName);
+        }
+      } catch { /* sin conexión */ }
+
+      await db.collection('cambios_ordenes').doc(id).update({ parejaDelDia });
+      const idx = ordenes.findIndex(o => o.id === id);
+      if (idx !== -1) ordenes[idx] = {
+        ...ordenes[idx],
+        estadoCampo: 'hecha',
+        actualizadaDelsur: actualizadoDelsur,
+        parejaDelDia,
+      };
+      invalidateOrdenes();
+      renderTab();
     }
-  } catch { /* sin conexión — usar solo nombre propio */ }
-
-  await updateOrden(id, {
-    estadoCampo:       'hecha',
-    fechaHecha:        now,
-    hechaPor:          session_.displayName,
-    actualizadaDelsur: false,
-    parejaDelDia,
-  }, 'Orden marcada como realizada');
+  });
 }
 
 async function marcarVisita(id) {
