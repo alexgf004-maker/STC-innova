@@ -357,6 +357,9 @@ function initMap() {
     });
     // No agregar control automáticamente — se activa al presionar "Asignar zona"
 
+    // Escuchar evento de zona dibujada
+    map_.on(L.Draw.Event.CREATED, onZonaCreada);
+
     map_.on('click', closePanel);
   }
 
