@@ -1215,19 +1215,23 @@ async function marcarHecha(id) {
   const orden = ordenes_.find(x => x.id === id);
   if (!orden) return;
   closeSheet('sheet-otc-detalle');
-
-  const { abrirConsumoOrden } = await import('../consumo.js');
-  abrirConsumoOrden({
-    orden: { ...orden, id },
-    modulo: 'otc',
-    session: session_,
-    db,
-    onSuccess: ({ actualizadoDelsur }) => {
-      const o = ordenes_.find(x => x.id === id);
-      if (o) { o.estadoCampo = 'hecha'; o.actualizadaDelsur = actualizadoDelsur; }
-      renderTab();
-    }
-  });
+  try {
+    const { abrirConsumoOrden } = await import('../consumo.js');
+    abrirConsumoOrden({
+      orden: { ...orden, id },
+      modulo: 'otc',
+      session: session_,
+      db,
+      onSuccess: ({ actualizadoDelsur }) => {
+        const o = ordenes_.find(x => x.id === id);
+        if (o) { o.estadoCampo = 'hecha'; o.actualizadaDelsur = actualizadoDelsur; }
+        renderTab();
+      }
+    });
+  } catch(err) {
+    console.error('[otc] marcarHecha error:', err);
+    toast('Error al cargar formulario: ' + err.message, 'error');
+  }
 }
 
 async function aprobar(id) {
@@ -1416,6 +1420,3 @@ function formatDate(ts) {
   const d = ts?.toDate ? ts.toDate() : new Date(ts);
   return d.toLocaleDateString('es-SV', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' });
 }
-
-// Exponer para onclick del panel de técnicos
-window.__otc = { verOrden, marcarHecha, aprobar, rechazar, openNueva, _filtroTec, _renderOrdenes: renderOrdenes };
