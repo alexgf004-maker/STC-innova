@@ -1,59 +1,158 @@
 /**
- * js/views/cambios.js
- * Módulo Cambios de Medidor.
+ * js/views/otc.js
+ * Módulo OTC — Órdenes Técnicas de Campo.
  * Exporta: init(container, session)
- *
- * Roles:
- *   admin / asistente → Panel de gestión + todas las parejas
- *   tecnico (CAMBIOS) → Solo su pareja
  */
 
 import { db } from '../firebase.js';
 import { toast } from '../ui.js';
 
-// ── Caché ─────────────────────────────────────────
-const cache = {
-  ordenes:    { data: null, ts: 0, TTL: 2 * 60 * 1000 },
-  calendario: { data: null, ts: 0, TTL: 30 * 60 * 1000 },
-};
-
-function cacheValid(key) {
-  return cache[key].data && (Date.now() - cache[key].ts < cache[key].TTL);
-}
-function invalidateOrdenes() {
-  cache.ordenes.data = null;
-  cache.ordenes.ts   = 0;
-}
-
 // ── Constantes ────────────────────────────────────
-const PAREJAS = ['Pareja 1', 'Pareja 2', 'Pareja 3', 'Pareja 4'];
-const PAREJA_COLORS = {
-  'Pareja 1': { accent: '#2dd4bf', glass: 'rgba(13,148,136,.12)', border: 'rgba(13,148,136,.25)' },
-  'Pareja 2': { accent: '#60a5fa', glass: 'rgba(37,99,235,.12)',  border: 'rgba(37,99,235,.25)'  },
-  'Pareja 3': { accent: '#a78bfa', glass: 'rgba(139,92,246,.12)', border: 'rgba(139,92,246,.25)' },
-  'Pareja 4': { accent: '#fbbf24', glass: 'rgba(245,158,11,.12)', border: 'rgba(245,158,11,.25)' },
+const TECNICOS = ['NALVAR', 'RGONZA', 'JPEREZ'];
+const TECNICO_COLORS = {
+  'NALVAR': { accent: '#60a5fa', glass: 'rgba(37,99,235,.12)',  border: 'rgba(37,99,235,.25)'  },
+  'RGONZA': { accent: '#a78bfa', glass: 'rgba(139,92,246,.12)', border: 'rgba(139,92,246,.25)' },
+  'JPEREZ': { accent: '#34d399', glass: 'rgba(16,185,129,.12)', border: 'rgba(16,185,129,.25)' },
+  null:     { accent: '#6b7280', glass: 'rgba(107,114,128,.08)', border: 'rgba(107,114,128,.2)' },
 };
 
-let container_, session_, role_, pareja_;
-let ordenes = [], calendario = [];
-let activeTab = 'panel'; // 'panel' | 'ordenes'
-let selectedOrden = null;
+const TIPO_LABELS = {
+  servicio_nuevo:  'Servicio nuevo',
+  cambio_voltaje:  'Cambio voltaje',
+  reconexion:      'Reconexión',
+  desconexion:     'Desconexión',
+  anomalia:        'Anomalía',
+};
+
+const TIPO_COLORS = {
+  reconexion:     '#ef4444',
+  servicio_nuevo: '#f59e0b',
+  cambio_voltaje: '#f59e0b',
+  desconexion:    '#6b7280',
+  anomalia:       '#6b7280',
+};
+
+// Asuetos nacionales El Salvador (MM-DD)
+const ASUETOS = new Set([
+  '01-01', // Año Nuevo
+  '04-10', '04-11', '04-12', // Semana Santa (variables — aproximación fija)
+  '05-01', // Día del Trabajo
+  '08-06', // Fiestas Agostinas
+  '09-15', // Independencia
+  '11-02', // Día de Difuntos
+  '12-25', // Navidad
+]);
+
+let container_, session_, role_, destino_;
+let ordenes_ = [];
+let activeTab_ = 'panel';
 
 // ── Entry point ───────────────────────────────────
 export async function init(container, session) {
   container_ = container;
   session_   = session;
   role_      = session.role;
-  pareja_    = session.asignacionActual?.destino || null;
+  destino_   = session.asignacionActual?.destino || null;
+  activeTab_ = role_ === 'tecnico' ? 'ordenes' : 'panel';
 
   renderShell();
-  await Promise.all([loadCalendario(), loadOrdenes()]);
+  await loadOrdenes();
+}
 
-  // Escuchar actualizaciones desde el mapa
-  window.addEventListener('cambios:updated', () => {
-    invalidateOrdenes();
-    loadOrdenes();
-  });
+export async function initConTab(container, session, tab) {
+  container_ = container;
+  session_   = session;
+  role_      = session.role;
+  destino_   = session.asignacionActual?.destino || null;
+  activeTab_ = tab;
+
+  if (tab === 'mapa') {
+    // Renderizar mapa directamente sin sistema de tabs
+    container_.innerHTML = '';
+    await loadOrdenes();
+    renderMapaSimple(container_);
+    return;
+  }
+
+  renderShell();
+  await loadOrdenes();
+}
+
+// ── Días hábiles ──────────────────────────────────
+function esHabil(fecha) {
+  const dow = fecha.getDay();
+  if (dow === 0 || dow === 6) return false;
+  const key = String(fecha.getMonth() + 1).padStart(2,'0') + '-' + String(fecha.getDate()).padStart(2,'0');
+  return !ASUETOS.has(key);
+}
+
+function sumarDiasHabiles(desde, dias) {
+  const d = new Date(desde);
+  let count = 0;
+  while (count < dias) {
+    d.setDate(d.getDate() + 1);
+    if (esHabil(d)) count++;
+  }
+  return d;
+}
+
+function diasHabilesRestantes(fechaVenc) {
+  if (!fechaVenc) return null;
+  const hoy  = new Date(); hoy.setHours(0,0,0,0);
+  const venc = fechaVenc instanceof Date ? fechaVenc : fechaVenc.toDate();
+  venc.setHours(0,0,0,0);
+  if (venc <= hoy) return 0;
+  let count = 0;
+  const cursor = new Date(hoy);
+  while (cursor < venc) {
+    cursor.setDate(cursor.getDate() + 1);
+    if (esHabil(cursor)) count++;
+  }
+  return count;
+}
+
+function calcularVencimiento(orden) {
+  const fechaBase = orden.fechaIngreso?.toDate ? orden.fechaIngreso.toDate() : new Date();
+  if (orden.tipo === 'servicio_nuevo')  return sumarDiasHabiles(fechaBase, 5);
+  if (orden.tipo === 'cambio_voltaje')  return sumarDiasHabiles(fechaBase, 10);
+  if (orden.tipo === 'reconexion' && orden.fechaPago) {
+    const pago = orden.fechaPago?.toDate ? orden.fechaPago.toDate() : new Date(orden.fechaPago);
+    return new Date(pago.getTime() + 24 * 60 * 60 * 1000);
+  }
+  return null;
+}
+
+function countdownReconexion(fechaPago) {
+  if (!fechaPago) return null;
+  const pago     = fechaPago?.toDate ? fechaPago.toDate() : new Date(fechaPago);
+  const limite   = new Date(pago.getTime() + 24 * 60 * 60 * 1000);
+  const restante = limite - Date.now();
+  if (restante <= 0) return '¡Vencida!';
+  const h = Math.floor(restante / 3600000);
+  const m = Math.floor((restante % 3600000) / 60000);
+  return `${h}h ${m}m restantes`;
+}
+
+// ── Priorizar órdenes ─────────────────────────────
+function priorizar(lista) {
+  const hoy     = new Date(); hoy.setHours(23,59,59,999);
+  const manana  = new Date(); manana.setDate(manana.getDate() + 1); manana.setHours(23,59,59,999);
+
+  const reconexiones = lista.filter(o => o.tipo === 'reconexion' && !o.estadoCampo && o.fechaPago);
+  const porVencer    = lista.filter(o =>
+    !o.estadoCampo && o.tipo !== 'reconexion' && o.tipo !== 'desconexion' && o.tipo !== 'anomalia' && (() => {
+      const v = calcularVencimiento(o);
+      return v && v <= manana;
+    })()
+  );
+  const sinActualizar= lista.filter(o => o.estadoCampo === 'hecha' && !o.actualizadaDelsur);
+  const hechas       = lista.filter(o => o.estadoCampo === 'hecha' && o.actualizadaDelsur);
+  const pendientes   = lista.filter(o =>
+    !o.estadoCampo && o.tipo !== 'reconexion' && o.tipo !== 'anomalia' && !porVencer.find(x => x.id === o.id)
+  );
+  const anomalias    = lista.filter(o => !o.estadoCampo && o.tipo === 'anomalia');
+
+  return { reconexiones, porVencer, sinActualizar, hechas, pendientes, anomalias };
 }
 
 // ── Shell ─────────────────────────────────────────
@@ -64,16 +163,12 @@ function renderShell() {
     : [{ id:'panel',   label:'Panel'   }, { id:'ordenes', label:'Órdenes' }, { id:'mapa', label:'Mapa' }];
 
   container_.innerHTML = `
-    <!-- Tabs -->
     <div class="cambios-tabs">
-      ${tabs.map((t, i) => `
-        <div class="cambios-tab ${i === 0 ? 'active' : ''}" data-tab="${t.id}">${t.label}</div>
+      ${tabs.map(t => `
+        <div class="cambios-tab otc ${t.id === activeTab_ ? 'active' : ''}" data-tab="${t.id}">${t.label}</div>
       `).join('')}
-      <div class="cambios-tab-indicator"></div>
     </div>
-
-    <!-- Contenido del tab activo -->
-    <div id="cambios-content" style="padding-top:12px">
+    <div id="otc-content" style="padding-top:12px">
       <div class="loading-placeholder">
         <div class="loading-bar"></div>
         <div class="loading-bar short"></div>
@@ -81,195 +176,171 @@ function renderShell() {
       </div>
     </div>
 
-    <!-- Sheet detalle orden -->
-    <div class="sheet-backdrop" id="sheet-orden">
+    <!-- Sheet nueva orden manual -->
+    <div class="sheet-backdrop" id="sheet-nueva-otc">
       <div class="sheet">
         <div class="sheet-handle"></div>
-        <div class="sheet-title" id="sheet-orden-title">Orden</div>
-        <div class="sheet-body" id="sheet-orden-body"></div>
-      </div>
-    </div>
-
-    <!-- Sheet nueva orden campo -->
-    <div class="sheet-backdrop" id="sheet-campo">
-      <div class="sheet">
-        <div class="sheet-handle"></div>
-        <div class="sheet-title">Orden generada en campo</div>
+        <div class="sheet-title">Nueva orden OTC</div>
         <div class="sheet-body">
           <div class="form-field">
-            <div class="form-label">WO (Work Order) *</div>
-            <input class="form-input" id="campo-wo" type="text" placeholder="Ej: 12345678"/>
+            <div class="form-label">WO</div>
+            <input class="form-input" id="otc-wo" type="text" placeholder="Número de orden"/>
           </div>
           <div class="form-field">
-            <div class="form-label">NC (opcional)</div>
-            <input class="form-input" id="campo-nc" type="text" placeholder="Número de cliente"/>
+            <div class="form-label">Tipo</div>
+            <div class="select-row flex-wrap" id="otc-tipo-row">
+              <div class="select-chip" data-val="servicio_nuevo">Servicio nuevo</div>
+              <div class="select-chip" data-val="cambio_voltaje">Cambio voltaje</div>
+              <div class="select-chip" data-val="reconexion">Reconexión</div>
+              <div class="select-chip" data-val="desconexion">Desconexión</div>
+              <div class="select-chip" data-val="anomalia">Anomalía</div>
+            </div>
           </div>
           <div class="form-field">
-            <div class="form-label">Observación</div>
-            <input class="form-input" id="campo-obs" type="text" placeholder="Breve descripción"/>
+            <div class="form-label">Fecha de ingreso al SAP</div>
+            <input class="form-input" id="otc-fecha-sap" type="date"/>
           </div>
-          <div id="campo-error" class="form-error"></div>
-          <button class="btn-primary full" id="btn-guardar-campo">
-            <span id="btn-campo-label">Registrar orden</span>
+          <div class="form-field">
+            <div class="form-label">Cliente</div>
+            <input class="form-input" id="otc-cliente" type="text" placeholder="Nombre del cliente"/>
+          </div>
+          <div class="form-field">
+            <div class="form-label">Dirección</div>
+            <input class="form-input" id="otc-dir" type="text" placeholder="Dirección"/>
+          </div>
+          <div class="form-field">
+            <div class="form-label">Coordenadas (opcional)</div>
+            <div style="display:flex;gap:8px">
+              <input class="form-input" id="otc-lat" type="number" step="any" placeholder="Latitud" style="flex:1"/>
+              <input class="form-input" id="otc-lng" type="number" step="any" placeholder="Longitud" style="flex:1"/>
+            </div>
+          </div>
+          <div class="form-field" ${role_ === 'tecnico' ? 'style="display:none"' : ''}>
+            <div class="form-label">Técnico asignado</div>
+            <div class="select-row" id="otc-tec-row">
+              ${TECNICOS.map(t => `<div class="select-chip ${role_ === 'tecnico' && t === destino_ ? 'active' : ''}" data-val="${t}">${t}</div>`).join('')}
+            </div>
+          </div>
+          <div class="form-field" id="otc-pago-wrap" style="display:none">
+            <div class="form-label">Fecha de pago (reconexión)</div>
+            <input class="form-input" id="otc-pago" type="datetime-local"/>
+          </div>
+          <div id="otc-nueva-error" class="form-error"></div>
+          <button class="btn-primary full otc" id="btn-crear-otc">
+            <span id="btn-otc-label">Crear orden</span>
           </button>
         </div>
       </div>
     </div>
 
-    <!-- Sheet importar Excel (solo admin/asistente) -->
-    ${!isTecnico ? `
-    <div class="sheet-backdrop" id="sheet-import">
+    <!-- Sheet reasignar orden -->
+    <div class="sheet-backdrop" id="sheet-reasignar">
       <div class="sheet">
         <div class="sheet-handle"></div>
-        <div class="sheet-title">Importar órdenes</div>
+        <div class="sheet-title" id="sheet-reasignar-title">Reasignar orden</div>
         <div class="sheet-body">
-          <div class="import-dropzone" id="import-dropzone">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" width="32" height="32" style="color:var(--text-4)">
-              <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
-              <polyline points="17 8 12 3 7 8"/>
-              <line x1="12" y1="3" x2="12" y2="15"/>
-            </svg>
-            <p>Toca para seleccionar archivo Excel</p>
-            <span>.xlsx · .xls</span>
+          <div class="form-label" style="margin-bottom:8px">Asignar a técnico</div>
+          <div class="select-row" id="reasignar-tec-row" style="margin-bottom:16px">
+            ${TECNICOS.map(t => `<div class="select-chip" data-val="${t}">${t}</div>`).join('')}
           </div>
-          <input type="file" id="import-file" accept=".xlsx,.xls" style="display:none"/>
-          <div id="import-preview" style="display:none">
-            <div class="import-info" id="import-info"></div>
-            <div id="import-error" class="form-error"></div>
-            <button class="btn-primary full" id="btn-confirmar-import">
-              <span id="btn-import-label">Importar órdenes</span>
-            </button>
-          </div>
+          <div id="reasignar-error" class="form-error"></div>
+          <button class="btn-primary full otc" onclick="window.__otc.confirmarReasignar()">
+            <span id="btn-reasignar-label">Confirmar reasignación</span>
+          </button>
         </div>
       </div>
-    </div>` : ''}
+    </div>
+
+    <!-- Sheet detalle orden -->
+    <div class="sheet-backdrop" id="sheet-otc-detalle">
+      <div class="sheet">
+        <div class="sheet-handle"></div>
+        <div class="sheet-title" id="sheet-otc-title">Orden OTC</div>
+        <div class="sheet-body" id="sheet-otc-body"></div>
+      </div>
+    </div>
   `;
 
-  // Eventos tabs
-  activeTab = tabs[0].id;
-  document.querySelectorAll('.cambios-tab').forEach(tab => {
+  activeTab_ = tabs[0].id;
+
+  document.querySelectorAll('.cambios-tab.otc').forEach(tab => {
     tab.addEventListener('click', () => {
-      document.querySelectorAll('.cambios-tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.cambios-tab.otc').forEach(t => t.classList.remove('active'));
       tab.classList.add('active');
-      activeTab = tab.dataset.tab;
+      activeTab_ = tab.dataset.tab;
       renderTab();
     });
   });
 
-  // Cerrar sheets
-  ['sheet-orden', 'sheet-campo', 'sheet-import'].forEach(id => {
-    const el = document.getElementById(id);
-    if (!el) return;
-    el.addEventListener('click', e => { if (e.target === el) closeSheet(id); });
+  // Mostrar fecha pago si tipo = reconexion
+  setupSelectChips('otc-tipo-row');
+  setupSelectChips('otc-tec-row');
+  document.getElementById('otc-tipo-row').addEventListener('click', e => {
+    const chip = e.target.closest('.select-chip');
+    if (!chip) return;
+    document.getElementById('otc-pago-wrap').style.display =
+      chip.dataset.val === 'reconexion' ? '' : 'none';
   });
 
-  // Orden en campo
-  document.getElementById('btn-guardar-campo')?.addEventListener('click', guardarOrdenCampo);
+  document.getElementById('btn-crear-otc').addEventListener('click', crearOrden);
 
-  // Import Excel
-  const dropzone = document.getElementById('import-dropzone');
-  const fileInput = document.getElementById('import-file');
-  dropzone?.addEventListener('click', () => fileInput.click());
-  fileInput?.addEventListener('change', handleFileSelect);
-  document.getElementById('btn-confirmar-import')?.addEventListener('click', confirmarImport);
+  // Fecha SAP por defecto: hoy
+  const hoy = new Date().toISOString().split('T')[0];
+  const fechaSapEl = document.getElementById('otc-fecha-sap');
+  if (fechaSapEl) fechaSapEl.value = hoy;
 
-  // Exponer para onclick
-  window.__cambios = { verOrden, marcarHecha, marcarVisita, actualizadaDelsur, aprobar, rechazar, openCampo, openImport, toggleAcordeon };
+  ['sheet-nueva-otc', 'sheet-otc-detalle', 'sheet-reasignar'].forEach(id => {
+    document.getElementById(id)?.addEventListener('click', e => {
+      if (e.target === document.getElementById(id)) closeSheet(id);
+    });
+  });
+
+  setupSelectChips('reasignar-tec-row');
+
+  window.__otc = { verOrden, marcarHecha, aprobar, rechazar, openNueva, verTecnico, verUrgencias, _volverPanel, reasignar, confirmarReasignar, _filtroTec, _renderOrdenes: renderOrdenes };
 }
 
-// ── Cargar datos ──────────────────────────────────
-async function loadCalendario() {
-  if (cacheValid('calendario')) return;
-  try {
-    const snap = await db.collection('cambios_calendario').get();
-    calendario = snap.docs.map(d => d.data());
-    cache.calendario.data = calendario;
-    cache.calendario.ts   = Date.now();
-  } catch (err) {
-    console.warn('[cambios] Error cargando calendario:', err);
-    calendario = [];
-  }
-}
-
+// ── Cargar órdenes ────────────────────────────────
 async function loadOrdenes() {
-  if (cacheValid('ordenes')) {
-    ordenes = cache.ordenes.data;
-    renderTab();
-    return;
-  }
   try {
-    let query = db.collection('cambios_ordenes');
-    // Técnico solo ve su pareja
-    if (role_ === 'tecnico' && pareja_) {
-      query = query.where('pareja', '==', pareja_);
+    let query = db.collection('otc_ordenes');
+    if (role_ === 'tecnico' && destino_) {
+      query = query.where('tecnicoDestino', '==', destino_);
     }
     const snap = await query.get();
-    ordenes = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-    cache.ordenes.data = ordenes;
-    cache.ordenes.ts   = Date.now();
+    ordenes_ = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     renderTab();
   } catch (err) {
-    console.error('[cambios] Error cargando órdenes:', err);
-    document.getElementById('cambios-content').innerHTML = `
-      <div class="dev-module">
-        <div class="dev-title">Error al cargar órdenes</div>
-        <p>Verifica tu conexión e intenta de nuevo.</p>
-      </div>
-    `;
+    console.error('[otc] Error cargando:', err);
+    document.getElementById('otc-content').innerHTML = `
+      <div class="dev-module"><div class="dev-title">Error al cargar</div><p>Verifica tu conexión.</p></div>`;
   }
 }
 
-// ── Bloqueo por lectura ───────────────────────────
-function isBlocked(orden) {
-  if (!orden.unidadLectura || !calendario.length) return false;
-  const hoy = new Date();
-  return calendario.some(cal => {
-    if (!orden.unidadLectura.startsWith(cal.mru)) return false;
-    const fecha = cal.fechaLectura?.toDate ? cal.fechaLectura.toDate() : new Date(cal.fechaLectura);
-    const diff  = Math.abs((fecha - hoy) / (1000 * 60 * 60 * 24));
-    return diff <= 2;
-  });
-}
-
-// ── Priorizar órdenes ─────────────────────────────
-function priorizarOrdenes(lista) {
-  const sinActualizar = lista.filter(o => o.estadoCampo === 'hecha' && !o.actualizadaDelsur);
-  const hechas        = lista.filter(o => o.estadoCampo === 'hecha' && o.actualizadaDelsur);
-  const visitas       = lista.filter(o => o.estadoCampo === 'visita');
-  const pendientes    = lista.filter(o => !o.estadoCampo && !isBlocked(o));
-  const bloqueadas    = lista.filter(o => !o.estadoCampo && isBlocked(o));
-  return { sinActualizar, hechas, visitas, pendientes, bloqueadas };
-}
-
-// ── Render tab activo ─────────────────────────────
+// ── Render tab ────────────────────────────────────
 function renderTab() {
-  if      (activeTab === 'panel')   renderPanel();
-  else if (activeTab === 'mapa')    renderMapaTab();
-  else if (activeTab === 'resumen') renderResumenTecnico();
-  else                              renderOrdenes();
+  if      (activeTab_ === 'panel')   renderPanel();
+  else if (activeTab_ === 'mapa')    renderMapaOtc();
+  else if (activeTab_ === 'resumen') renderResumenTecnicoOtc();
+  else                               renderOrdenes();
 }
 
-// ── Resumen técnico (Cambios) ─────────────────────
-function renderResumenTecnico() {
-  const content   = document.getElementById('cambios-content');
-  const miLista   = ordenes.filter(o => o.pareja === pareja_);
+// ── Resumen técnico OTC ───────────────────────────
+function renderResumenTecnicoOtc() {
+  const content   = document.getElementById('otc-content');
+  const miLista   = ordenes_.filter(o => o.tecnicoDestino === destino_);
   const hoy       = new Date(); hoy.setHours(0,0,0,0);
 
-  const hechasHoy = miLista.filter(o => {
+  const reconexiones  = miLista.filter(o => o.tipo === 'reconexion' && !o.estadoCampo && o.fechaPago);
+  const hechasHoy     = miLista.filter(o => {
     if (o.estadoCampo !== 'hecha' && o.estadoCampo !== 'aprobada') return false;
     const f = o.fechaHecha?.toDate ? o.fechaHecha.toDate() : null;
     return f && f >= hoy;
   });
-  const visitasHoy = miLista.filter(o => {
-    if (o.estadoCampo !== 'visita') return false;
-    const f = o.fechaVisita?.toDate ? o.fechaVisita.toDate() : null;
-    return f && f >= hoy;
-  });
-  const pendientes    = miLista.filter(o => !o.estadoCampo && !isBlocked(o));
-  const bloqueadas    = miLista.filter(o => !o.estadoCampo && isBlocked(o));
+  const vencenHoy     = miLista.filter(o => !o.estadoCampo && getUrgencia(o) === 'hoy');
+  const vencen1_2     = miLista.filter(o => !o.estadoCampo && getUrgencia(o) === 'naranja');
+  const pendientes    = miLista.filter(o => !o.estadoCampo).length;
   const sinActualizar = miLista.filter(o => o.estadoCampo === 'hecha' && !o.actualizadaDelsur);
-  const total         = miLista.length;
-  const pct           = total ? Math.round((hechasHoy.length / total) * 100) : 0;
   const fechaLabel    = new Date().toLocaleDateString('es-SV', { weekday:'long', day:'numeric', month:'long' });
 
   content.innerHTML = `
@@ -278,435 +349,570 @@ function renderResumenTecnico() {
       <div class="panel-header anim-up">
         <div>
           <div class="section-title">Mi resumen</div>
-          <div class="section-sub">${pareja_ || 'Cambios'} · ${fechaLabel.charAt(0).toUpperCase() + fechaLabel.slice(1)}</div>
+          <div class="section-sub">${destino_ || 'OTC'} · ${fechaLabel.charAt(0).toUpperCase() + fechaLabel.slice(1)}</div>
         </div>
       </div>
 
-      <div class="progress-card anim-up d1">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-          <div style="font-size:13px;font-weight:700">Progreso de hoy</div>
-          <div style="font-size:24px;font-weight:800;color:var(--cm-light)">${pct}%</div>
-        </div>
-        <div class="progress-bar-bg">
-          <div class="progress-bar-fill cm" style="width:${pct}%"></div>
-        </div>
-        <div class="progress-stats" style="margin-top:10px">
-          <span><span class="stat-dot ok"></span>${hechasHoy.length} realizadas hoy</span>
-          <span><span class="stat-dot warn"></span>${visitasHoy.length} visitas</span>
-          <span><span class="stat-dot muted"></span>${pendientes.length} pendientes</span>
-        </div>
-      </div>
+      <!-- Reconexiones activas -->
+      ${reconexiones.length ? `
+      <div class="otc-alert-card crit anim-up d1">
+        <div class="otc-alert-header">🔴 ${reconexiones.length} reconexión${reconexiones.length>1?'es':''} activa${reconexiones.length>1?'s':''}</div>
+        ${reconexiones.map(o => `
+          <div class="orden-verif-card" onclick="window.__otc.verOrden('${o.id}')" style="margin-top:6px">
+            <div class="orden-verif-info">
+              <div style="font-size:12px;font-weight:700">WO ${o.wo || '—'}</div>
+              <div style="font-size:10px;color:var(--text-3)">${o.cliente || '—'}</div>
+              <div style="font-size:11px;color:#ef4444;font-weight:700;margin-top:2px">⏱ ${countdownReconexion(o.fechaPago)}</div>
+            </div>
+          </div>`).join('')}
+      </div>` : ''}
 
-      <div class="stat-row anim-up d2">
-        <div class="stat-chip cm-accent">
+      <!-- Vencen hoy -->
+      ${vencenHoy.length ? `
+      <div class="otc-alert-card crit anim-up d1">
+        <div class="otc-alert-header">🔴 ${vencenHoy.length} vence${vencenHoy.length>1?'n':''} hoy</div>
+        ${vencenHoy.map(o => `
+          <div class="orden-visita-panel" onclick="window.__otc.verOrden('${o.id}')" style="margin-top:6px">
+            <div class="status-dot" style="background:#ef4444"></div>
+            <div>
+              <div style="font-size:12px;font-weight:700">WO ${o.wo || '—'}</div>
+              <div style="font-size:10px;color:var(--text-3)">${TIPO_LABELS[o.tipo] || ''} · ${o.cliente || '—'}</div>
+            </div>
+          </div>`).join('')}
+      </div>` : ''}
+
+      <!-- Vencen en 1-2 días -->
+      ${vencen1_2.length ? `
+      <div class="otc-alert-card warn anim-up d2">
+        <div class="otc-alert-header">🟠 ${vencen1_2.length} vence${vencen1_2.length>1?'n':''} en 1-2 días</div>
+        ${vencen1_2.map(o => `
+          <div class="orden-visita-panel" onclick="window.__otc.verOrden('${o.id}')" style="margin-top:6px">
+            <div class="status-dot" style="background:#f97316"></div>
+            <div>
+              <div style="font-size:12px;font-weight:700">WO ${o.wo || '—'}</div>
+              <div style="font-size:10px;color:var(--text-3)">${TIPO_LABELS[o.tipo] || ''} · ${o.cliente || '—'}</div>
+            </div>
+          </div>`).join('')}
+      </div>` : ''}
+
+      <!-- Stats -->
+      <div class="stat-row anim-up d3">
+        <div class="stat-chip otc-accent">
           <div class="val">${hechasHoy.length}</div>
           <div class="lbl">Hechas hoy</div>
         </div>
-        <div class="stat-chip cm-accent">
-          <div class="val">${visitasHoy.length}</div>
-          <div class="lbl">Visitas hoy</div>
-        </div>
         <div class="stat-chip">
-          <div class="val">${pendientes.length}</div>
+          <div class="val">${pendientes}</div>
           <div class="lbl">Pendientes</div>
         </div>
-        <div class="stat-chip ${bloqueadas.length ? 'warn-accent' : ''}">
-          <div class="val">${bloqueadas.length}</div>
-          <div class="lbl">Bloqueadas</div>
+        <div class="stat-chip ${sinActualizar.length ? 'warn-accent' : ''}">
+          <div class="val">${sinActualizar.length}</div>
+          <div class="lbl">Sin actualizar</div>
         </div>
       </div>
 
-      ${sinActualizar.length ? `
-      <div class="otc-alert-card warn anim-up d2">
-        <div class="otc-alert-header">⚠ ${sinActualizar.length} sin actualizar en DELSUR</div>
-        ${sinActualizar.map(o => `
-          <div class="orden-visita-panel" onclick="window.__cambios.verOrden('${o.id}')" style="margin-top:6px">
-            <div class="status-dot warn pulse"></div>
-            <div>
-              <div style="font-size:12px;font-weight:700">WO ${o.wo || '—'}</div>
-              <div style="font-size:10px;color:var(--text-3)">${o.cliente || '—'}</div>
-            </div>
-          </div>`).join('')}
-      </div>` : ''}
-
-      ${bloqueadas.length ? `
-      <div class="otc-alert-card warn-soft anim-up d3">
-        <div class="otc-alert-header">🔒 ${bloqueadas.length} bloqueadas por lectura</div>
-        ${bloqueadas.map(o => `
-          <div class="orden-visita-panel" style="margin-top:6px">
-            <div class="status-dot muted"></div>
-            <div>
-              <div style="font-size:12px;font-weight:700">WO ${o.wo || '—'}</div>
-              <div style="font-size:10px;color:var(--text-4)">${o.unidadLectura || '—'}</div>
-            </div>
-          </div>`).join('')}
-      </div>` : ''}
-
-      ${!total ? `
+      ${!miLista.length ? `
       <div class="dev-module anim-up d2">
         <div class="dev-title">Sin órdenes asignadas</div>
-        <p>No tienes órdenes para ${pareja_ || 'hoy'}.</p>
+        <p>No tienes órdenes OTC asignadas.</p>
+      </div>` : ''}
+
+      ${!reconexiones.length && !vencenHoy.length && !vencen1_2.length && miLista.length ? `
+      <div class="card anim-up d2" style="background:rgba(34,197,94,.06);border-color:rgba(34,197,94,.2);text-align:center;padding:20px">
+        <div style="font-size:22px;margin-bottom:6px">✅</div>
+        <div style="font-size:13px;font-weight:700;color:var(--ok)">Todo bajo control</div>
+        <div style="font-size:11px;color:var(--text-3);margin-top:4px">No tienes órdenes urgentes</div>
       </div>` : ''}
 
     </div>
   `;
 }
 
-// ── Mapa dentro de Cambios ────────────────────────
-async function renderMapaTab() {
-  const content = document.getElementById('cambios-content');
-  content.innerHTML = '<div style="height:calc(100vh - 180px);min-height:300px;" id="cambios-mapa-container"></div>';
-
-  // Importar y renderizar módulo mapa
-  try {
-    const mapaModule = await import('./mapa.js');
-    mapaModule.init(document.getElementById('cambios-mapa-container'), session_);
-  } catch (err) {
-    console.error('[cambios] Error cargando mapa:', err);
-    content.innerHTML = `<div class="dev-module" style="margin-top:16px">
-      <div class="dev-title">Error al cargar mapa</div>
-      <p>${err.message}</p>
-    </div>`;
-  }
-}
-
-// ── PANEL (admin/asistente) ───────────────────────
+// ── PANEL ─────────────────────────────────────────
 function renderPanel() {
-  const content = document.getElementById('cambios-content');
+  if (role_ === 'tecnico') renderPanelTecnico();
+  else renderPanelAdmin();
+}
 
-  // Stats globales
-  const todasHechas   = ordenes.filter(o => o.estadoCampo === 'hecha');
-  const todasVisitas  = ordenes.filter(o => o.estadoCampo === 'visita');
-  const todasAprobadas= ordenes.filter(o => o.estadoCampo === 'aprobada');
-  const pendientes    = ordenes.filter(o => !o.estadoCampo);
-  const total         = ordenes.length;
-  const pct = total ? Math.round((todasAprobadas.length / total) * 100) : 0;
+function renderPanelTecnico() {
+  const content  = document.getElementById('otc-content');
+  const misList  = ordenes_.filter(o => o.tecnicoDestino === destino_);
+  const activas  = misList.filter(o => o.estadoCampo !== 'aprobada');
+  const { reconexiones, porVencer, sinActualizar, hechas, pendientes } = priorizar(activas);
 
   content.innerHTML = `
     <div class="flex-col gap-12">
 
-      <!-- Header -->
       <div class="panel-header anim-up">
         <div>
-          <div class="section-title">Panel Cambios</div>
-          <div class="section-sub">${todasAprobadas.length} confirmadas · ${todasHechas.length} por verificar · ${pendientes.length} pendientes</div>
+          <div class="section-title">${destino_ || 'Mis órdenes'}</div>
+          <div class="section-sub">${activas.length} activas · ${hechas.length} realizadas</div>
         </div>
-        <button class="icon-btn" onclick="window.__cambios.openImport()" title="Importar Excel">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
-            <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
-            <polyline points="17 8 12 3 7 8"/>
-            <line x1="12" y1="3" x2="12" y2="15"/>
-          </svg>
-        </button>
-      </div>
-
-      <!-- Barra progreso global -->
-      <div class="progress-card anim-up d1">
-        <div class="progress-bar-bg">
-          <div class="progress-bar-fill cm" style="width:${pct}%"></div>
-        </div>
-        <div class="progress-stats">
-          <span><span class="stat-dot ok"></span>${todasAprobadas.length} confirmadas</span>
-          <span><span class="stat-dot warn" style="background:#fbbf24"></span>${todasHechas.length} por verificar</span>
-          <span><span class="stat-dot" style="background:#111827;border:1px solid #4b5563"></span>${todasVisitas.length} visitas</span>
-          <span><span class="stat-dot muted"></span>${pendientes.length} pendientes</span>
-        </div>
-      </div>
-
-      <!-- Acordeón por pareja -->
-      <div class="section-label anim-up d2">Verificación por pareja</div>
-      <div class="flex-col gap-8 anim-up d2" id="acordeon-parejas">
-        ${PAREJAS.map(p => renderAcordeonPareja(p)).join('')}
-      </div>
-
-    </div>
-  `;
-
-  // Inicializar búsquedas
-  PAREJAS.forEach(p => {
-    const inputId = `buscar-${p.replace(' ','-')}`;
-    document.getElementById(inputId)?.addEventListener('input', e => {
-      filtrarOrdenesPareja(p, e.target.value.trim());
-    });
-  });
-}
-
-function renderAcordeonPareja(pareja) {
-  const c         = PAREJA_COLORS[pareja] || PAREJA_COLORS['Pareja 1'];
-  const hechas    = ordenes.filter(o => o.pareja === pareja && o.estadoCampo === 'hecha');
-  const visitas   = ordenes.filter(o => o.pareja === pareja && o.estadoCampo === 'visita');
-  const aprobadas = ordenes.filter(o => o.pareja === pareja && o.estadoCampo === 'aprobada');
-  const total     = ordenes.filter(o => o.pareja === pareja).length;
-  const inputId   = `buscar-${pareja.replace(' ','-')}`;
-  const listaId   = `lista-${pareja.replace(' ','-')}`;
-
-  if (!total) return '';
-
-  // Agrupar hechas por fecha
-  const hechasPorFecha = agruparPorFecha(hechas);
-
-  return `
-    <div class="acordeon-card" style="border-color:${c.border};background:${c.glass}">
-
-      <!-- Header acordeón -->
-      <div class="acordeon-header" onclick="window.__cambios.toggleAcordeon('${pareja}')">
-        <div>
-          <div class="acordeon-title" style="color:${c.accent}">${pareja}</div>
-          <div class="acordeon-sub">
-            ${aprobadas.length}/${total} confirmadas
-            ${hechas.length ? `· <span style="color:#fbbf24">${hechas.length} por verificar</span>` : ''}
-            ${visitas.length ? `· <span style="color:var(--text-4)">${visitas.length} visitas</span>` : ''}
-          </div>
-        </div>
-        <div style="display:flex;align-items:center;gap:8px">
-          <div class="acordeon-pct" style="color:${c.accent}">
-            ${total ? Math.round((aprobadas.length/total)*100) : 0}%
-          </div>
-          <svg id="chevron-${pareja.replace(' ','-')}" viewBox="0 0 24 24" fill="none" stroke="${c.accent}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" style="transition:transform .2s">
-            <polyline points="6 9 12 15 18 9"/>
-          </svg>
-        </div>
-      </div>
-
-      <!-- Contenido acordeón -->
-      <div class="acordeon-body" id="body-${pareja.replace(' ','-')}" style="display:none">
-
-        <!-- Barra progreso pareja -->
-        <div class="progress-bar-bg" style="margin-bottom:12px">
-          <div class="progress-bar-fill" style="width:${total ? Math.round((aprobadas.length/total)*100) : 0}%;background:${c.accent}"></div>
-        </div>
-
-        <!-- Buscador -->
-        ${hechas.length ? `
-        <div class="buscar-wrap">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14" style="color:var(--text-4);flex-shrink:0">
-            <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
-          </svg>
-          <input class="buscar-input" id="${inputId}" type="text"
-                 placeholder="Buscar WO o cliente…"
-                 autocomplete="off" autocorrect="off"/>
-        </div>` : ''}
-
-        <!-- Órdenes por verificar agrupadas por fecha -->
-        ${hechas.length ? `
-        <div class="flex-col gap-10" id="${listaId}">
-          ${hechasPorFecha.map(({ fecha, ordenes: grupo }) => `
-            <div>
-              <div class="fecha-grupo-label">${fecha}</div>
-              <div class="flex-col gap-6">
-                ${grupo.map(o => renderOrdenVerificacion(o, c)).join('')}
-              </div>
-            </div>
-          `).join('')}
-        </div>` : `
-        <div style="text-align:center;padding:12px 0;font-size:12px;color:var(--text-4)">
-          ${aprobadas.length ? '✓ Todas confirmadas' : 'Sin órdenes realizadas aún'}
-        </div>`}
-
-        <!-- Visitas -->
-        ${visitas.length ? `
-        <div class="section-label" style="margin:12px 0 6px;font-size:8px">Visitas registradas</div>
-        <div class="flex-col gap-6">
-          ${visitas.map(o => renderOrdenVisitaPanel(o)).join('')}
-        </div>` : ''}
-
-      </div>
-    </div>
-  `;
-}
-
-function renderOrdenVerificacion(o, c) {
-  return `
-    <div class="orden-verif-card" id="verif-${o.id}">
-      <div class="orden-verif-info" onclick="window.__cambios.verOrden('${o.id}')">
-        <div class="orden-wo" style="font-size:12px">WO ${o.wo || '—'}</div>
-        <div class="orden-cliente" style="font-size:10px">${o.cliente || '—'}</div>
-        ${o.actualizadaDelsur
-          ? '<div style="font-size:9px;color:var(--ok);margin-top:2px">✓ Actualizada en DELSUR</div>'
-          : '<div style="font-size:9px;color:#fbbf24;margin-top:2px">⚠ Pendiente actualizar DELSUR</div>'}
-      </div>
-      <button class="btn-confirmar-orden" onclick="window.__cambios.aprobar('${o.id}')">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="14" height="14">
-          <path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
-        </svg>
-        Confirmar
-      </button>
-    </div>
-  `;
-}
-
-function renderOrdenVisitaPanel(o) {
-  return `
-    <div class="orden-visita-panel" onclick="window.__cambios.verOrden('${o.id}')">
-      <div class="status-dot" style="background:#111827;border:1px solid #4b5563;flex-shrink:0"></div>
-      <div style="flex:1;min-width:0">
-        <div style="font-size:12px;font-weight:700">WO ${o.wo || '—'}</div>
-        <div style="font-size:10px;color:var(--text-3)">${o.motivoVisita || 'Sin motivo registrado'}</div>
-      </div>
-    </div>
-  `;
-}
-
-// ── Agrupar por fecha ─────────────────────────────
-function agruparPorFecha(lista) {
-  const grupos = {};
-  const hoy    = new Date();
-  const ayer   = new Date(hoy); ayer.setDate(ayer.getDate() - 1);
-
-  lista.forEach(o => {
-    const ts = o.fechaHecha?.toDate ? o.fechaHecha.toDate() : null;
-    let etiqueta = 'Sin fecha';
-    if (ts) {
-      const d = ts.toLocaleDateString('es-SV', { weekday:'long', day:'2-digit', month:'short' });
-      if (ts.toDateString() === hoy.toDateString())  etiqueta = `Hoy · ${d}`;
-      else if (ts.toDateString() === ayer.toDateString()) etiqueta = `Ayer · ${d}`;
-      else etiqueta = d.charAt(0).toUpperCase() + d.slice(1);
-    }
-    if (!grupos[etiqueta]) grupos[etiqueta] = [];
-    grupos[etiqueta].push(o);
-  });
-
-  // Ordenar: Hoy primero, luego Ayer, luego más antiguas
-  return Object.entries(grupos)
-    .sort(([a], [b]) => {
-      if (a.startsWith('Hoy'))  return -1;
-      if (b.startsWith('Hoy'))  return 1;
-      if (a.startsWith('Ayer')) return -1;
-      if (b.startsWith('Ayer')) return 1;
-      return 0;
-    })
-    .map(([fecha, ordenes]) => ({ fecha, ordenes }));
-}
-function toggleAcordeon(pareja) {
-  const key    = pareja.replace(' ', '-');
-  const body   = document.getElementById(`body-${key}`);
-  const chevron= document.getElementById(`chevron-${key}`);
-  if (!body) return;
-  const open = body.style.display === 'none';
-  body.style.display    = open ? '' : 'none';
-  if (chevron) chevron.style.transform = open ? 'rotate(180deg)' : '';
-}
-
-// ── Filtrar órdenes por WO/cliente ───────────────
-function filtrarOrdenesPareja(pareja, query) {
-  const listaId = `lista-${pareja.replace(' ','-')}`;
-  const lista   = document.getElementById(listaId);
-  if (!lista) return;
-
-  const hechas = ordenes.filter(o => o.pareja === pareja && o.estadoCampo === 'hecha');
-  const c      = PAREJA_COLORS[pareja] || PAREJA_COLORS['Pareja 1'];
-
-  const filtradas = query
-    ? hechas.filter(o =>
-        (o.wo      || '').toLowerCase().includes(query.toLowerCase()) ||
-        (o.cliente || '').toLowerCase().includes(query.toLowerCase())
-      )
-    : hechas;
-
-  if (!filtradas.length) {
-    lista.innerHTML = `<div style="text-align:center;padding:8px;font-size:11px;color:var(--text-4)">Sin resultados</div>`;
-    return;
-  }
-
-  // Mantener agrupación por fecha si no hay búsqueda activa
-  if (!query) {
-    const grupos = agruparPorFecha(filtradas);
-    lista.innerHTML = grupos.map(({ fecha, ordenes: grupo }) => `
-      <div>
-        <div class="fecha-grupo-label">${fecha}</div>
-        <div class="flex-col gap-6">
-          ${grupo.map(o => renderOrdenVerificacion(o, c)).join('')}
-        </div>
-      </div>
-    `).join('');
-  } else {
-    lista.innerHTML = `<div class="flex-col gap-6">${filtradas.map(o => renderOrdenVerificacion(o, c)).join('')}</div>`;
-  }
-}
-
-function renderParejaCard(pareja) {
-  const c = PAREJA_COLORS[pareja] || PAREJA_COLORS['Pareja 1'];
-  const lista = ordenes.filter(o => o.pareja === pareja);
-  if (!lista.length) return '';
-
-  const hechas     = lista.filter(o => o.estadoCampo === 'hecha').length;
-  const sinActual  = lista.filter(o => o.estadoCampo === 'hecha' && !o.actualizadaDelsur).length;
-  const visitas    = lista.filter(o => o.estadoCampo === 'visita').length;
-  const pendientes = lista.filter(o => !o.estadoCampo).length;
-  const total      = lista.length;
-  const pct        = total ? Math.round((hechas / total) * 100) : 0;
-
-  return `
-    <div class="pareja-card" style="border-color:${c.border};background:${c.glass}">
-      <div class="pareja-card-header">
-        <div class="pareja-name" style="color:${c.accent}">${pareja}</div>
-        <div class="pareja-pct" style="color:${c.accent}">${pct}%</div>
-      </div>
-      <div class="progress-bar-bg" style="margin:8px 0">
-        <div class="progress-bar-fill" style="width:${pct}%;background:${c.accent}"></div>
-      </div>
-      <div class="pareja-stats">
-        <span>${hechas}/${total} hechas</span>
-        ${sinActual ? `<span style="color:#f87171">· ${sinActual} sin actualizar</span>` : ''}
-        ${visitas   ? `<span style="color:#fbbf24">· ${visitas} visitas</span>` : ''}
-        ${pendientes? `<span style="color:var(--text-4)">· ${pendientes} pendientes</span>` : ''}
-      </div>
-    </div>
-  `;
-}
-
-// ── ÓRDENES (técnico y admin) ─────────────────────
-function renderOrdenes() {
-  const content = document.getElementById('cambios-content');
-  const lista   = role_ === 'tecnico' ? ordenes.filter(o => o.pareja === pareja_) : ordenes;
-  const { sinActualizar, hechas, visitas, pendientes, bloqueadas } = priorizarOrdenes(lista);
-
-  const isTecnico = role_ === 'tecnico';
-
-  content.innerHTML = `
-    <div class="flex-col gap-12">
-
-      <!-- Header -->
-      <div class="panel-header anim-up">
-        <div>
-          <div class="section-title">${isTecnico ? (pareja_ || 'Mis órdenes') : 'Todas las órdenes'}</div>
-          <div class="section-sub">${lista.length} órdenes · ${hechas.length + sinActualizar.length} realizadas</div>
-        </div>
-        <button class="icon-btn cm" onclick="window.__cambios.openCampo()" title="Orden en campo">
+        <button class="icon-btn otc" onclick="window.__otc.openNueva()" title="Nueva orden">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="15" height="15">
             <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
           </svg>
         </button>
       </div>
 
-      ${!lista.length ? `
-        <div class="dev-module">
-          <div class="dev-title">Sin órdenes</div>
-          <p>No hay órdenes asignadas para ${pareja_ || 'esta vista'}.</p>
-        </div>` : ''}
+      <!-- Stats -->
+      <div class="stat-row anim-up d1">
+        <div class="stat-chip otc-accent">
+          <div class="val">${pendientes.length + porVencer.length}</div>
+          <div class="lbl">Pendientes</div>
+        </div>
+        <div class="stat-chip otc-accent">
+          <div class="val">${hechas.length}</div>
+          <div class="lbl">Realizadas</div>
+        </div>
+        <div class="stat-chip ${reconexiones.length ? 'crit-accent' : ''}">
+          <div class="val">${reconexiones.length}</div>
+          <div class="lbl">Reconexiones</div>
+        </div>
+      </div>
 
-      <!-- Sin actualizar -->
-      ${sinActualizar.length ? renderGrupo('⚠ Sin actualizar en DELSUR', sinActualizar, 'sin-actualizar', 'd1') : ''}
+      <!-- Alertas -->
+      ${reconexiones.length ? `
+      <div class="otc-alert-card crit anim-up d1">
+        <div class="otc-alert-header">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          ${reconexiones.length} reconexión${reconexiones.length > 1 ? 'es' : ''} activa${reconexiones.length > 1 ? 's' : ''}
+        </div>
+        ${reconexiones.map(o => renderOrdenAlerta(o)).join('')}
+      </div>` : ''}
 
-      <!-- Visitas -->
-      ${visitas.length ? renderGrupo('Visitas registradas', visitas, 'visita', 'd2') : ''}
+      ${porVencer.length ? `
+      <div class="otc-alert-card warn anim-up d2">
+        <div class="otc-alert-header">⏰ ${porVencer.length} por vencer pronto</div>
+        ${porVencer.map(o => renderOrdenAlerta(o)).join('')}
+      </div>` : ''}
 
-      <!-- Pendientes -->
-      ${pendientes.length ? renderGrupo('Pendientes', pendientes, 'pendiente', 'd2') : ''}
+      ${sinActualizar.length ? `
+      <div class="otc-alert-card warn-soft anim-up d2">
+        <div class="otc-alert-header">⚠ ${sinActualizar.length} sin actualizar en DELSUR</div>
+        ${sinActualizar.map(o => renderOrdenAlerta(o)).join('')}
+      </div>` : ''}
 
-      <!-- Hechas -->
-      ${hechas.length ? renderGrupo('Realizadas', hechas, 'hecha', 'd3') : ''}
-
-      <!-- Bloqueadas -->
-      ${bloqueadas.length ? renderGrupo('🔒 Bloqueadas por lectura', bloqueadas, 'bloqueada', 'd4') : ''}
+      ${!activas.length ? `
+      <div class="dev-module anim-up d2">
+        <div class="dev-title">Sin órdenes activas</div>
+        <p>No tienes órdenes pendientes asignadas.</p>
+      </div>` : ''}
 
     </div>
   `;
 }
 
-function renderGrupo(titulo, lista, tipo, delay) {
+function renderPanelAdmin() {
+  const content   = document.getElementById('otc-content');
+  const activas   = ordenes_.filter(o => o.estadoCampo !== 'aprobada');
+  const aprobadas = ordenes_.filter(o => o.estadoCampo === 'aprobada').length;
+
+  // Contadores globales de urgencia
+  const reconGlobal   = activas.filter(o => o.tipo === 'reconexion' && !o.estadoCampo && o.fechaPago);
+  const hoyGlobal     = activas.filter(o => !o.estadoCampo && getUrgencia(o) === 'hoy');
+  const mananaGlobal  = activas.filter(o => !o.estadoCampo && getUrgencia(o) === 'naranja' && diasHabilesRestantes(calcularVencimiento(o)) === 1);
+  const hechasSinConf = ordenes_.filter(o => o.estadoCampo === 'hecha');
+
+  content.innerHTML = `
+    <div class="flex-col gap-12">
+
+      <!-- Header -->
+      <div class="panel-header anim-up">
+        <div>
+          <div class="section-title">Panel OTC</div>
+          <div class="section-sub">${activas.length} activas · ${aprobadas} confirmadas</div>
+        </div>
+        <button class="icon-btn otc" onclick="window.__otc.openNueva()" title="Nueva orden">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="15" height="15">
+            <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+          </svg>
+        </button>
+      </div>
+
+      <!-- Tablero de urgencias globales -->
+      <div class="otc-tablero anim-up d1">
+        <div class="otc-tablero-item ${reconGlobal.length ? 'crit' : 'ok'}" onclick="window.__otc.verUrgencias('reconexion')">
+          <div class="otc-tablero-num">${reconGlobal.length}</div>
+          <div class="otc-tablero-label">Reconexiones</div>
+          ${reconGlobal.length ? `<div class="otc-tablero-sub">activas ahora</div>` : '<div class="otc-tablero-sub">✓ Al día</div>'}
+        </div>
+        <div class="otc-tablero-item ${hoyGlobal.length ? 'crit' : 'ok'}" onclick="window.__otc.verUrgencias('hoy')">
+          <div class="otc-tablero-num">${hoyGlobal.length}</div>
+          <div class="otc-tablero-label">Vencen hoy</div>
+          ${hoyGlobal.length ? `<div class="otc-tablero-sub">urgente</div>` : '<div class="otc-tablero-sub">✓ Sin vencer</div>'}
+        </div>
+        <div class="otc-tablero-item ${mananaGlobal.length ? 'warn' : 'ok'}" onclick="window.__otc.verUrgencias('manana')">
+          <div class="otc-tablero-num">${mananaGlobal.length}</div>
+          <div class="otc-tablero-label">Vencen mañana</div>
+          ${mananaGlobal.length ? `<div class="otc-tablero-sub">atención</div>` : '<div class="otc-tablero-sub">✓ Sin riesgo</div>'}
+        </div>
+        <div class="otc-tablero-item ${hechasSinConf.length ? 'warn' : 'ok'}" onclick="window.__otc.verUrgencias('confirmar')">
+          <div class="otc-tablero-num">${hechasSinConf.length}</div>
+          <div class="otc-tablero-label">Por confirmar</div>
+          ${hechasSinConf.length ? `<div class="otc-tablero-sub">pendientes</div>` : '<div class="otc-tablero-sub">✓ Al día</div>'}
+        </div>
+      </div>
+
+      <!-- Semáforo por técnico -->
+      <div class="section-label anim-up d2">Estado por técnico</div>
+      <div class="flex-col gap-8 anim-up d2">
+        ${TECNICOS.map(t => renderSemaforoTecnico(t)).join('')}
+      </div>
+
+    </div>
+  `;
+}
+
+function getSemaforoTecnico(tec) {
+  const lista   = ordenes_.filter(o => o.tecnicoDestino === tec && o.estadoCampo !== 'aprobada');
+  const recon   = lista.filter(o => o.tipo === 'reconexion' && !o.estadoCampo && o.fechaPago).length;
+  const hoy     = lista.filter(o => !o.estadoCampo && getUrgencia(o) === 'hoy').length;
+  const naranja = lista.filter(o => !o.estadoCampo && getUrgencia(o) === 'naranja').length;
+
+  if (recon > 0 || hoy > 0) return 'crit';
+  if (naranja > 0)           return 'warn';
+  return 'ok';
+}
+
+function renderSemaforoTecnico(tec) {
+  const c       = TECNICO_COLORS[tec];
+  const lista   = ordenes_.filter(o => o.tecnicoDestino === tec && o.estadoCampo !== 'aprobada');
+  const recon   = lista.filter(o => o.tipo === 'reconexion' && !o.estadoCampo && o.fechaPago).length;
+  const hoy     = lista.filter(o => !o.estadoCampo && getUrgencia(o) === 'hoy').length;
+  const naranja = lista.filter(o => !o.estadoCampo && getUrgencia(o) === 'naranja').length;
+  const total   = lista.filter(o => !o.estadoCampo).length;
+  const hechas  = lista.filter(o => o.estadoCampo === 'hecha').length;
+  const semaforo= getSemaforoTecnico(tec);
+
+  const semaforoColor = { crit: '#ef4444', warn: '#f59e0b', ok: '#22c55e' }[semaforo];
+  const semaforoBg    = { crit: 'rgba(239,68,68,.1)', warn: 'rgba(245,158,11,.1)', ok: 'rgba(34,197,94,.08)' }[semaforo];
+  const semaforoBorder= { crit: 'rgba(239,68,68,.3)', warn: 'rgba(245,158,11,.3)', ok: 'rgba(34,197,94,.2)' }[semaforo];
+
   return `
-    <div class="anim-up ${delay}">
+    <div class="otc-semaforo-card" style="border-color:${semaforoBorder};background:${semaforoBg}"
+         onclick="window.__otc.verTecnico('${tec}')">
+      <div style="display:flex;align-items:center;gap:12px;flex:1">
+        <!-- Semáforo -->
+        <div style="width:12px;height:12px;border-radius:50%;background:${semaforoColor};flex-shrink:0;
+             box-shadow:0 0 8px ${semaforoColor}"></div>
+        <!-- Info -->
+        <div style="flex:1;min-width:0">
+          <div style="font-size:14px;font-weight:800;color:${c.accent}">${tec}</div>
+          <div style="font-size:11px;color:var(--text-3);margin-top:2px">
+            ${total} pendientes · ${hechas} realizadas
+            ${recon ? `<span style="color:#ef4444;font-weight:700"> · 🔴 ${recon} reconex.</span>` : ''}
+            ${hoy   ? `<span style="color:#ef4444;font-weight:700"> · ${hoy} vence${hoy>1?'n':''} hoy</span>` : ''}
+            ${naranja && !hoy ? `<span style="color:#f59e0b"> · ${naranja} en riesgo</span>` : ''}
+          </div>
+        </div>
+      </div>
+      <svg viewBox="0 0 24 24" fill="none" stroke="${c.accent}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
+        <polyline points="9 18 15 12 9 6"/>
+      </svg>
+    </div>
+  `;
+}
+
+// ── Ver urgencias globales ────────────────────────
+let _vistaUrgencia = null;
+
+function verUrgencias(tipo) {
+  _vistaUrgencia = tipo;
+  const content  = document.getElementById('otc-content');
+  let lista = [];
+  let titulo = '';
+
+  if (tipo === 'reconexion') {
+    lista  = ordenes_.filter(o => o.tipo === 'reconexion' && !o.estadoCampo && o.fechaPago);
+    titulo = '🔴 Reconexiones activas';
+  } else if (tipo === 'hoy') {
+    lista  = ordenes_.filter(o => !o.estadoCampo && getUrgencia(o) === 'hoy');
+    titulo = '🔴 Vencen hoy';
+  } else if (tipo === 'manana') {
+    lista  = ordenes_.filter(o => !o.estadoCampo && getUrgencia(o) === 'naranja' && diasHabilesRestantes(calcularVencimiento(o)) === 1);
+    titulo = '🟠 Vencen mañana';
+  } else if (tipo === 'confirmar') {
+    lista  = ordenes_.filter(o => o.estadoCampo === 'hecha');
+    titulo = 'Por confirmar';
+  }
+
+  content.innerHTML = `
+    <div class="flex-col gap-12">
+      <div class="panel-header anim-up">
+        <div>
+          <div class="section-title">${titulo}</div>
+          <div class="section-sub">${lista.length} órdenes</div>
+        </div>
+        <button class="icon-btn" onclick="window.__otc._volverPanel()" title="Volver">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
+            <polyline points="15 18 9 12 15 6"/>
+          </svg>
+        </button>
+      </div>
+      <div class="flex-col gap-8 anim-up d1">
+        ${lista.map(o => renderOrdenCard(o, tipo === 'confirmar' ? 'hecha' : 'crit')).join('')}
+      </div>
+    </div>
+  `;
+}
+
+// ── Ver técnico específico ────────────────────────
+let _tecnicoActual = null;
+
+function verTecnico(tec) {
+  _tecnicoActual = tec;
+  const c        = TECNICO_COLORS[tec];
+  const content  = document.getElementById('otc-content');
+  const lista    = ordenes_.filter(o => o.tecnicoDestino === tec && o.estadoCampo !== 'aprobada');
+  const { reconexiones, porVencer, sinActualizar, hechas, pendientes, anomalias } = priorizar(lista);
+
+  content.innerHTML = `
+    <div class="flex-col gap-12">
+      <div class="panel-header anim-up">
+        <div>
+          <div class="section-title" style="color:${c.accent}">${tec}</div>
+          <div class="section-sub">${lista.filter(o=>!o.estadoCampo).length} pendientes · ${hechas.length} realizadas</div>
+        </div>
+        <button class="icon-btn" onclick="window.__otc._volverPanel()" title="Volver">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
+            <polyline points="15 18 9 12 15 6"/>
+          </svg>
+        </button>
+      </div>
+
+      ${!lista.length ? `<div class="dev-module"><div class="dev-title">Sin órdenes</div><p>${tec} no tiene órdenes activas.</p></div>` : ''}
+      ${reconexiones.length  ? renderGrupoOtc('🔴 Reconexiones', reconexiones, 'crit')     : ''}
+      ${porVencer.length     ? renderGrupoOtc('Por vencer', porVencer, 'warn')              : ''}
+      ${sinActualizar.length ? renderGrupoOtc('⚠ Sin actualizar', sinActualizar, 'warn-soft'): ''}
+      ${hechas.length        ? renderGrupoOtc('Realizadas — confirmar', hechas, 'hecha')    : ''}
+      ${pendientes.length    ? renderGrupoOtc('Pendientes', pendientes, 'pendiente')        : ''}
+      ${anomalias.length     ? renderGrupoOtc('Anomalías', anomalias, 'anomalia')           : ''}
+    </div>
+  `;
+}
+
+function _volverPanel() {
+  _tecnicoActual  = null;
+  _vistaUrgencia  = null;
+  renderPanelAdmin();
+}
+
+function renderTecnicoCard(tec) {
+  const c       = TECNICO_COLORS[tec];
+  const lista   = ordenes_.filter(o => o.tecnicoDestino === tec);
+  if (!lista.length) return '';
+  const activas  = lista.filter(o => o.estadoCampo !== 'aprobada').length;
+  const hechas   = lista.filter(o => o.estadoCampo === 'hecha').length;
+  const recon    = lista.filter(o => o.tipo === 'reconexion' && !o.estadoCampo && o.fechaPago).length;
+
+  return `
+    <div class="pareja-card" style="border-color:${c.border};background:${c.glass}"
+         onclick="document.querySelectorAll('.cambios-tab.otc').forEach(t=>t.classList.remove('active'));
+                  document.querySelector('.cambios-tab.otc[data-tab=ordenes]').classList.add('active');
+                  window.__otc._filtroTec='${tec}';
+                  window.__otc._renderOrdenes();">
+      <div class="pareja-card-header">
+        <div class="pareja-name" style="color:${c.accent}">${tec}</div>
+        <div style="display:flex;gap:6px;align-items:center">
+          ${recon ? `<div style="font-size:10px;color:#ef4444;font-weight:700">🔴 ${recon} reconex.</div>` : ''}
+          <svg viewBox="0 0 24 24" fill="none" stroke="${c.accent}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><polyline points="9 18 15 12 9 6"/></svg>
+        </div>
+      </div>
+      <div class="pareja-stats">${activas} activas · ${hechas} por verificar</div>
+    </div>
+  `;
+}
+
+function renderOrdenAlerta(o) {
+  const c = TECNICO_COLORS[o.tecnicoDestino] || TECNICO_COLORS[null];
+  const countdown = o.tipo === 'reconexion' ? countdownReconexion(o.fechaPago) : null;
+  const dias = diasHabilesRestantes(calcularVencimiento(o));
+
+  return `
+    <div class="orden-verif-card" onclick="window.__otc.verOrden('${o.id}')" style="margin-top:6px">
+      <div class="orden-verif-info">
+        <div class="orden-wo" style="font-size:12px">WO ${o.wo || '—'}</div>
+        <div class="orden-cliente" style="font-size:10px">${o.cliente || '—'}</div>
+        ${countdown ? `<div style="font-size:10px;color:#ef4444;font-weight:700;margin-top:2px">⏱ ${countdown}</div>` : ''}
+        ${dias !== null && !countdown ? `<div style="font-size:10px;color:#fbbf24;margin-top:2px">${dias === 0 ? 'Vence hoy' : `Vence en ${dias} día${dias > 1 ? 's' : ''} hábil${dias > 1 ? 'es' : ''}`}</div>` : ''}
+      </div>
+      <div class="pareja-chip" style="color:${c.accent};border-color:${c.border};background:${c.glass}">${o.tecnicoDestino || '—'}</div>
+    </div>
+  `;
+}
+
+// ── ÓRDENES (técnico y admin) ─────────────────────
+let _filtroTec = null;
+
+function renderOrdenes() {
+  const content = document.getElementById('otc-content');
+  const isTecnico = role_ === 'tecnico';
+  let lista = isTecnico
+    ? ordenes_.filter(o => o.tecnicoDestino === destino_)
+    : (_filtroTec ? ordenes_.filter(o => o.tecnicoDestino === _filtroTec) : ordenes_);
+
+  // Para técnico: ordenar por urgencia y renderizar sin secciones
+  if (isTecnico) {
+    renderOrdenesTecnico(content, lista);
+    return;
+  }
+
+  // Para admin/asistente: secciones con títulos
+  const { reconexiones, porVencer, sinActualizar, hechas, pendientes, anomalias } = priorizar(lista);
+
+  content.innerHTML = `
+    <div class="flex-col gap-12">
+
+      <div class="panel-header anim-up">
+        <div>
+          <div class="section-title">${_filtroTec || 'Todas las órdenes'}</div>
+          <div class="section-sub">${lista.filter(o=>o.estadoCampo!=='aprobada').length} activas</div>
+        </div>
+        <div style="display:flex;gap:8px">
+          ${_filtroTec ? `
+          <button class="icon-btn" onclick="window.__otc._filtroTec=null;window.__otc._renderOrdenes()" title="Ver todas">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>` : ''}
+          <button class="icon-btn otc" onclick="window.__otc.openNueva()" title="Nueva orden">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="15" height="15">
+              <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      ${!lista.length ? `<div class="dev-module"><div class="dev-title">Sin órdenes</div><p>No hay órdenes asignadas.</p></div>` : ''}
+      ${reconexiones.length  ? renderGrupoOtc('🔴 Reconexiones activas', reconexiones, 'crit') : ''}
+      ${porVencer.length     ? renderGrupoOtc('Por vencer', porVencer, 'warn') : ''}
+      ${sinActualizar.length ? renderGrupoOtc('⚠ Sin actualizar DELSUR', sinActualizar, 'warn-soft') : ''}
+      ${hechas.length        ? renderGrupoOtc('✓ Realizadas', hechas, 'hecha') : ''}
+      ${pendientes.length    ? renderGrupoOtc('Pendientes', pendientes, 'pendiente') : ''}
+      ${anomalias.length     ? renderGrupoOtc('Anomalías', anomalias, 'anomalia') : ''}
+    </div>
+  `;
+}
+
+// ── Vista técnico con colores de urgencia ─────────
+function getUrgencia(o) {
+  if (o.tipo === 'reconexion' && !o.estadoCampo && o.fechaPago) return 'reconexion';
+  if (o.estadoCampo) return 'hecha';
+  if (o.tipo === 'desconexion' || o.tipo === 'anomalia') return 'sinlimite';
+  const dias = diasHabilesRestantes(calcularVencimiento(o));
+  if (dias === null) return 'sinlimite';
+  if (dias === 0)    return 'hoy';
+  if (dias <= 2)     return 'naranja';
+  if (dias === 3)    return 'amarillo';
+  return 'normal';
+}
+
+const URGENCIA_CONFIG = {
+  reconexion: { bg: 'rgba(239,68,68,.1)',   border: 'rgba(239,68,68,.3)',  dot: '#ef4444', label: null },
+  hoy:        { bg: 'rgba(239,68,68,.08)',  border: 'rgba(239,68,68,.25)', dot: '#ef4444', label: 'Vence hoy' },
+  naranja:    { bg: 'rgba(249,115,22,.08)', border: 'rgba(249,115,22,.25)',dot: '#f97316', label: null },
+  amarillo:   { bg: 'rgba(245,158,11,.07)', border: 'rgba(245,158,11,.2)', dot: '#fbbf24', label: null },
+  normal:     { bg: 'var(--glass)',          border: 'var(--border)',        dot: 'var(--text-4)', label: null },
+  sinlimite:  { bg: 'rgba(255,255,255,.03)',border: 'rgba(255,255,255,.05)',dot: '#4b5563', label: null },
+  hecha:      { bg: 'rgba(34,197,94,.04)',  border: 'rgba(34,197,94,.15)', dot: '#22c55e', label: null },
+};
+
+function renderOrdenesTecnico(content, lista) {
+  const activas  = lista.filter(o => o.estadoCampo !== 'aprobada');
+  const hechas   = activas.filter(o => o.estadoCampo === 'hecha');
+  const pendientes = activas.filter(o => !o.estadoCampo);
+
+  // Ordenar pendientes por urgencia
+  const orden = ['reconexion','hoy','naranja','amarillo','normal','sinlimite'];
+  pendientes.sort((a, b) => orden.indexOf(getUrgencia(a)) - orden.indexOf(getUrgencia(b)));
+
+  // Resumen de urgencias
+  const reconCount  = pendientes.filter(o => getUrgencia(o) === 'reconexion').length;
+  const hoyCount    = pendientes.filter(o => getUrgencia(o) === 'hoy').length;
+  const naranjaCount= pendientes.filter(o => getUrgencia(o) === 'naranja').length;
+  const amarilloCount=pendientes.filter(o => getUrgencia(o) === 'amarillo').length;
+
+  content.innerHTML = `
+    <div class="flex-col gap-12">
+
+      <div class="panel-header anim-up">
+        <div>
+          <div class="section-title">${destino_ || 'Mis órdenes'}</div>
+          <div class="section-sub">${pendientes.length} pendientes · ${hechas.length} realizadas</div>
+        </div>
+        <button class="icon-btn otc" onclick="window.__otc.openNueva()" title="Nueva orden">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="15" height="15">
+            <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+          </svg>
+        </button>
+      </div>
+
+      <!-- Resumen de urgencias -->
+      ${reconCount || hoyCount || naranjaCount || amarilloCount ? `
+      <div class="urgencia-resumen anim-up d1">
+        ${reconCount   ? `<div class="urgencia-badge rojo">🔴 ${reconCount} reconexión${reconCount>1?'es':''}</div>` : ''}
+        ${hoyCount     ? `<div class="urgencia-badge rojo">${hoyCount} vence${hoyCount>1?'n':''} hoy</div>` : ''}
+        ${naranjaCount ? `<div class="urgencia-badge naranja">${naranjaCount} en 1-2 días</div>` : ''}
+        ${amarilloCount? `<div class="urgencia-badge amarillo">${amarilloCount} en 3 días</div>` : ''}
+      </div>` : ''}
+
+      <!-- Listado priorizado -->
+      <div class="flex-col gap-8 anim-up d2">
+        ${pendientes.map(o => renderOrdenCardTecnico(o)).join('')}
+      </div>
+
+      <!-- Realizadas -->
+      ${hechas.length ? `
+      <div class="section-label anim-up d3">Realizadas hoy</div>
+      <div class="flex-col gap-8 anim-up d3">
+        ${hechas.map(o => renderOrdenCardTecnico(o)).join('')}
+      </div>` : ''}
+
+    </div>
+  `;
+}
+
+function renderOrdenCardTecnico(o) {
+  const urgencia = getUrgencia(o);
+  const cfg      = URGENCIA_CONFIG[urgencia];
+  const dias     = diasHabilesRestantes(calcularVencimiento(o));
+  const countdown= o.tipo === 'reconexion' ? countdownReconexion(o.fechaPago) : null;
+
+  let diasLabel = '';
+  if (countdown) {
+    diasLabel = `<div style="font-size:11px;color:#ef4444;font-weight:800;margin-top:3px">⏱ ${countdown}</div>`;
+  } else if (urgencia === 'hoy') {
+    diasLabel = `<div style="font-size:11px;color:#ef4444;font-weight:700;margin-top:3px">🔴 Vence hoy</div>`;
+  } else if (urgencia === 'naranja' && dias !== null) {
+    diasLabel = `<div style="font-size:11px;color:#f97316;font-weight:700;margin-top:3px">🟠 ${dias} día${dias>1?'s':''} hábil${dias>1?'es':''}</div>`;
+  } else if (urgencia === 'amarillo' && dias !== null) {
+    diasLabel = `<div style="font-size:11px;color:#fbbf24;font-weight:600;margin-top:3px">🟡 ${dias} días hábiles</div>`;
+  } else if (urgencia === 'normal' && dias !== null) {
+    diasLabel = `<div style="font-size:11px;color:var(--text-4);margin-top:3px">${dias} días hábiles</div>`;
+  }
+
+  return `
+    <div class="orden-card-tec" style="background:${cfg.bg};border-color:${cfg.border}"
+         onclick="window.__otc.verOrden('${o.id}')">
+      <div style="display:flex;align-items:center;gap:10px;flex:1;min-width:0">
+        <div style="width:10px;height:10px;border-radius:50%;background:${cfg.dot};flex-shrink:0"></div>
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;align-items:center;gap:8px">
+            <div class="orden-wo">WO ${o.wo || '—'}</div>
+            <div style="font-size:10px;font-weight:600;color:var(--text-4);text-transform:uppercase;letter-spacing:.04em">${TIPO_LABELS[o.tipo] || ''}</div>
+          </div>
+          <div class="orden-cliente">${o.cliente || '—'}</div>
+          <div class="orden-dir">${o.direccion || ''}</div>
+          ${diasLabel}
+        </div>
+      </div>
+      ${o.estadoCampo === 'hecha' ? '<div class="status-dot ok" style="flex-shrink:0"></div>' : ''}
+    </div>
+  `;
+}
+
+function renderGrupoOtc(titulo, lista, tipo) {
+  return `
+    <div class="anim-up">
       <div class="section-label" style="margin-bottom:8px">${titulo}</div>
       <div class="flex-col gap-8">
         ${lista.map(o => renderOrdenCard(o, tipo)).join('')}
@@ -715,446 +921,491 @@ function renderGrupo(titulo, lista, tipo, delay) {
   `;
 }
 
-function renderOrdenCard(o, tipo) {
-  const blocked  = tipo === 'bloqueada';
-  const c        = PAREJA_COLORS[o.pareja] || PAREJA_COLORS['Pareja 1'];
-  const isTecnico = role_ === 'tecnico';
+function renderOrdenCard(o, tipo = '') {
+  const c        = TECNICO_COLORS[o.tecnicoDestino] || TECNICO_COLORS[null];
+  const countdown= o.tipo === 'reconexion' ? countdownReconexion(o.fechaPago) : null;
+  const isTecnico= role_ === 'tecnico';
 
-  // Íconos de estado
-  const statusIcon = {
-    'hecha':         `<div class="status-dot ok"></div>`,
-    'sin-actualizar':`<div class="status-dot warn pulse"></div>`,
-    'visita':        `<div class="status-dot warn"></div>`,
-    'pendiente':     `<div class="status-dot muted"></div>`,
-    'bloqueada':     `<div class="status-dot muted"></div>`,
+  const statusDot = {
+    'crit':      `<div class="status-dot" style="background:#ef4444"></div>`,
+    'warn':      `<div class="status-dot warn"></div>`,
+    'warn-soft': `<div class="status-dot warn pulse"></div>`,
+    'hecha':     `<div class="status-dot ok"></div>`,
+    'pendiente': `<div class="status-dot muted"></div>`,
+    'anomalia':  `<div class="status-dot muted"></div>`,
   }[tipo] || `<div class="status-dot muted"></div>`;
 
   return `
-    <div class="orden-card ${tipo}" onclick="window.__cambios.verOrden('${o.id}')">
+    <div class="orden-card ${tipo}" onclick="window.__otc.verOrden('${o.id}')">
       <div class="orden-card-left">
-        ${statusIcon}
+        ${statusDot}
         <div class="orden-info">
           <div class="orden-wo">WO ${o.wo || '—'}</div>
-          ${blocked ? `
-            <div class="orden-bloqueada-label">Bloqueada por lectura</div>
-          ` : `
-            <div class="orden-cliente">${o.cliente || '—'}</div>
-            <div class="orden-dir">${o.direccion || ''}</div>
-          `}
+          <div class="orden-cliente">${o.cliente || '—'}</div>
+          <div class="orden-dir">${TIPO_LABELS[o.tipo] || o.tipo || '—'}</div>
+          ${countdown ? `<div style="font-size:10px;color:#ef4444;font-weight:700">⏱ ${countdown}</div>` : ''}
         </div>
       </div>
       <div class="orden-card-right">
-        ${!isTecnico && o.pareja ? `<div class="pareja-chip" style="color:${c.accent};border-color:${c.border};background:${c.glass}">${o.pareja.replace('Pareja ','P')}</div>` : ''}
-        ${tipo === 'sin-actualizar' && isTecnico ? `
-          <button class="action-chip warn" onclick="event.stopPropagation();window.__cambios.actualizadaDelsur('${o.id}')">Ya actualicé</button>
-        ` : ''}
-        ${(tipo === 'sin-actualizar' || tipo === 'hecha') && !isTecnico ? `
-          <div style="display:flex;gap:4px">
-            <button class="action-chip ok" onclick="event.stopPropagation();window.__cambios.aprobar('${o.id}')">✓</button>
-            <button class="action-chip danger" onclick="event.stopPropagation();window.__cambios.rechazar('${o.id}')">✕</button>
-          </div>
+        ${!isTecnico ? `<div class="pareja-chip" style="color:${c.accent};border-color:${c.border};background:${c.glass}">${o.tecnicoDestino || '—'}</div>` : ''}
+        ${tipo === 'hecha' && !isTecnico ? `
+          <button class="action-chip ok" onclick="event.stopPropagation();window.__otc.aprobar('${o.id}')">✓</button>
         ` : ''}
       </div>
     </div>
   `;
 }
 
-// ── Ver detalle de orden ──────────────────────────
+// ── Detalle orden ─────────────────────────────────
 function verOrden(id) {
-  const o = ordenes.find(x => x.id === id);
+  const o = ordenes_.find(x => x.id === id);
   if (!o) return;
-  selectedOrden = o;
 
-  const blocked   = isBlocked(o);
   const isTecnico = role_ === 'tecnico';
-  const c         = PAREJA_COLORS[o.pareja] || PAREJA_COLORS['Pareja 1'];
+  const c         = TECNICO_COLORS[o.tecnicoDestino] || TECNICO_COLORS[null];
+  const countdown = o.tipo === 'reconexion' ? countdownReconexion(o.fechaPago) : null;
+  const dias      = diasHabilesRestantes(calcularVencimiento(o));
+  const venc      = calcularVencimiento(o);
 
-  document.getElementById('sheet-orden-title').textContent = `WO ${o.wo || '—'}`;
-
-  document.getElementById('sheet-orden-body').innerHTML = `
+  document.getElementById('sheet-otc-title').textContent = `WO ${o.wo || '—'}`;
+  document.getElementById('sheet-otc-body').innerHTML = `
     <div class="flex-col gap-12">
 
-      <!-- Estado -->
+      <!-- Estado y tipo -->
       <div class="orden-estado-row">
-        ${o.estadoCampo === 'hecha'  ? `<div class="estado-badge ok">Realizada</div>` : ''}
-        ${o.estadoCampo === 'visita' ? `<div class="estado-badge warn">Visita registrada</div>` : ''}
-        ${!o.estadoCampo             ? `<div class="estado-badge muted">Pendiente</div>` : ''}
-        ${blocked                    ? `<div class="estado-badge crit">🔒 Bloqueada</div>` : ''}
-        ${o.actualizadaDelsur        ? `<div class="estado-badge ok-outline">✓ Actualizada DELSUR</div>` : ''}
-        ${o.pareja ? `<div class="estado-badge" style="color:${c.accent};border-color:${c.border};background:${c.glass}">${o.pareja}</div>` : ''}
+        <div class="estado-badge" style="color:${TIPO_COLORS[o.tipo]||'#6b7280'};border-color:${TIPO_COLORS[o.tipo]||'#6b7280'}44;background:${TIPO_COLORS[o.tipo]||'#6b7280'}11">
+          ${TIPO_LABELS[o.tipo] || o.tipo || '—'}
+        </div>
+        ${o.estadoCampo === 'hecha'    ? '<div class="estado-badge ok">Realizada</div>'   : ''}
+        ${o.estadoCampo === 'aprobada' ? '<div class="estado-badge ok">Confirmada</div>'  : ''}
+        ${!o.estadoCampo               ? '<div class="estado-badge muted">Pendiente</div>': ''}
+        ${o.actualizadaDelsur ? '<div class="estado-badge ok-outline">✓ DELSUR</div>' : ''}
+        ${o.tecnicoDestino ? `<div class="pareja-chip" style="color:${c.accent};border-color:${c.border};background:${c.glass}">${o.tecnicoDestino}</div>` : ''}
       </div>
 
-      ${blocked ? `
-        <div class="card" style="background:rgba(239,68,68,.06);border-color:rgba(239,68,68,.2)">
-          <p style="font-size:12px;color:#f87171">Esta orden está bloqueada por lectura programada. No se puede trabajar en este momento.</p>
-        </div>` : ''}
-
-      <!-- Info cliente -->
-      ${!blocked ? `
-      <div class="detail-section">
-        <div class="detail-label">Cliente</div>
-        <div class="detail-row">
-          <div class="detail-field"><div class="detail-key">NC</div><div class="detail-val">${o.nc || '—'}</div></div>
-          <div class="detail-field"><div class="detail-key">Nombre</div><div class="detail-val">${o.cliente || '—'}</div></div>
-        </div>
-        <div class="detail-field full"><div class="detail-key">Dirección</div><div class="detail-val">${o.direccion || '—'}</div></div>
-        ${o.telefono ? `<div class="detail-field full"><div class="detail-key">Teléfono</div><div class="detail-val">
-          <a href="tel:${o.telefono}" style="color:var(--cm-light)">${o.telefono}</a>
-        </div></div>` : ''}
-      </div>
-
-      <!-- Info técnica -->
-      <div class="detail-section">
-        <div class="detail-label">Datos técnicos</div>
-        <div class="detail-row">
-          <div class="detail-field"><div class="detail-key">Serie</div><div class="detail-val">${o.serie || '—'}</div></div>
-          <div class="detail-field"><div class="detail-key">DSCT</div><div class="detail-val">${o.dsct || '—'}</div></div>
-          <div class="detail-field"><div class="detail-key">MRU</div><div class="detail-val">${o.unidadLectura || '—'}</div></div>
-        </div>
-        ${o.concepto ? `<div class="detail-field full"><div class="detail-key">Concepto</div><div class="detail-val">${o.concepto}</div></div>` : ''}
+      <!-- Urgencia -->
+      ${countdown ? `
+      <div class="card" style="background:rgba(239,68,68,.08);border-color:rgba(239,68,68,.25)">
+        <div style="font-size:13px;font-weight:800;color:#ef4444">⏱ ${countdown}</div>
+        <div style="font-size:11px;color:var(--text-3);margin-top:4px">Reconexión — el cliente ya pagó</div>
+      </div>` : ''}
+      ${dias !== null && dias <= 2 && !countdown ? `
+      <div class="card" style="background:rgba(245,158,11,.08);border-color:rgba(245,158,11,.25)">
+        <div style="font-size:13px;font-weight:700;color:#fbbf24">${dias === 0 ? '⚠ Vence hoy' : `⚠ Vence en ${dias} día${dias>1?'s':''} hábil${dias>1?'es':''}`}</div>
+        ${venc ? `<div style="font-size:11px;color:var(--text-3);margin-top:4px">Fecha límite: ${formatDate(venc)}</div>` : ''}
       </div>` : ''}
 
+      <!-- Info cliente -->
+      <div class="detail-section">
+        <div class="detail-label">Cliente</div>
+        <div class="detail-field full"><div class="detail-key">Nombre</div><div class="detail-val">${o.cliente || '—'}</div></div>
+        <div class="detail-field full"><div class="detail-key">Dirección</div><div class="detail-val">${o.direccion || '—'}</div></div>
+      </div>
+
+      <!-- Info orden -->
+      <div class="detail-section">
+        <div class="detail-label">Datos de la orden</div>
+        <div class="detail-row">
+          <div class="detail-field"><div class="detail-key">Ingresada</div><div class="detail-val">${formatDate(o.fechaIngreso)}</div></div>
+          ${venc ? `<div class="detail-field"><div class="detail-key">Vencimiento</div><div class="detail-val">${formatDate(venc)}</div></div>` : ''}
+          ${o.fechaPago ? `<div class="detail-field"><div class="detail-key">Fecha pago</div><div class="detail-val">${formatDate(o.fechaPago)}</div></div>` : ''}
+        </div>
+      </div>
+
       <!-- Historial -->
-      ${(o.fechaHecha || o.fechaVisita) ? `
+      ${o.fechaHecha ? `
       <div class="detail-section">
         <div class="detail-label">Historial</div>
-        ${o.fechaHecha  ? `<div class="detail-field full"><div class="detail-key">Realizada</div><div class="detail-val">${formatDate(o.fechaHecha)} · ${o.hechaPor || '—'}</div></div>` : ''}
-        ${o.parejaDelDia?.length > 1 ? `<div class="detail-field full"><div class="detail-key">Trabajaron ese día</div><div class="detail-val">${o.parejaDelDia.join(' · ')}</div></div>` : ''}
-        ${o.fechaVisita ? `<div class="detail-field full"><div class="detail-key">Visita</div><div class="detail-val">${formatDate(o.fechaVisita)} · ${o.visitadoPor || '—'}</div></div>` : ''}
+        <div class="detail-field full"><div class="detail-key">Realizada</div><div class="detail-val">${formatDate(o.fechaHecha)} · ${o.hechaPor || '—'}</div></div>
         ${o.aprobadoPor ? `<div class="detail-field full"><div class="detail-key">Confirmada por</div><div class="detail-val">${o.aprobadoPor}</div></div>` : ''}
       </div>` : ''}
 
       <!-- Acciones técnico -->
-      ${isTecnico && !blocked ? `
-      <div class="flex-col gap-8">
-        ${!o.estadoCampo || o.estadoCampo === 'visita' ? `
-          <button class="btn-action cm" onclick="window.__cambios.marcarHecha('${o.id}')">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-            Marcar como realizada
-          </button>` : ''}
-        ${!o.estadoCampo ? `
-          <button class="btn-action outline" onclick="window.__cambios.marcarVisita('${o.id}')">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-            Registrar visita
-          </button>` : ''}
-        ${o.estadoCampo === 'hecha' && !o.actualizadaDelsur ? `
-          <button class="btn-action warn" onclick="window.__cambios.actualizadaDelsur('${o.id}')">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>
-            Ya actualicé en DELSUR
-          </button>` : ''}
-      </div>` : ''}
+      ${isTecnico && !o.estadoCampo ? `
+      <button class="btn-action cm" style="border-color:var(--otc-border);background:var(--otc-glass);color:var(--otc-light)" onclick="window.__otc.marcarHecha('${o.id}')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+        Marcar como realizada
+      </button>` : ''}
 
       <!-- Acciones admin/asistente -->
       ${!isTecnico && o.estadoCampo === 'hecha' ? `
       <div class="flex-col gap-8">
-        <button class="btn-action cm" onclick="window.__cambios.aprobar('${o.id}')">
+        <button class="btn-action cm" style="border-color:var(--otc-border);background:var(--otc-glass);color:var(--otc-light)" onclick="window.__otc.aprobar('${o.id}')">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
           Confirmar realizada
         </button>
-        <button class="btn-action danger" onclick="window.__cambios.rechazar('${o.id}')">
+        <button class="btn-action danger" onclick="window.__otc.rechazar('${o.id}')">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
           Rechazar — volver a pendiente
         </button>
       </div>` : ''}
+      ${!isTecnico && !o.estadoCampo ? `
+      <button class="btn-action outline" onclick="window.__otc.reasignar('${o.id}')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><path d="M17 3a2.828 2.828 0 114 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>
+        Reasignar técnico
+      </button>` : ''}
 
     </div>
   `;
 
-  openSheet('sheet-orden');
+  openSheet('sheet-otc-detalle');
+}
+
+// ── Mapa OTC ──────────────────────────────────────
+async function renderMapaOtc() {
+  console.log('[otc] renderMapaOtc llamado');
+  const content = document.getElementById('otc-content');
+  console.log('[otc] content:', content);
+  renderMapaSimple(content);
+}
+
+function renderMapaSimple(content) {
+  const isTecnico = role_ === 'tecnico';
+
+  // Filtrar: técnico solo ve sus propias órdenes
+  let visibles = ordenes_.filter(o =>
+    o.latitud && o.longitud && o.estadoCampo !== 'aprobada'
+  );
+  if (isTecnico && destino_) {
+    visibles = visibles.filter(o => o.tecnicoDestino === destino_);
+  }
+
+  // Position:fixed igual que mapa.js de Cambios
+  const topbar = document.querySelector('.topbar');
+  const navbar  = document.querySelector('.navbar');
+  const topH    = topbar ? topbar.offsetHeight : 62;
+  const botH    = navbar  ? navbar.offsetHeight  : 72;
+
+  content.innerHTML = `
+    <div id="otc-mapa-wrapper" style="
+      position:fixed;
+      top:${topH}px; left:0; right:0; bottom:${botH}px;
+      z-index:1;
+    ">
+      <div id="otc-mapa-simple" style="width:100%;height:100%;"></div>
+      <div class="mapa-controls-top">
+        <div class="mapa-stat-chip">
+          <div class="mapa-stat-dot" style="background:${visibles.length ? '#22c55e' : '#f59e0b'}"></div>
+          <span>${visibles.length} en mapa</span>
+        </div>
+        <button class="mapa-btn-icon" id="otc-btn-loc" title="Mi ubicación">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
+            <circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/>
+          </svg>
+        </button>
+      </div>
+      <div class="mapa-leyenda">
+        <div class="leyenda-item"><div class="leyenda-dot" style="background:#ef4444"></div><span>Reconex./Hoy</span></div>
+        <div class="leyenda-item"><div class="leyenda-dot" style="background:#f97316"></div><span>1-2 días</span></div>
+        <div class="leyenda-item"><div class="leyenda-dot" style="background:#fbbf24"></div><span>3 días</span></div>
+        <div class="leyenda-item"><div class="leyenda-dot" style="background:#6b7280"></div><span>Normal</span></div>
+        <div class="leyenda-item"><div class="leyenda-dot" style="background:#22c55e"></div><span>Realizada</span></div>
+      </div>
+      <div class="mapa-panel" id="otc-panel-inf">
+        <div class="mapa-panel-handle" onclick="document.getElementById('otc-panel-inf').classList.remove('open')"></div>
+        <div id="otc-panel-content"></div>
+      </div>
+    </div>
+  `;
+
+  const map = L.map('otc-mapa-simple', {
+    center: [13.7942, -88.8965], zoom: 8,
+    zoomControl: false,
+  });
+  L.tileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', { maxZoom: 20 }).addTo(map);
+  L.control.zoom({ position: 'bottomright' }).addTo(map);
+  map.on('click', () => document.getElementById('otc-panel-inf')?.classList.remove('open'));
+
+  setTimeout(() => {
+    map.invalidateSize();
+
+    const urgenciaColor = {
+      reconexion: '#ef4444',
+      hoy:        '#ef4444',
+      naranja:    '#f97316',
+      amarillo:   '#fbbf24',
+      normal:     '#6b7280',
+      sinlimite:  '#4b5563',
+      hecha:      '#22c55e',
+    };
+
+    visibles.forEach(o => {
+      const urg   = getUrgencia(o);
+      const color = urgenciaColor[urg] || '#6b7280';
+      const size  = (urg === 'reconexion' || urg === 'hoy') ? 14 : 11;
+
+      const icon = L.divIcon({
+        className: '',
+        html: `<div style="width:${size}px;height:${size}px;background:${color};border:2px solid white;border-radius:50%;box-shadow:0 2px 6px rgba(0,0,0,.5)"></div>`,
+        iconSize: [size, size], iconAnchor: [size/2, size/2],
+      });
+
+      L.marker([parseFloat(o.latitud), parseFloat(o.longitud)], { icon })
+        .on('click', e => { L.DomEvent.stopPropagation(e); mostrarPanelOtc(o); })
+        .addTo(map);
+    });
+
+    if (visibles.length) {
+      const group = L.featureGroup(visibles.map(o => L.marker([parseFloat(o.latitud), parseFloat(o.longitud)])));
+      map.fitBounds(group.getBounds().pad(0.2));
+    }
+  }, 300);
+
+  // Geolocalización
+  let geoMarker = null;
+  navigator.geolocation?.watchPosition(pos => {
+    const { latitude: lat, longitude: lng } = pos.coords;
+    const icon = L.divIcon({
+      className: '',
+      html: `<div style="width:14px;height:14px;background:#3b82f6;border:3px solid white;border-radius:50%;box-shadow:0 0 0 4px rgba(59,130,246,.3)"></div>`,
+      iconSize: [14,14], iconAnchor: [7,7],
+    });
+    if (geoMarker) geoMarker.setLatLng([lat, lng]);
+    else geoMarker = L.marker([lat, lng], { icon, zIndexOffset: 1000 }).addTo(map);
+  }, null, { enableHighAccuracy: true, maximumAge: 5000 });
+
+  document.getElementById('otc-btn-loc')?.addEventListener('click', () => {
+    if (geoMarker) map.setView(geoMarker.getLatLng(), 16);
+    else toast('Obteniendo ubicación…', 'ok');
+  });
+}
+
+
+function mostrarPanelOtc(o) {
+  const isTecnico = role_ === 'tecnico';
+  const c = TECNICO_COLORS[o.tecnicoDestino] || TECNICO_COLORS[null];
+  const panel = document.getElementById('otc-panel-inf');
+  const panelContent = document.getElementById('otc-panel-content');
+
+  panelContent.innerHTML = `
+    <div class="panel-orden-header">
+      <div style="flex:1;min-width:0">
+        <div class="panel-orden-wo">WO ${o.wo || '—'}</div>
+        <div class="panel-orden-cliente">${o.cliente || '—'}</div>
+        <div class="panel-orden-dir">${TIPO_LABELS[o.tipo] || o.tipo || ''}</div>
+      </div>
+      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0">
+        <div class="pareja-chip" style="color:${c.accent};border-color:${c.border};background:${c.glass}">${o.tecnicoDestino || '—'}</div>
+        ${o.estadoCampo === 'hecha' ? '<div class="estado-badge ok">Realizada</div>' : '<div class="estado-badge muted">Pendiente</div>'}
+      </div>
+    </div>
+    <div class="panel-orden-actions">
+      ${isTecnico && !o.estadoCampo ? `
+        <button class="btn-action cm" style="border-color:var(--otc-border);background:var(--otc-glass);color:var(--otc-light)" onclick="window.__otc.marcarHecha('${o.id}');document.getElementById('otc-panel-inf').classList.remove('open')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+          Realizada
+        </button>` : ''}
+      ${!isTecnico && o.estadoCampo === 'hecha' ? `
+        <button class="btn-action cm" style="border-color:var(--otc-border);background:var(--otc-glass);color:var(--otc-light)" onclick="window.__otc.aprobar('${o.id}');document.getElementById('otc-panel-inf').classList.remove('open')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+          Confirmar
+        </button>` : ''}
+      <button class="btn-action outline" onclick="window.open('https://www.google.com/maps/dir/?api=1&destination=${o.latitud},${o.longitud}','_blank')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg>
+        Navegar
+      </button>
+    </div>
+  `;
+
+  panel.classList.add('open');
 }
 
 // ── Acciones ──────────────────────────────────────
 async function marcarHecha(id) {
-  const orden = ordenes.find(o => o.id === id);
+  const orden = ordenes_.find(x => x.id === id);
   if (!orden) return;
-
-  const { abrirConsumoOrden } = await import('../consumo.js');
-  abrirConsumoOrden({
-    orden: { ...orden, id },
-    modulo: 'cambios',
-    session: session_,
-    db,
-    onSuccess: async ({ actualizadoDelsur }) => {
-      // Actualizar pareja del día
-      let parejaDelDia = [session_.displayName];
-      try {
-        const destino = session_.asignacionActual?.destino;
-        if (destino) {
-          const snap = await db.collection('users')
-            .where('asignacionActual.destino', '==', destino)
-            .where('active', '==', true).get();
-          parejaDelDia = snap.docs.map(d => d.data().displayName);
-        }
-      } catch { /* sin conexión */ }
-
-      await db.collection('cambios_ordenes').doc(id).update({ parejaDelDia });
-      const idx = ordenes.findIndex(o => o.id === id);
-      if (idx !== -1) ordenes[idx] = {
-        ...ordenes[idx],
-        estadoCampo: 'hecha',
-        actualizadaDelsur: actualizadoDelsur,
-        parejaDelDia,
-      };
-      invalidateOrdenes();
-      renderTab();
-    }
-  });
-}
-
-async function marcarVisita(id) {
-  const now = firebase.firestore.Timestamp.now();
-  await updateOrden(id, {
-    estadoCampo: 'visita',
-    fechaVisita: now,
-    visitadoPor: session_.displayName,
-  }, 'Visita registrada');
-}
-
-async function actualizadaDelsur(id) {
-  await updateOrden(id, {
-    actualizadaDelsur: true,
-  }, 'Actualización registrada');
+  closeSheet('sheet-otc-detalle');
+  try {
+    const { abrirConsumoOrden } = await import('../consumo.js');
+    abrirConsumoOrden({
+      orden: { ...orden, id },
+      modulo: 'otc',
+      session: session_,
+      db,
+      onSuccess: ({ actualizadoDelsur }) => {
+        const o = ordenes_.find(x => x.id === id);
+        if (o) { o.estadoCampo = 'hecha'; o.actualizadaDelsur = actualizadoDelsur; }
+        renderTab();
+      }
+    });
+  } catch(err) {
+    console.error('[otc] marcarHecha error:', err);
+    toast('Error al cargar formulario: ' + err.message, 'error');
+  }
 }
 
 async function aprobar(id) {
-  const now = firebase.firestore.Timestamp.now();
   try {
-    await db.collection('cambios_ordenes').doc(id).update({
-      estadoCampo:       'aprobada',
-      actualizadaDelsur:  true,
-      aprobadoPor:       session_.displayName,
-      fechaAprobacion:   now,
+    const now = firebase.firestore.Timestamp.now();
+    await db.collection('otc_ordenes').doc(id).update({
+      estadoCampo:      'aprobada',
+      actualizadaDelsur: true,
+      aprobadoPor:      session_.displayName,
+      fechaAprobacion:  now,
     });
-    const idx = ordenes.findIndex(o => o.id === id);
-    if (idx !== -1) ordenes[idx] = { ...ordenes[idx], estadoCampo: 'aprobada', actualizadaDelsur: true, aprobadoPor: session_.displayName };
-    invalidateOrdenes();
-
-    // Quitar card del acordeón sin recargar todo el panel
-    const card = document.getElementById(`verif-${id}`);
-    if (card) {
-      card.style.transition = 'opacity .2s, transform .2s';
-      card.style.opacity = '0';
-      card.style.transform = 'translateX(20px)';
-      setTimeout(() => {
-        card.remove();
-        // Actualizar subtítulo del acordeón
-        renderPanel();
-      }, 200);
-    } else {
-      closeSheet('sheet-orden');
-      renderTab();
-    }
-
-    window.dispatchEvent(new CustomEvent('cambios:updated'));
+    const o = ordenes_.find(x => x.id === id);
+    if (o) { o.estadoCampo = 'aprobada'; o.actualizadaDelsur = true; }
+    closeSheet('sheet-otc-detalle');
+    renderTab();
     toast('Orden confirmada', 'ok');
   } catch (err) {
-    console.error('[cambios] Error aprobando:', err);
     toast('Error al confirmar', 'error');
   }
 }
 
 async function rechazar(id) {
-  if (!confirm('¿Rechazar esta orden? Volverá a pendiente para que el técnico la ejecute nuevamente.')) return;
-  await updateOrden(id, {
-    estadoCampo:       null,
-    actualizadaDelsur: false,
-    fechaHecha:        null,
-    hechaPor:          null,
-  }, 'Orden rechazada — regresa a pendiente');
-}
-
-async function updateOrden(id, data, msg) {
+  if (!confirm('¿Rechazar? La orden volverá a pendiente.')) return;
   try {
-    await db.collection('cambios_ordenes').doc(id).update(data);
-
-    const idx = ordenes.findIndex(o => o.id === id);
-    if (idx !== -1) ordenes[idx] = { ...ordenes[idx], ...data };
-    invalidateOrdenes();
-
-    closeSheet('sheet-orden');
+    await db.collection('otc_ordenes').doc(id).update({
+      estadoCampo: null, actualizadaDelsur: false,
+      fechaHecha: null, hechaPor: null,
+    });
+    const o = ordenes_.find(x => x.id === id);
+    if (o) { o.estadoCampo = null; o.actualizadaDelsur = false; }
+    closeSheet('sheet-otc-detalle');
     renderTab();
-    window.dispatchEvent(new CustomEvent('cambios:updated'));
-    toast(msg, 'ok');
+    toast('Orden rechazada — pendiente', 'warn');
   } catch (err) {
-    console.error('[cambios] Error actualizando:', err);
-    toast('Error al guardar', 'error');
+    toast('Error al rechazar', 'error');
   }
 }
 
-// ── Orden en campo ────────────────────────────────
-function openCampo() { openSheet('sheet-campo'); }
+// ── Crear orden manual ────────────────────────────
+function openNueva() { openSheet('sheet-nueva-otc'); }
 
-async function guardarOrdenCampo() {
-  const wo  = document.getElementById('campo-wo').value.trim();
-  const nc  = document.getElementById('campo-nc').value.trim();
-  const obs = document.getElementById('campo-obs').value.trim();
-  const errEl = document.getElementById('campo-error');
+async function crearOrden() {
+  const wo       = document.getElementById('otc-wo').value.trim();
+  const tipo     = getSelectedChip('otc-tipo-row');
+  const fechaSap = document.getElementById('otc-fecha-sap').value;
+  const cliente  = document.getElementById('otc-cliente').value.trim();
+  const dir      = document.getElementById('otc-dir').value.trim();
+  const latVal   = document.getElementById('otc-lat').value.trim();
+  const lngVal   = document.getElementById('otc-lng').value.trim();
+  const tec      = getSelectedChip('otc-tec-row');
+  const errEl    = document.getElementById('otc-nueva-error');
 
   errEl.style.display = 'none';
-  if (!wo) {
-    errEl.textContent = 'El número WO es obligatorio.';
+  if (!wo || !tipo || !tec) {
+    errEl.textContent = 'WO, tipo y técnico son obligatorios.';
+    errEl.style.display = 'block';
+    return;
+  }
+  if (!fechaSap) {
+    errEl.textContent = 'La fecha de ingreso al SAP es obligatoria.';
     errEl.style.display = 'block';
     return;
   }
 
-  setLoading('btn-campo-label', 'Registrando…', true);
+  // Fecha SAP como Timestamp
+  const fechaIngreso = firebase.firestore.Timestamp.fromDate(new Date(fechaSap + 'T00:00:00'));
+
+  let fechaPago = null;
+  if (tipo === 'reconexion') {
+    const pagoVal = document.getElementById('otc-pago').value;
+    if (!pagoVal) {
+      errEl.textContent = 'Ingresa la fecha de pago para la reconexión.';
+      errEl.style.display = 'block';
+      return;
+    }
+    fechaPago = firebase.firestore.Timestamp.fromDate(new Date(pagoVal));
+  }
+
+  const latitud  = latVal ? parseFloat(latVal)  : null;
+  const longitud = lngVal ? parseFloat(lngVal)  : null;
+
+  setLoading('btn-otc-label', 'Creando…', true);
   try {
     const data = {
-      wo,
-      nc:             nc || null,
-      observacion:    obs || null,
-      pareja:         pareja_,
-      estadoCampo:    'hecha',
+      wo, tipo, cliente, direccion: dir,
+      tecnicoDestino:    tec,
+      fechaIngreso,
+      latitud,
+      longitud,
+      estadoCampo:       null,
       actualizadaDelsur: false,
-      generadaEnCampo: true,
-      generadaPor:    session_.displayName,
-      fechaHecha:     firebase.firestore.Timestamp.now(),
-      hechaPor:       session_.displayName,
+      fechaPago,
+      diasHabilesLimite: tipo === 'servicio_nuevo' ? 5 : tipo === 'cambio_voltaje' ? 10 : null,
     };
-    const ref = await db.collection('cambios_ordenes').add(data);
-    ordenes.push({ id: ref.id, ...data });
-    invalidateOrdenes();
+    const ref = await db.collection('otc_ordenes').add(data);
+    ordenes_.push({ id: ref.id, ...data });
+    closeSheet('sheet-nueva-otc');
 
-    closeSheet('sheet-campo');
-    document.getElementById('campo-wo').value  = '';
-    document.getElementById('campo-nc').value  = '';
-    document.getElementById('campo-obs').value = '';
+    // Limpiar formulario
+    ['otc-wo','otc-cliente','otc-dir','otc-lat','otc-lng','otc-fecha-sap'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.value = '';
+    });
+    document.querySelectorAll('#otc-tipo-row .select-chip, #otc-tec-row .select-chip').forEach(c => c.classList.remove('active'));
+
     renderTab();
-    toast('Orden registrada', 'ok');
+    toast('Orden creada', 'ok');
   } catch (err) {
-    console.error('[cambios] Error orden campo:', err);
-    errEl.textContent = 'Error al registrar. Intenta de nuevo.';
+    console.error('[otc] Error creando orden:', err);
+    errEl.textContent = `Error: ${err.message}`;
     errEl.style.display = 'block';
   } finally {
-    setLoading('btn-campo-label', 'Registrar orden', false);
+    setLoading('btn-otc-label', 'Crear orden', false);
   }
 }
 
-// ── Import Excel ──────────────────────────────────
-let importData = [];
+// ── Reasignar orden ───────────────────────────────
+let _reasignarId = null;
 
-function openImport() { openSheet('sheet-import'); }
-
-function handleFileSelect(e) {
-  const file = e.target.files[0];
-  if (!file) return;
-
-  const reader = new FileReader();
-  reader.onload = evt => {
-    try {
-      const wb   = XLSX.read(evt.target.result, { type: 'binary' });
-      const ws   = wb.Sheets[wb.SheetNames[0]];
-      const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
-
-      if (rows.length < 2) {
-        document.getElementById('import-error').textContent = 'El archivo está vacío.';
-        document.getElementById('import-error').style.display = 'block';
-        return;
-      }
-
-      // Mapear columnas: WO, NC, Cliente, Dirección, Latitud, Longitud, Serie, DS, MRU, Concepto, Teléfono
-      const headers = rows[0].map(h => String(h).toLowerCase().trim());
-      const colIdx  = {
-        wo:        findCol(headers, ['wo', 'work order', 'orden']),
-        nc:        findCol(headers, ['nc', 'número cliente', 'num cliente']),
-        cliente:   findCol(headers, ['cliente', 'nombre']),
-        direccion: findCol(headers, ['dirección', 'direccion', 'dir']),
-        latitud:   findCol(headers, ['latitud', 'lat']),
-        longitud:  findCol(headers, ['longitud', 'lng', 'lon']),
-        serie:     findCol(headers, ['serie']),
-        dsct:      findCol(headers, ['ds', 'dsct', 'descuento']),
-        unidadLectura: findCol(headers, ['mru', 'unidad lectura']),
-        concepto:  findCol(headers, ['concepto']),
-        telefono:  findCol(headers, ['teléfono', 'telefono', 'tel']),
-      };
-
-      importData = rows.slice(1)
-        .filter(r => r[colIdx.wo])
-        .map(r => ({
-          wo:           String(r[colIdx.wo]  ?? '').trim(),
-          nc:           String(r[colIdx.nc]  ?? '').trim(),
-          cliente:      String(r[colIdx.cliente] ?? '').trim(),
-          direccion:    String(r[colIdx.direccion] ?? '').trim(),
-          latitud:      parseFloat(r[colIdx.latitud])  || null,
-          longitud:     parseFloat(r[colIdx.longitud]) || null,
-          serie:        String(r[colIdx.serie]    ?? '').trim(),
-          dsct:         String(r[colIdx.dsct]     ?? '').trim(),
-          unidadLectura:String(r[colIdx.unidadLectura] ?? '').trim(),
-          concepto:     String(r[colIdx.concepto] ?? '').trim(),
-          telefono:     String(r[colIdx.telefono] ?? '').trim(),
-          pareja:       null,
-          estadoCampo:  null,
-          actualizadaDelsur: false,
-          generadaEnCampo:   false,
-        }));
-
-      document.getElementById('import-info').innerHTML = `
-        <div class="import-info-box">
-          <div class="import-info-num">${importData.length}</div>
-          <div class="import-info-label">órdenes encontradas en el archivo</div>
-          <div style="font-size:11px;color:var(--text-4);margin-top:4px">${file.name}</div>
-        </div>
-      `;
-      document.getElementById('import-preview').style.display = '';
-      document.getElementById('import-error').style.display   = 'none';
-
-    } catch (err) {
-      console.error('[cambios] Error leyendo Excel:', err);
-      document.getElementById('import-error').textContent = 'Error al leer el archivo. Verifica que sea un Excel válido.';
-      document.getElementById('import-error').style.display = 'block';
-    }
-  };
-  reader.readAsBinaryString(file);
+function reasignar(id) {
+  const o = ordenes_.find(x => x.id === id);
+  if (!o) return;
+  _reasignarId = id;
+  document.getElementById('sheet-reasignar-title').textContent = `Reasignar WO ${o.wo || '—'}`;
+  // Pre-seleccionar técnico actual
+  document.querySelectorAll('#reasignar-tec-row .select-chip').forEach(c => {
+    c.classList.toggle('active', c.dataset.val === o.tecnicoDestino);
+  });
+  document.getElementById('reasignar-error').style.display = 'none';
+  closeSheet('sheet-otc-detalle');
+  openSheet('sheet-reasignar');
 }
 
-function findCol(headers, options) {
-  for (const opt of options) {
-    const idx = headers.findIndex(h => h.includes(opt));
-    if (idx !== -1) return idx;
+async function confirmarReasignar() {
+  const tec = getSelectedChip('reasignar-tec-row');
+  if (!tec) {
+    document.getElementById('reasignar-error').textContent = 'Selecciona un técnico.';
+    document.getElementById('reasignar-error').style.display = 'block';
+    return;
   }
-  return -1;
-}
-
-async function confirmarImport() {
-  if (!importData.length) return;
-  setLoading('btn-import-label', 'Importando…', true);
-
+  setLoading('btn-reasignar-label', 'Guardando…', true);
   try {
-    // Batch write (máx 500 por batch)
-    const batches = [];
-    let batch = db.batch();
-    let count = 0;
-
-    for (const orden of importData) {
-      const ref = db.collection('cambios_ordenes').doc();
-      batch.set(ref, orden);
-      count++;
-      if (count === 499) {
-        batches.push(batch.commit());
-        batch = db.batch();
-        count = 0;
-      }
-    }
-    if (count > 0) batches.push(batch.commit());
-    await Promise.all(batches);
-
-    invalidateOrdenes();
-    closeSheet('sheet-import');
-    await loadOrdenes();
-    toast(`${importData.length} órdenes importadas`, 'ok');
-    importData = [];
+    await db.collection('otc_ordenes').doc(_reasignarId).update({ tecnicoDestino: tec });
+    const o = ordenes_.find(x => x.id === _reasignarId);
+    if (o) o.tecnicoDestino = tec;
+    closeSheet('sheet-reasignar');
+    renderTab();
+    toast(`Orden reasignada a ${tec}`, 'ok');
   } catch (err) {
-    console.error('[cambios] Error importando:', err);
-    document.getElementById('import-error').textContent = 'Error al importar. Intenta de nuevo.';
-    document.getElementById('import-error').style.display = 'block';
+    document.getElementById('reasignar-error').textContent = 'Error al guardar.';
+    document.getElementById('reasignar-error').style.display = 'block';
   } finally {
-    setLoading('btn-import-label', 'Importar órdenes', false);
+    setLoading('btn-reasignar-label', 'Confirmar reasignación', false);
   }
 }
 
 // ── Helpers ───────────────────────────────────────
 function openSheet(id)  { document.getElementById(id)?.classList.add('open'); }
 function closeSheet(id) { document.getElementById(id)?.classList.remove('open'); }
+
+function setupSelectChips(rowId) {
+  const row = document.getElementById(rowId);
+  if (!row) return;
+  row.querySelectorAll('.select-chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      row.querySelectorAll('.select-chip').forEach(c => c.classList.remove('active'));
+      chip.classList.add('active');
+    });
+  });
+}
+
+function getSelectedChip(rowId) {
+  return document.querySelector(`#${rowId} .select-chip.active`)?.dataset.val || null;
+}
 
 function setLoading(labelId, text, loading) {
   const el = document.getElementById(labelId);
@@ -1166,6 +1417,6 @@ function setLoading(labelId, text, loading) {
 
 function formatDate(ts) {
   if (!ts) return '—';
-  const d = ts.toDate ? ts.toDate() : new Date(ts);
+  const d = ts?.toDate ? ts.toDate() : new Date(ts);
   return d.toLocaleDateString('es-SV', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' });
 }
