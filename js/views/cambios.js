@@ -45,6 +45,7 @@ export async function init(container, session) {
   session_   = session;
   role_      = session.role;
   pareja_    = session.asignacionActual?.destino || null;
+  activeTab  = role_ === 'tecnico' ? 'resumen' : 'panel';
 
   renderShell();
   await Promise.all([loadCalendario(), loadOrdenes()]);
