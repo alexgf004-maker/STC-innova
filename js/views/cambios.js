@@ -214,7 +214,7 @@ async function loadOrdenes() {
     document.getElementById('cambios-content').innerHTML = `
       <div class="dev-module">
         <div class="dev-title">Error al cargar órdenes</div>
-        <p>Verifica tu conexión e intenta de nuevo.</p>
+        <p>${err.message || 'Verifica tu conexión e intenta de nuevo.'}</p>
       </div>
     `;
   }
