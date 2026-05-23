@@ -277,6 +277,7 @@ function renderResumenTecnico() {
   const bloqueadas    = miLista.filter(o => !o.estadoCampo && isBlocked(o));
   const sinActualizar = miLista.filter(o => o.estadoCampo === 'hecha' && !o.actualizadaDelsur);
   const META_DIARIA   = 15;
+  const total         = miLista.length;
   const pct           = Math.min(100, Math.round((hechasHoy.length / META_DIARIA) * 100));
   const fechaLabel    = new Date().toLocaleDateString('es-SV', { weekday:'long', day:'numeric', month:'long' });
 
