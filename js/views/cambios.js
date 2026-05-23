@@ -175,7 +175,7 @@ function renderShell() {
   document.getElementById('btn-confirmar-import')?.addEventListener('click', confirmarImport);
 
   // Exponer para onclick
-  window.__cambios = { verOrden, marcarHecha, marcarVisita, actualizadaDelsur, aprobar, rechazar, openCampo, openImport, toggleAcordeon };
+  window.__cambios = { verOrden, marcarHecha, marcarVisita, actualizadaDelsur, aprobar, rechazar, openCampo, openImport, toggleAcordeon, descargarHoy, descargarMensual };
 }
 
 // ── Cargar datos ──────────────────────────────────
@@ -430,13 +430,29 @@ function renderPanel() {
           <div class="section-title">Panel Cambios</div>
           <div class="section-sub">${todasAprobadas.length} confirmadas · ${todasHechas.length} por verificar · ${pendientes.length} pendientes</div>
         </div>
-        <button class="icon-btn" onclick="window.__cambios.openImport()" title="Importar Excel">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
-            <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
-            <polyline points="17 8 12 3 7 8"/>
-            <line x1="12" y1="3" x2="12" y2="15"/>
-          </svg>
-        </button>
+        <div style="display:flex;gap:6px">
+          <button class="icon-btn" onclick="window.__cambios.descargarHoy()" title="Reporte de hoy">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15">
+              <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+              <polyline points="7 10 12 15 17 10"/>
+              <line x1="12" y1="15" x2="12" y2="3"/>
+            </svg>
+          </button>
+          <button class="icon-btn" onclick="window.__cambios.descargarMensual()" title="Reporte mensual">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15">
+              <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
+              <line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/>
+              <line x1="3" y1="10" x2="21" y2="10"/>
+            </svg>
+          </button>
+          <button class="icon-btn" onclick="window.__cambios.openImport()" title="Importar Excel">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15">
+              <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+              <polyline points="17 8 12 3 7 8"/>
+              <line x1="12" y1="3" x2="12" y2="15"/>
+            </svg>
+          </button>
+        </div>
       </div>
 
       <!-- Barra progreso global -->
@@ -1254,6 +1270,79 @@ async function confirmarImport() {
   } finally {
     setLoading('btn-import-label', 'Importar órdenes', false);
   }
+}
+
+// ── Reportes descargables ─────────────────────────
+function descargarHoy() {
+  const hoy = new Date(); hoy.setHours(0,0,0,0);
+  const hechasHoy = ordenes.filter(o => {
+    const f = o.fechaHecha?.toDate ? o.fechaHecha.toDate() : null;
+    return f && f >= hoy && (o.estadoCampo === 'hecha' || o.estadoCampo === 'aprobada');
+  });
+
+  if (!hechasHoy.length) { toast('Sin órdenes realizadas hoy', 'warn'); return; }
+
+  const fechaStr = new Date().toLocaleDateString('es-SV', { day:'2-digit', month:'2-digit', year:'numeric' }).replace(/\//g,'-');
+  generarExcelOrdenes(hechasHoy, `Reporte_Diario_${fechaStr}`);
+  toast(`Descargando ${hechasHoy.length} órdenes de hoy`, 'ok');
+}
+
+function descargarMensual() {
+  const ahora   = new Date();
+  const inicioMes = new Date(ahora.getFullYear(), ahora.getMonth(), 1);
+
+  const hechasMes = ordenes.filter(o => {
+    const f = o.fechaHecha?.toDate ? o.fechaHecha.toDate() : null;
+    return f && f >= inicioMes && (o.estadoCampo === 'hecha' || o.estadoCampo === 'aprobada');
+  });
+
+  if (!hechasMes.length) { toast('Sin órdenes realizadas este mes', 'warn'); return; }
+
+  const mes = ahora.toLocaleDateString('es-SV', { month:'long', year:'numeric' });
+  const nombreMes = mes.charAt(0).toUpperCase() + mes.slice(1);
+  generarExcelOrdenes(hechasMes, `Reporte_Mensual_${nombreMes.replace(/ /g,'_')}`);
+  toast(`Descargando ${hechasMes.length} órdenes del mes`, 'ok');
+}
+
+function generarExcelOrdenes(lista, nombreArchivo) {
+  const filas = lista
+    .sort((a,b) => {
+      // Ordenar por pareja primero, luego por fecha
+      if ((a.pareja||'') < (b.pareja||'')) return -1;
+      if ((a.pareja||'') > (b.pareja||'')) return  1;
+      return (a.fechaHecha?.seconds||0) - (b.fechaHecha?.seconds||0);
+    })
+    .map(o => {
+      const fHecha = o.fechaHecha?.toDate ? o.fechaHecha.toDate() : null;
+      const fHechaStr = fHecha ? fHecha.toLocaleString('es-SV', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' }) : '—';
+      return {
+        'WO':                o.wo            || '—',
+        'Cliente':           o.cliente       || '—',
+        'Dirección':         o.direccion     || '—',
+        'MRU':               o.unidadLectura || '—',
+        'Pareja':            o.pareja        || 'Sin asignar',
+        'Pareja del día':    (o.parejaDelDia || []).join(', ') || '—',
+        'Fecha realizada':   fHechaStr,
+        'Actualizada DELSUR': o.actualizadaDelsur ? 'Sí' : 'No',
+        'Estado':            o.estadoCampo === 'aprobada' ? 'Confirmada' : 'Realizada',
+        'Aprobada por':      o.aprobadoPor   || '—',
+        'Concepto':          o.concepto      || '—',
+        'Serie actual':      o.serieActual   || '—',
+      };
+    });
+
+  const ws = XLSX.utils.json_to_sheet(filas);
+
+  // Anchos de columna
+  ws['!cols'] = [
+    {wch:12}, {wch:35}, {wch:50}, {wch:12}, {wch:12},
+    {wch:30}, {wch:18}, {wch:16}, {wch:12}, {wch:20},
+    {wch:30}, {wch:14},
+  ];
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Órdenes');
+  XLSX.writeFile(wb, `${nombreArchivo}.xlsx`);
 }
 
 // ── Helpers ───────────────────────────────────────
