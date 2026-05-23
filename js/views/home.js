@@ -146,53 +146,40 @@ function renderIndicadorCorte(sinActualizar) {
   const el = document.getElementById('indicador-corte');
   if (!el) return;
 
-  const hoy   = new Date();
-  const dia   = hoy.getDate();
-  const mes   = hoy.getMonth();
-  const anio  = hoy.getFullYear();
+  const hoy  = new Date();
+  const dia  = hoy.getDate();
+  const mes  = hoy.getMonth();
+  const anio = hoy.getFullYear();
 
-  // Próximo corte
-  let corte;
-  if (dia <= 15) {
-    corte = new Date(anio, mes, 15);
-  } else {
-    corte = new Date(anio, mes + 1, 15);
-  }
+  const corte = dia <= 15
+    ? new Date(anio, mes, 15)
+    : new Date(anio, mes + 1, 15);
 
-  const diffMs   = corte - hoy;
-  const diasFaltan = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+  const diasFaltan = Math.ceil((corte - hoy) / (1000 * 60 * 60 * 24));
 
-  // Semáforo
-  let color, bg, border, icono, urgencia;
+  let color, bg, border, label;
   if (diasFaltan >= 11) {
-    color = '#22c55e'; bg = 'rgba(34,197,94,.06)'; border = 'rgba(34,197,94,.2)';
-    icono = '🟢'; urgencia = 'Con tiempo';
+    color = 'var(--ok)'; bg = 'rgba(34,197,94,.06)'; border = 'rgba(34,197,94,.15)'; label = 'Al día';
   } else if (diasFaltan >= 4) {
-    color = '#fbbf24'; bg = 'rgba(245,158,11,.06)'; border = 'rgba(245,158,11,.2)';
-    icono = '🟡'; urgencia = 'Atención';
+    color = '#fbbf24'; bg = 'rgba(245,158,11,.06)'; border = 'rgba(245,158,11,.2)'; label = 'Atención';
   } else {
-    color = '#ef4444'; bg = 'rgba(239,68,68,.06)'; border = 'rgba(239,68,68,.2)';
-    icono = '🔴'; urgencia = diasFaltan === 0 ? '¡Hoy es el corte!' : 'Urgente';
+    color = '#ef4444'; bg = 'rgba(239,68,68,.06)'; border = 'rgba(239,68,68,.2)'; label = diasFaltan === 0 ? '¡Hoy es el corte!' : 'Urgente';
   }
 
   const corteStr = corte.toLocaleDateString('es-SV', { day:'numeric', month:'long' });
 
   el.innerHTML = `
-    <div style="background:${bg};border:1px solid ${border};border-radius:var(--radius);padding:16px 18px;display:flex;align-items:center;gap:16px">
-      <div style="font-size:28px;flex-shrink:0">${icono}</div>
-      <div style="flex:1;min-width:0">
-        <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
-          <div style="font-size:13px;font-weight:700;color:${color}">${urgencia}</div>
-          <div style="font-size:11px;color:var(--text-4)">· Corte ${corteStr}</div>
-        </div>
-        <div style="font-size:12px;color:var(--text-2)">
-          <strong style="color:${color}">${diasFaltan} día${diasFaltan !== 1 ? 's' : ''}</strong> para el corte
-          ${sinActualizar === null
-            ? ' · <span style="color:var(--text-4)">Calculando…</span>'
-            : sinActualizar > 0
-              ? ` · <strong style="color:${diasFaltan < 4 ? '#ef4444' : color}">${sinActualizar} orden${sinActualizar !== 1 ? 'es' : ''} sin actualizar en DELSUR</strong>`
-              : ' · <span style="color:#22c55e">✓ Todo actualizado en DELSUR</span>'}
-        </div>
+    <div style="background:${bg};border:1px solid ${border};border-radius:var(--radius);padding:14px 16px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+        <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-4)">Corte del 15 · ${corteStr}</div>
+        <div style="font-size:10px;font-weight:700;color:${color};background:${bg};border:1px solid ${border};border-radius:8px;padding:3px 8px">${label}</div>
+      </div>
+      <div style="display:flex;align-items:baseline;gap:6px">
+        <div style="font-size:28px;font-weight:800;color:${color};letter-spacing:-.02em">${diasFaltan}</div>
+        <div style="font-size:13px;color:var(--text-3);font-weight:500">día${diasFaltan !== 1 ? 's' : ''} restantes</div>
+        ${sinActualizar === null ? `<div style="margin-left:auto;font-size:11px;color:var(--text-4)">Calculando…</div>`
+          : sinActualizar > 0 ? `<div style="margin-left:auto;font-size:12px;font-weight:700;color:${diasFaltan < 4 ? '#ef4444' : '#fbbf24'}">${sinActualizar} sin actualizar</div>`
+          : `<div style="margin-left:auto;font-size:12px;font-weight:600;color:var(--ok)">✓ Todo actualizado</div>`}
       </div>
     </div>
   `;
