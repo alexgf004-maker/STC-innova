@@ -92,10 +92,17 @@ async function cargarDatosAdmin(session) {
       return f && f >= hoy;
     }).length;
 
+    const sinActualizar = cmSnap.docs.filter(d => {
+      const data = d.data();
+      return (data.estadoCampo === 'hecha' || data.estadoCampo === 'aprobada') && !data.actualizadaDelsur;
+    }).length;
+
     const setVal = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
     setVal('m-stat-cm',    cmHoy);
     setVal('m-stat-otc',   otcSnap.size);
     setVal('m-stat-alert', solSnap.size);
+
+    renderIndicadorCorte(sinActualizar);
   } catch(err) {
     console.warn('[home] Error cargando datos admin:', err);
   }
@@ -116,13 +123,75 @@ async function cargarDatosAsistente(session) {
       return f && f >= hoy;
     }).length;
 
+    const sinActualizar = cmSnap.docs.filter(d => {
+      const data = d.data();
+      return (data.estadoCampo === 'hecha' || data.estadoCampo === 'aprobada') && !data.actualizadaDelsur;
+    }).length;
+
     const setVal = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
     setVal('a-stat-cm',  cmHoy);
     setVal('a-stat-otc', otcSnap.size);
     setVal('a-stat-sol', solSnap.size);
+
+    renderIndicadorCorte(sinActualizar);
   } catch(err) {
     console.warn('[home] Error cargando datos asistente:', err);
   }
+}
+
+// ── Indicador corte del 15 ────────────────────────
+function renderIndicadorCorte(sinActualizar) {
+  const el = document.getElementById('indicador-corte');
+  if (!el) return;
+
+  const hoy   = new Date();
+  const dia   = hoy.getDate();
+  const mes   = hoy.getMonth();
+  const anio  = hoy.getFullYear();
+
+  // Próximo corte
+  let corte;
+  if (dia <= 15) {
+    corte = new Date(anio, mes, 15);
+  } else {
+    corte = new Date(anio, mes + 1, 15);
+  }
+
+  const diffMs   = corte - hoy;
+  const diasFaltan = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+
+  // Semáforo
+  let color, bg, border, icono, urgencia;
+  if (diasFaltan >= 11) {
+    color = '#22c55e'; bg = 'rgba(34,197,94,.06)'; border = 'rgba(34,197,94,.2)';
+    icono = '🟢'; urgencia = 'Con tiempo';
+  } else if (diasFaltan >= 4) {
+    color = '#fbbf24'; bg = 'rgba(245,158,11,.06)'; border = 'rgba(245,158,11,.2)';
+    icono = '🟡'; urgencia = 'Atención';
+  } else {
+    color = '#ef4444'; bg = 'rgba(239,68,68,.06)'; border = 'rgba(239,68,68,.2)';
+    icono = '🔴'; urgencia = diasFaltan === 0 ? '¡Hoy es el corte!' : 'Urgente';
+  }
+
+  const corteStr = corte.toLocaleDateString('es-SV', { day:'numeric', month:'long' });
+
+  el.innerHTML = `
+    <div style="background:${bg};border:1px solid ${border};border-radius:var(--radius);padding:16px 18px;display:flex;align-items:center;gap:16px">
+      <div style="font-size:28px;flex-shrink:0">${icono}</div>
+      <div style="flex:1;min-width:0">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+          <div style="font-size:13px;font-weight:700;color:${color}">${urgencia}</div>
+          <div style="font-size:11px;color:var(--text-4)">· Corte ${corteStr}</div>
+        </div>
+        <div style="font-size:12px;color:var(--text-2)">
+          <strong style="color:${color}">${diasFaltan} día${diasFaltan !== 1 ? 's' : ''}</strong> para el corte
+          ${sinActualizar > 0
+            ? ` · <strong style="color:${diasFaltan < 4 ? '#ef4444' : color}">${sinActualizar} orden${sinActualizar !== 1 ? 'es' : ''} sin actualizar en DELSUR</strong>`
+            : ' · <span style="color:#22c55e">✓ Todo actualizado en DELSUR</span>'}
+        </div>
+      </div>
+    </div>
+  `;
 }
 
 // ── Home Técnico ──────────────────────────────────
@@ -266,6 +335,9 @@ function renderHomeAdmin(container, session) {
         <div class="stat-chip otc-accent"><div class="val" id="m-stat-otc">—</div><div class="lbl">OTC activas</div></div>
         <div class="stat-chip warn-accent"><div class="val" id="m-stat-alert">—</div><div class="lbl">Solicitudes</div></div>
       </div>
+
+      <!-- Indicador corte del 15 -->
+      <div id="indicador-corte" class="anim-up d2"></div>
       <div class="quick-grid anim-up d2">
         <div class="quick-card cm" onclick="window.__router.navigateTo('cambios')">
           <div class="qc-icon" style="background:rgba(13,148,136,.15)">
@@ -315,6 +387,9 @@ function renderHomeAsistente(container, session) {
         <div class="stat-chip otc-accent"><div class="val" id="a-stat-otc">—</div><div class="lbl">OTC activas</div></div>
         <div class="stat-chip" style="border-color:var(--purple-border);background:var(--purple-glass)"><div class="val" style="color:var(--purple)" id="a-stat-sol">—</div><div class="lbl">Solicitudes</div></div>
       </div>
+
+      <!-- Indicador corte del 15 -->
+      <div id="indicador-corte" class="anim-up d2"></div>
       <div class="quick-grid anim-up d2">
         <div class="quick-card cm" onclick="window.__router.navigateTo('cambios')">
           <div class="qc-icon" style="background:rgba(13,148,136,.15)">
