@@ -293,7 +293,67 @@ function renderHomeTecnico(container, session, area, destino) {
   `;
 }
 
-// ── Sin asignación ────────────────────────────────
+// ── Personal asignado hoy ─────────────────────────
+async function cargarPersonalHoy() {
+  const el = document.getElementById('personal-hoy');
+  if (!el) return;
+
+  try {
+    const snap = await db.collection('users')
+      .where('active', '==', true)
+      .where('role', '==', 'tecnico')
+      .get();
+
+    const tecnicos = snap.docs.map(d => d.data()).filter(u => u.asignacionActual?.destino);
+
+    // Agrupar por destino (pareja)
+    const grupos = {};
+    tecnicos.forEach(u => {
+      const pareja = u.asignacionActual.destino;
+      if (!grupos[pareja]) grupos[pareja] = [];
+      grupos[pareja].push(u.displayName);
+    });
+
+    const sinAsignar = snap.docs.map(d => d.data())
+      .filter(u => u.role === 'tecnico' && u.active && !u.asignacionActual?.destino);
+
+    const parejas = Object.keys(grupos).sort();
+
+    if (!parejas.length && !sinAsignar.length) {
+      el.innerHTML = '';
+      return;
+    }
+
+    el.innerHTML = `
+      <div style="background:var(--glass);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px">
+        <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-4);margin-bottom:10px">Personal activo hoy</div>
+        <div class="flex-col gap-8">
+          ${parejas.map(pareja => `
+            <div style="display:flex;align-items:center;gap:10px">
+              <div style="font-size:12px;font-weight:700;color:var(--cm-light);min-width:80px;flex-shrink:0">${pareja}</div>
+              <div style="display:flex;flex-wrap:wrap;gap:6px">
+                ${grupos[pareja].map(nombre => `
+                  <div style="font-size:11px;font-weight:500;background:rgba(45,212,191,.08);border:1px solid rgba(45,212,191,.2);border-radius:8px;padding:3px 10px;color:var(--text-2)">${nombre}</div>
+                `).join('')}
+              </div>
+            </div>
+          `).join('')}
+          ${sinAsignar.length ? `
+          <div style="display:flex;align-items:center;gap:10px">
+            <div style="font-size:12px;font-weight:700;color:var(--text-4);min-width:80px;flex-shrink:0">Sin asignar</div>
+            <div style="display:flex;flex-wrap:wrap;gap:6px">
+              ${sinAsignar.map(u => `
+                <div style="font-size:11px;font-weight:500;background:var(--glass);border:1px solid var(--border);border-radius:8px;padding:3px 10px;color:var(--text-4)">${u.displayName}</div>
+              `).join('')}
+            </div>
+          </div>` : ''}
+        </div>
+      </div>
+    `;
+  } catch(err) {
+    console.warn('[home] Error cargando personal:', err);
+  }
+}
 function renderNoAsignacion(container, session) {
   container.innerHTML = `
     <div class="no-assign anim-up">
@@ -329,6 +389,10 @@ function renderHomeAdmin(container, session) {
 
       <!-- Indicador corte del 15 -->
       <div id="indicador-corte" class="anim-up d2"></div>
+
+      <!-- Personal asignado hoy -->
+      <div id="personal-hoy" class="anim-up d3"></div>
+
       <div class="quick-grid anim-up d2">
         <div class="quick-card cm" onclick="window.__router.navigateTo('cambios')">
           <div class="qc-icon" style="background:rgba(13,148,136,.15)">
@@ -363,6 +427,7 @@ function renderHomeAdmin(container, session) {
   `;
   // Mostrar indicador de inmediato sin esperar Firestore
   renderIndicadorCorte(null);
+  cargarPersonalHoy();
 }
 
 // ── Home Asistente ────────────────────────────────
