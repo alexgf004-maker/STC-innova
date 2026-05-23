@@ -338,6 +338,22 @@ function renderResumenTecnico() {
           </div>`).join('')}
       </div>` : ''}
 
+      ${hechasHoy.length ? `
+      <div class="section-label anim-up d3">Realizadas hoy</div>
+      <div class="flex-col gap-6 anim-up d3">
+        ${hechasHoy.map(o => `
+          <div class="orden-visita-panel" onclick="window.__cambios.verOrden('${o.id}')" style="cursor:pointer">
+            <div class="status-dot" style="background:${o.actualizadaDelsur ? '#22c55e' : '#f59e0b'}"></div>
+            <div style="flex:1;min-width:0">
+              <div style="font-size:12px;font-weight:700">WO ${o.wo || '—'}</div>
+              <div style="font-size:10px;color:var(--text-3)">${o.cliente || '—'} · ${o.direccion || ''}</div>
+            </div>
+            <div style="font-size:10px;font-weight:600;color:${o.actualizadaDelsur ? '#22c55e' : '#f59e0b'};flex-shrink:0">
+              ${o.actualizadaDelsur ? '✓ Actualizada' : 'Sin actualizar'}
+            </div>
+          </div>`).join('')}
+      </div>` : ''}
+
       ${bloqueadas.length ? `
       <div class="otc-alert-card warn-soft anim-up d3">
         <div class="otc-alert-header">🔒 ${bloqueadas.length} bloqueadas por lectura</div>
