@@ -252,7 +252,14 @@ function renderTab() {
 
 // ── Resumen técnico (Cambios) ─────────────────────
 function renderResumenTecnico() {
-  const content   = document.getElementById('cambios-content');
+  const content = document.getElementById('cambios-content');
+
+  // Si las órdenes aún no cargaron, mostrar loading y esperar
+  if (!ordenes || !ordenes.length) {
+    content.innerHTML = `<div class="loading-placeholder"><div class="loading-bar"></div><div class="loading-bar short"></div></div>`;
+    loadOrdenes();
+    return;
+  }
   const miLista   = ordenes.filter(o => o.pareja === pareja_);
   const hoy       = new Date(); hoy.setHours(0,0,0,0);
 
