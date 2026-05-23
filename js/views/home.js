@@ -105,6 +105,7 @@ async function cargarDatosAdmin(session) {
     renderIndicadorCorte(sinActualizar);
   } catch(err) {
     console.warn('[home] Error cargando datos admin:', err);
+    renderIndicadorCorte(0);
   }
 }
 
@@ -136,6 +137,7 @@ async function cargarDatosAsistente(session) {
     renderIndicadorCorte(sinActualizar);
   } catch(err) {
     console.warn('[home] Error cargando datos asistente:', err);
+    renderIndicadorCorte(0);
   }
 }
 
@@ -185,9 +187,11 @@ function renderIndicadorCorte(sinActualizar) {
         </div>
         <div style="font-size:12px;color:var(--text-2)">
           <strong style="color:${color}">${diasFaltan} día${diasFaltan !== 1 ? 's' : ''}</strong> para el corte
-          ${sinActualizar > 0
-            ? ` · <strong style="color:${diasFaltan < 4 ? '#ef4444' : color}">${sinActualizar} orden${sinActualizar !== 1 ? 'es' : ''} sin actualizar en DELSUR</strong>`
-            : ' · <span style="color:#22c55e">✓ Todo actualizado en DELSUR</span>'}
+          ${sinActualizar === null
+            ? ' · <span style="color:var(--text-4)">Calculando…</span>'
+            : sinActualizar > 0
+              ? ` · <strong style="color:${diasFaltan < 4 ? '#ef4444' : color}">${sinActualizar} orden${sinActualizar !== 1 ? 'es' : ''} sin actualizar en DELSUR</strong>`
+              : ' · <span style="color:#22c55e">✓ Todo actualizado en DELSUR</span>'}
         </div>
       </div>
     </div>
@@ -370,6 +374,8 @@ function renderHomeAdmin(container, session) {
       </div>
     </div>
   `;
+  // Mostrar indicador de inmediato sin esperar Firestore
+  renderIndicadorCorte(null);
 }
 
 // ── Home Asistente ────────────────────────────────
@@ -422,4 +428,5 @@ function renderHomeAsistente(container, session) {
       </div>
     </div>
   `;
+  renderIndicadorCorte(null);
 }
