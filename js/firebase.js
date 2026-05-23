@@ -22,4 +22,15 @@ if (!firebase.apps.length) {
 
 export const db   = firebase.firestore();
 export const auth = firebase.auth();
+
+// Persistencia offline — encola escrituras sin señal y sincroniza al volver
+db.enablePersistence({ synchronizeTabs: true })
+  .catch(err => {
+    if (err.code === 'failed-precondition') {
+      console.warn('[firebase] Persistencia no disponible: múltiples pestañas abiertas.');
+    } else if (err.code === 'unimplemented') {
+      console.warn('[firebase] Persistencia no soportada en este navegador.');
+    }
+  });
+
 export { SEED };
