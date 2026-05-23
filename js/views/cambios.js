@@ -269,8 +269,8 @@ function renderResumenTecnico() {
   const pendientes    = miLista.filter(o => !o.estadoCampo && !isBlocked(o));
   const bloqueadas    = miLista.filter(o => !o.estadoCampo && isBlocked(o));
   const sinActualizar = miLista.filter(o => o.estadoCampo === 'hecha' && !o.actualizadaDelsur);
-  const total         = miLista.length;
-  const pct           = total ? Math.round((hechasHoy.length / total) * 100) : 0;
+  const META_DIARIA   = 15;
+  const pct           = Math.min(100, Math.round((hechasHoy.length / META_DIARIA) * 100));
   const fechaLabel    = new Date().toLocaleDateString('es-SV', { weekday:'long', day:'numeric', month:'long' });
 
   content.innerHTML = `
@@ -285,16 +285,16 @@ function renderResumenTecnico() {
 
       <div class="progress-card anim-up d1">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-          <div style="font-size:13px;font-weight:700">Progreso de hoy</div>
-          <div style="font-size:24px;font-weight:800;color:var(--cm-light)">${pct}%</div>
+          <div style="font-size:13px;font-weight:700">Meta diaria</div>
+          <div style="font-size:24px;font-weight:800;color:var(--cm-light)">${hechasHoy.length}<span style="font-size:14px;color:var(--text-4);font-weight:500"> / ${META_DIARIA}</span></div>
         </div>
         <div class="progress-bar-bg">
           <div class="progress-bar-fill cm" style="width:${pct}%"></div>
         </div>
-        <div class="progress-stats" style="margin-top:10px">
-          <span><span class="stat-dot ok"></span>${hechasHoy.length} realizadas hoy</span>
-          <span><span class="stat-dot warn"></span>${visitasHoy.length} visitas</span>
-          <span><span class="stat-dot muted"></span>${pendientes.length} pendientes</span>
+        <div style="font-size:11px;color:var(--text-4);margin-top:6px">
+          ${hechasHoy.length >= META_DIARIA
+            ? '✅ Meta alcanzada'
+            : `${META_DIARIA - hechasHoy.length} cambios para llegar a la meta`}
         </div>
       </div>
 
