@@ -1509,3 +1509,15 @@ body {
   background: var(--bod-glass);
   color: var(--bod-light);
 }
+.menu-accion-btn {
+  display: flex; align-items: center; gap: 10px;
+  width: 100%; padding: 10px 12px;
+  background: transparent; border: none;
+  border-radius: 10px; cursor: pointer;
+  font-size: 13px; font-weight: 500;
+  color: var(--text-2); font-family: 'Outfit', sans-serif;
+  text-align: left; transition: background .15s;
+  -webkit-tap-highlight-color: transparent;
+}
+.menu-accion-btn:active { background: var(--glass); }
+.menu-accion-btn svg { flex-shrink: 0; color: var(--text-4); }
