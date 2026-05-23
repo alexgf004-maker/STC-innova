@@ -354,6 +354,20 @@ function renderResumenTecnico() {
           </div>`).join('')}
       </div>` : ''}
 
+      ${visitasHoy.length ? `
+      <div class="section-label anim-up d3">Visitas hoy</div>
+      <div class="flex-col gap-6 anim-up d3">
+        ${visitasHoy.map(o => `
+          <div class="orden-visita-panel" onclick="window.__cambios.verOrden('${o.id}')" style="cursor:pointer">
+            <div class="status-dot" style="background:#6b7280"></div>
+            <div style="flex:1;min-width:0">
+              <div style="font-size:12px;font-weight:700">WO ${o.wo || '—'}</div>
+              <div style="font-size:10px;color:var(--text-3)">${o.cliente || '—'} · ${o.motivoVisita || ''}</div>
+            </div>
+            <div style="font-size:10px;font-weight:600;color:#6b7280;flex-shrink:0">Visita</div>
+          </div>`).join('')}
+      </div>` : ''}
+
       ${bloqueadas.length ? `
       <div class="otc-alert-card warn-soft anim-up d3">
         <div class="otc-alert-header">🔒 ${bloqueadas.length} bloqueadas por lectura</div>
