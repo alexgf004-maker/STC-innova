@@ -1,1264 +1,847 @@
 /**
- * js/views/cambios.js
- * Módulo Cambios de Medidor.
+ * js/views/mapa.js
+ * Mapa de campo — Leaflet + Google Maps Hybrid.
  * Exporta: init(container, session)
  *
  * Roles:
- *   admin / asistente → Panel de gestión + todas las parejas
- *   tecnico (CAMBIOS) → Solo su pareja
+ *   tecnico  → solo su pareja, panel inferior al tocar marcador
+ *   admin/asistente → todas las parejas, asignación por zona
  */
 
 import { db } from '../firebase.js';
 import { toast } from '../ui.js';
 
-// ── Caché ─────────────────────────────────────────
-const cache = {
-  ordenes:    { data: null, ts: 0, TTL: 2 * 60 * 1000 },
-  calendario: { data: null, ts: 0, TTL: 30 * 60 * 1000 },
-};
-
-function cacheValid(key) {
-  return cache[key].data && (Date.now() - cache[key].ts < cache[key].TTL);
-}
-function invalidateOrdenes() {
-  cache.ordenes.data = null;
-  cache.ordenes.ts   = 0;
-}
-
-// ── Constantes ────────────────────────────────────
-const PAREJAS = ['Pareja 1', 'Pareja 2', 'Pareja 3', 'Pareja 4'];
 const PAREJA_COLORS = {
-  'Pareja 1': { accent: '#2dd4bf', glass: 'rgba(13,148,136,.12)', border: 'rgba(13,148,136,.25)' },
-  'Pareja 2': { accent: '#60a5fa', glass: 'rgba(37,99,235,.12)',  border: 'rgba(37,99,235,.25)'  },
-  'Pareja 3': { accent: '#a78bfa', glass: 'rgba(139,92,246,.12)', border: 'rgba(139,92,246,.25)' },
-  'Pareja 4': { accent: '#fbbf24', glass: 'rgba(245,158,11,.12)', border: 'rgba(245,158,11,.25)' },
+  'Pareja 1': '#2dd4bf',
+  'Pareja 2': '#60a5fa',
+  'Pareja 3': '#a78bfa',
+  'Pareja 4': '#fbbf24',
+  null:       '#6b7280',
 };
 
-let container_, session_, role_, pareja_;
-let ordenes = [], calendario = [];
-let activeTab = 'panel'; // 'panel' | 'ordenes'
-let selectedOrden = null;
+const ESTADO_COLORS = {
+  'hecha':   '#22c55e',
+  'visita':  '#111827',
+  null:      null, // usa color de pareja
+};
+
+let map_ = null;
+let markers_ = [];
+let drawnItems_ = null;
+let drawControl_ = null;
+let session_, role_, pareja_;
+let ordenes_ = [];
+let selectedOrden_ = null;
 
 // ── Entry point ───────────────────────────────────
 export async function init(container, session) {
-  container_ = container;
-  session_   = session;
-  role_      = session.role;
-  pareja_    = session.asignacionActual?.destino || null;
-  activeTab  = role_ === 'tecnico' ? 'resumen' : 'panel';
+  session_ = session;
+  role_    = session.role;
+  pareja_  = session.asignacionActual?.destino || null;
 
-  renderShell();
-  await Promise.all([loadCalendario(), loadOrdenes()]);
+  // Cancelar listener anterior si el módulo se reinicia
+  if (unsubscribe_) { unsubscribe_(); unsubscribe_ = null; }
+  if (map_) { map_.remove(); map_ = null; markers_ = []; }
 
-  // Escuchar actualizaciones desde el mapa
-  window.addEventListener('cambios:updated', () => {
-    invalidateOrdenes();
-    loadOrdenes();
-  });
+  renderShell(container);
+
+  // Iniciar listener en tiempo real ANTES de initMap
+  suscribirOrdenes();
+
+  // Esperar primera carga antes de inicializar el mapa
+  await loadOrdenes();
+  initMap();
 }
 
 // ── Shell ─────────────────────────────────────────
-function renderShell() {
+function renderShell(container) {
   const isTecnico = role_ === 'tecnico';
-  const tabs = isTecnico
-    ? [{ id:'resumen', label:'Resumen' }, { id:'ordenes', label:'Órdenes' }]
-    : [{ id:'panel',   label:'Panel'   }, { id:'ordenes', label:'Órdenes' }, { id:'mapa', label:'Mapa' }];
 
-  container_.innerHTML = `
-    <!-- Tabs -->
-    <div class="cambios-tabs">
-      ${tabs.map((t, i) => `
-        <div class="cambios-tab ${i === 0 ? 'active' : ''}" data-tab="${t.id}">${t.label}</div>
-      `).join('')}
-      <div class="cambios-tab-indicator"></div>
-    </div>
+  container.innerHTML = `
+    <div id="mapa-wrapper" style="
+      position:fixed;
+      top: var(--topbar-h, 62px);
+      left:0; right:0;
+      bottom: var(--navbar-h, 72px);
+      z-index:1;
+    ">
+      <!-- Mapa -->
+      <div id="leaflet-map" style="width:100%;height:100%;"></div>
 
-    <!-- Contenido del tab activo -->
-    <div id="cambios-content" style="padding-top:12px">
-      <div class="loading-placeholder">
-        <div class="loading-bar"></div>
-        <div class="loading-bar short"></div>
-        <div class="loading-bar"></div>
+      <!-- Controles superiores -->
+      <div class="mapa-controls-top">
+        <div class="mapa-stat-chip" id="mapa-stat">
+          <div class="mapa-stat-dot"></div>
+          <span id="mapa-stat-txt">Cargando…</span>
+        </div>
+        ${!isTecnico ? `
+        <button class="mapa-btn" id="btn-asignar-zona" title="Asignar zona a pareja">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
+            <path d="M3 3h7v7H3zM14 3h7v7h-7zM14 14h7v7h-7zM3 14h7v7H3z"/>
+          </svg>
+          Asignar zona
+        </button>` : ''}
+        <button class="mapa-btn-icon" id="btn-mi-ubicacion" title="Mi ubicación">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
+            <circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/>
+          </svg>
+        </button>
       </div>
-    </div>
 
-    <!-- Sheet detalle orden -->
-    <div class="sheet-backdrop" id="sheet-orden">
+      <!-- Leyenda -->
+      <div class="mapa-leyenda" id="mapa-leyenda">
+        ${isTecnico ? '' : Object.entries(PAREJA_COLORS)
+          .filter(([k]) => k !== 'null')
+          .map(([p, c]) => `
+            <div class="leyenda-item">
+              <div class="leyenda-dot" style="background:${c}"></div>
+              <span>${p}</span>
+            </div>
+          `).join('')}
+        <div class="leyenda-item">
+          <div class="leyenda-dot" style="background:#22c55e"></div>
+          <span>Realizada</span>
+        </div>
+        <div class="leyenda-item">
+          <div class="leyenda-dot" style="background:#f59e0b"></div>
+          <span>Visita</span>
+        </div>
+      </div>
+
+      <!-- Panel inferior (detalle orden) -->
+      <div class="mapa-panel" id="mapa-panel">
+        <div class="mapa-panel-handle" onclick="document.getElementById('mapa-panel').classList.remove('open')"></div>
+        <div id="mapa-panel-content"></div>
+      </div>
+
+    </div>
+  `;
+
+  // Calcular alturas reales del topbar y navbar
+  const topbar = document.querySelector('.topbar');
+  const navbar  = document.querySelector('.navbar');
+  if (topbar) document.getElementById('mapa-wrapper').style.top  = topbar.offsetHeight + 'px';
+  if (navbar)  document.getElementById('mapa-wrapper').style.bottom = navbar.offsetHeight + 'px';
+
+  // Inyectar sheets fuera del mapa-wrapper (necesitan z-index alto)
+  const sheetsHTML = `
+    <!-- Sheet motivo visita -->
+    <div class="sheet-backdrop" id="sheet-visita">
       <div class="sheet">
         <div class="sheet-handle"></div>
-        <div class="sheet-title" id="sheet-orden-title">Orden</div>
-        <div class="sheet-body" id="sheet-orden-body"></div>
-      </div>
-    </div>
-
-    <!-- Sheet nueva orden campo -->
-    <div class="sheet-backdrop" id="sheet-campo">
-      <div class="sheet">
-        <div class="sheet-handle"></div>
-        <div class="sheet-title">Orden generada en campo</div>
+        <div class="sheet-title">Motivo de visita</div>
         <div class="sheet-body">
-          <div class="form-field">
-            <div class="form-label">WO (Work Order) *</div>
-            <input class="form-input" id="campo-wo" type="text" placeholder="Ej: 12345678"/>
+          <div class="form-label" style="margin-bottom:8px">Motivo principal</div>
+          <div class="select-row flex-wrap" id="visita-motivo-row" style="margin-bottom:16px">
+            <div class="select-chip" data-val="Medidor interno">Medidor interno</div>
+            <div class="select-chip" data-val="Medidor sobre techo">Medidor sobre techo</div>
+            <div class="select-chip" data-val="Panal de abejas cerca">Panal de abejas</div>
+            <div class="select-chip" data-val="Cliente ausente">Cliente ausente</div>
           </div>
-          <div class="form-field">
-            <div class="form-label">NC (opcional)</div>
-            <input class="form-input" id="campo-nc" type="text" placeholder="Número de cliente"/>
-          </div>
-          <div class="form-field">
-            <div class="form-label">Observación</div>
-            <input class="form-input" id="campo-obs" type="text" placeholder="Breve descripción"/>
-          </div>
-          <div id="campo-error" class="form-error"></div>
-          <button class="btn-primary full" id="btn-guardar-campo">
-            <span id="btn-campo-label">Registrar orden</span>
+          <div class="form-label" style="margin-bottom:8px">Observación adicional (opcional)</div>
+          <input class="form-input" id="visita-obs" type="text" placeholder="Describe la situación…" style="margin-bottom:16px"/>
+          <div id="visita-error" class="form-error"></div>
+          <button class="btn-primary full" id="btn-confirmar-visita" onclick="window.__mapa.confirmarVisita()">
+            <span id="btn-visita-label">Registrar visita</span>
           </button>
         </div>
       </div>
     </div>
 
-    <!-- Sheet importar Excel (solo admin/asistente) -->
-    ${!isTecnico ? `
-    <div class="sheet-backdrop" id="sheet-import">
+    <!-- Sheet confirmación realizada -->
+    <div class="sheet-backdrop" id="sheet-realizada">
       <div class="sheet">
         <div class="sheet-handle"></div>
-        <div class="sheet-title">Importar órdenes</div>
+        <div class="sheet-title">¿Ya actualizaste en DELSUR?</div>
         <div class="sheet-body">
-          <div class="import-dropzone" id="import-dropzone">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" width="32" height="32" style="color:var(--text-4)">
-              <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
-              <polyline points="17 8 12 3 7 8"/>
-              <line x1="12" y1="3" x2="12" y2="15"/>
-            </svg>
-            <p>Toca para seleccionar archivo Excel</p>
-            <span>.xlsx · .xls</span>
-          </div>
-          <input type="file" id="import-file" accept=".xlsx,.xlsm,.xls" style="display:none"/>
-          <div id="import-preview" style="display:none">
-            <div class="import-info" id="import-info"></div>
-            <div id="import-error" class="form-error"></div>
-            <button class="btn-primary full" id="btn-confirmar-import">
-              <span id="btn-import-label">Importar órdenes</span>
+          <p style="font-size:13px;color:var(--text-3);margin-bottom:20px;line-height:1.6">
+            Confirma si ya ingresaste esta orden en el sistema de DELSUR.
+          </p>
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <button class="btn-action cm" id="btn-si-delsur" onclick="window.__mapa.confirmarRealizada(true)">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+              Sí, ya actualicé en DELSUR
+            </button>
+            <button class="btn-action outline" id="btn-no-delsur" onclick="window.__mapa.confirmarRealizada(false)">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+              No, lo actualizaré después
             </button>
           </div>
         </div>
       </div>
-    </div>` : ''}
+    </div>
+
+    <!-- Sheet asignación individual -->
+    <div class="sheet-backdrop" id="sheet-asignar-individual">
+      <div class="sheet">
+        <div class="sheet-handle"></div>
+        <div class="sheet-title" id="sheet-indiv-title">Asignar pareja</div>
+        <div class="sheet-body">
+          <div class="form-label" style="margin-bottom:8px">Selecciona la pareja</div>
+          <div class="select-row flex-wrap" id="indiv-pareja-row" style="margin-bottom:16px">
+            <div class="select-chip" data-val="Pareja 1">Pareja 1</div>
+            <div class="select-chip" data-val="Pareja 2">Pareja 2</div>
+            <div class="select-chip" data-val="Pareja 3">Pareja 3</div>
+            <div class="select-chip" data-val="Pareja 4">Pareja 4</div>
+            <div class="select-chip" data-val="null" style="color:var(--text-4)">Sin pareja</div>
+          </div>
+          <div id="indiv-error" class="form-error"></div>
+          <button class="btn-primary full" onclick="window.__mapa.confirmarIndividual()">
+            <span id="btn-indiv-label">Confirmar</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Sheet zona -->
+    <div class="sheet-backdrop" id="sheet-zona">
+      <div class="sheet">
+        <div class="sheet-handle"></div>
+        <div class="sheet-title">Asignar zona</div>
+        <div class="sheet-body">
+          <div id="zona-preview" style="display:none" class="zona-preview-box">
+            <div class="zona-preview-num" id="zona-count">0</div>
+            <div class="zona-preview-label">órdenes en la zona seleccionada</div>
+          </div>
+          <div class="form-label" style="margin:12px 0 8px">Asignar a</div>
+          <div class="select-row flex-wrap" id="zona-pareja-row" style="margin-bottom:16px">
+            <div class="select-chip" data-val="Pareja 1">Pareja 1</div>
+            <div class="select-chip" data-val="Pareja 2">Pareja 2</div>
+            <div class="select-chip" data-val="Pareja 3">Pareja 3</div>
+            <div class="select-chip" data-val="Pareja 4">Pareja 4</div>
+            <div class="select-chip" data-val="null" style="color:var(--text-4)">Sin pareja</div>
+          </div>
+          <div id="zona-error" class="form-error"></div>
+          <button class="btn-primary full" id="btn-confirmar-zona" onclick="window.__mapa.confirmarZona()">
+            <span id="btn-zona-label">Confirmar asignación</span>
+          </button>
+          <button class="btn-action outline" id="btn-cancelar-zona" onclick="window.__mapa.cancelarZona()" style="margin-top:8px;width:100%;height:44px">
+            Cancelar y borrar zona
+          </button>
+        </div>
+      </div>
+    </div>
   `;
 
-  // Eventos tabs
-  activeTab = tabs[0].id;
-  document.querySelectorAll('.cambios-tab').forEach(tab => {
-    tab.addEventListener('click', () => {
-      document.querySelectorAll('.cambios-tab').forEach(t => t.classList.remove('active'));
-      tab.classList.add('active');
-      activeTab = tab.dataset.tab;
-      renderTab();
+  // Eliminar sheets anteriores si existen
+  ['sheet-visita','sheet-realizada','sheet-zona'].forEach(id => {
+    document.getElementById(id)?.remove();
+  });
+
+  // Insertar en body directamente
+  document.body.insertAdjacentHTML('beforeend', sheetsHTML);
+
+  // Eventos del mapa-wrapper
+  document.getElementById('btn-asignar-zona')?.addEventListener('click', activarModoZona);
+  document.getElementById('btn-mi-ubicacion')?.addEventListener('click', () => {
+    if (geoMarker_) {
+      map_.setView(geoMarker_.getLatLng(), 17);
+    } else {
+      toast('Obteniendo ubicación…', 'ok');
+    }
+  });
+
+  // Cerrar panel al tocar fuera
+  document.getElementById('mapa-panel')?.addEventListener('click', e => {
+    if (e.target === document.getElementById('mapa-panel')) closePanel();
+  });
+
+  // Eventos de sheets (ahora ya existen en el DOM)
+  document.getElementById('btn-confirmar-zona')?.addEventListener('click', confirmarZona);
+  document.getElementById('btn-cancelar-zona')?.addEventListener('click', cancelarZona);
+  document.getElementById('btn-confirmar-visita')?.addEventListener('click', confirmarVisita);
+  document.getElementById('btn-si-delsur')?.addEventListener('click', () => confirmarRealizada(true));
+  document.getElementById('btn-no-delsur')?.addEventListener('click', () => confirmarRealizada(false));
+
+  // Select chips
+  setupSelectChips('zona-pareja-row');
+  setupSelectChips('visita-motivo-row');
+  setupSelectChips('indiv-pareja-row');
+
+  // Cerrar sheets al tocar backdrop
+  document.getElementById('sheet-zona')?.addEventListener('click', e => {
+    if (e.target === document.getElementById('sheet-zona')) cancelarZona();
+  });
+  ['sheet-visita', 'sheet-realizada', 'sheet-asignar-individual'].forEach(id => {
+    document.getElementById(id)?.addEventListener('click', e => {
+      if (e.target === document.getElementById(id)) closeSheet(id);
     });
   });
 
-  // Cerrar sheets
-  ['sheet-orden', 'sheet-campo', 'sheet-import'].forEach(id => {
-    const el = document.getElementById(id);
-    if (!el) return;
-    el.addEventListener('click', e => { if (e.target === el) closeSheet(id); });
+  window.__mapa = { verOrden, marcarHecha, marcarVisita, abrirGoogleMaps, confirmarRealizada, confirmarVisita, asignarIndividual, confirmarIndividual, confirmarZona, cancelarZona };
+
+  // onSnapshot ya maneja actualizaciones en tiempo real
+  // Este listener es fallback para cambios desde cambios.js
+  window.addEventListener('cambios:updated', () => {
+    // onSnapshot se encarga automáticamente
   });
-
-  // Orden en campo
-  document.getElementById('btn-guardar-campo')?.addEventListener('click', guardarOrdenCampo);
-
-  // Import Excel
-  const dropzone = document.getElementById('import-dropzone');
-  const fileInput = document.getElementById('import-file');
-  dropzone?.addEventListener('click', () => fileInput.click());
-  fileInput?.addEventListener('change', handleFileSelect);
-  document.getElementById('btn-confirmar-import')?.addEventListener('click', confirmarImport);
-
-  // Exponer para onclick
-  window.__cambios = { verOrden, marcarHecha, marcarVisita, actualizadaDelsur, aprobar, rechazar, openCampo, openImport, toggleAcordeon };
 }
 
-// ── Cargar datos ──────────────────────────────────
-async function loadCalendario() {
-  if (cacheValid('calendario')) return;
-  try {
-    const snap = await db.collection('cambios_calendario').get();
-    calendario = snap.docs.map(d => d.data());
-    cache.calendario.data = calendario;
-    cache.calendario.ts   = Date.now();
-  } catch (err) {
-    console.warn('[cambios] Error cargando calendario:', err);
-    calendario = [];
-  }
+// ── Listener en tiempo real ───────────────────────
+let unsubscribe_ = null; // para cancelar el listener al salir del módulo
+
+function suscribirOrdenes() {
+  // Cancelar listener anterior si existe
+  if (unsubscribe_) { unsubscribe_(); unsubscribe_ = null; }
+
+  let query = role_ === 'tecnico' && pareja_
+    ? db.collection('cambios_ordenes').where('pareja', '==', pareja_)
+    : db.collection('cambios_ordenes');
+
+  unsubscribe_ = query.onSnapshot(snap => {
+    ordenes_ = snap.docs
+      .map(d => ({ id: d.id, ...d.data() }))
+      .filter(o => o.latitud && o.longitud);
+
+    plotMarkers();
+    updateStatChip();
+  }, err => {
+    console.error('[mapa] Error en listener:', err);
+  });
 }
 
 async function loadOrdenes() {
-  if (cacheValid('ordenes')) {
-    ordenes = cache.ordenes.data;
-    renderTab();
-    return;
-  }
-  try {
-    let query = db.collection('cambios_ordenes');
-    // Técnico solo ve su pareja
-    if (role_ === 'tecnico' && pareja_) {
-      query = query.where('pareja', '==', pareja_);
-    }
-    const snap = await query.get();
-    ordenes = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-    cache.ordenes.data = ordenes;
-    cache.ordenes.ts   = Date.now();
-    renderTab();
-  } catch (err) {
-    console.error('[cambios] Error cargando órdenes:', err);
-    document.getElementById('cambios-content').innerHTML = `
-      <div class="dev-module">
-        <div class="dev-title">Error al cargar órdenes</div>
-        <p>${err.message || 'Verifica tu conexión e intenta de nuevo.'}</p>
-      </div>
-    `;
-  }
-}
-
-// ── Bloqueo por lectura ───────────────────────────
-function isBlocked(orden) {
-  if (!orden.unidadLectura || !calendario.length) return false;
-  const hoy = new Date();
-  return calendario.some(cal => {
-    if (!orden.unidadLectura.startsWith(cal.mru)) return false;
-    const fecha = cal.fechaLectura?.toDate ? cal.fechaLectura.toDate() : new Date(cal.fechaLectura);
-    const diff  = Math.abs((fecha - hoy) / (1000 * 60 * 60 * 24));
-    return diff <= 2;
+  // Mantener compatibilidad — la carga inicial la hace suscribirOrdenes
+  return new Promise(resolve => {
+    if (ordenes_.length) { resolve(); return; }
+    const timer = setTimeout(resolve, 3000); // máx 3s de espera
+    const check = setInterval(() => {
+      if (ordenes_.length) { clearTimeout(timer); clearInterval(check); resolve(); }
+    }, 100);
   });
 }
 
-// ── Priorizar órdenes ─────────────────────────────
-function priorizarOrdenes(lista) {
-  const sinActualizar = lista.filter(o => o.estadoCampo === 'hecha' && !o.actualizadaDelsur);
-  const hechas        = lista.filter(o => o.estadoCampo === 'hecha' && o.actualizadaDelsur);
-  const visitas       = lista.filter(o => o.estadoCampo === 'visita');
-  const pendientes    = lista.filter(o => !o.estadoCampo && !isBlocked(o));
-  const bloqueadas    = lista.filter(o => !o.estadoCampo && isBlocked(o));
-  return { sinActualizar, hechas, visitas, pendientes, bloqueadas };
-}
+// ── Inicializar mapa Leaflet ──────────────────────
+function initMap() {
+  // Centro inicial — El Salvador
+  const center = [13.7942, -88.8965];
+  const zoom   = ordenes_.length ? 13 : 8;
 
-// ── Render tab activo ─────────────────────────────
-function renderTab() {
-  if      (activeTab === 'panel')   renderPanel();
-  else if (activeTab === 'mapa')    renderMapaTab();
-  else if (activeTab === 'resumen') renderResumenTecnico();
-  else                              renderOrdenes();
-}
-
-// ── Resumen técnico (Cambios) ─────────────────────
-function renderResumenTecnico() {
-  const content = document.getElementById('cambios-content');
-
-  // Si las órdenes aún no cargaron, mostrar loading y esperar
-  if (!ordenes || !ordenes.length) {
-    content.innerHTML = `<div class="loading-placeholder"><div class="loading-bar"></div><div class="loading-bar short"></div></div>`;
-    loadOrdenes();
-    return;
-  }
-  const miLista   = ordenes.filter(o => o.pareja === pareja_);
-  const hoy       = new Date(); hoy.setHours(0,0,0,0);
-
-  const hechasHoy = miLista.filter(o => {
-    if (o.estadoCampo !== 'hecha' && o.estadoCampo !== 'aprobada') return false;
-    const f = o.fechaHecha?.toDate ? o.fechaHecha.toDate() : null;
-    return f && f >= hoy;
+  map_ = L.map('leaflet-map', {
+    center,
+    zoom,
+    zoomControl: false,
+    attributionControl: false,
   });
-  const visitasHoy = miLista.filter(o => {
-    if (o.estadoCampo !== 'visita') return false;
-    const f = o.fechaVisita?.toDate ? o.fechaVisita.toDate() : null;
-    return f && f >= hoy;
-  });
-  const pendientes    = miLista.filter(o => !o.estadoCampo && !isBlocked(o));
-  const bloqueadas    = miLista.filter(o => !o.estadoCampo && isBlocked(o));
-  const sinActualizar = miLista.filter(o => o.estadoCampo === 'hecha' && !o.actualizadaDelsur);
-  const META_DIARIA   = 15;
-  const total         = miLista.length;
-  const pct           = Math.min(100, Math.round((hechasHoy.length / META_DIARIA) * 100));
-  const fechaLabel    = new Date().toLocaleDateString('es-SV', { weekday:'long', day:'numeric', month:'long' });
 
-  content.innerHTML = `
-    <div class="flex-col gap-12">
+  // Google Maps Hybrid tiles
+  L.tileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', {
+    maxZoom: 20,
+    attribution: '© Google',
+  }).addTo(map_);
 
-      <div class="panel-header anim-up">
-        <div>
-          <div class="section-title">Mi resumen</div>
-          <div class="section-sub">${pareja_ || 'Cambios'} · ${fechaLabel.charAt(0).toUpperCase() + fechaLabel.slice(1)}</div>
-        </div>
-      </div>
+  // Zoom control en posición correcta
+  L.control.zoom({ position: 'bottomright' }).addTo(map_);
 
-      <div class="progress-card anim-up d1">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-          <div style="font-size:13px;font-weight:700">Meta diaria</div>
-          <div style="font-size:24px;font-weight:800;color:var(--cm-light)">${hechasHoy.length}<span style="font-size:14px;color:var(--text-4);font-weight:500"> / ${META_DIARIA}</span></div>
-        </div>
-        <div class="progress-bar-bg">
-          <div class="progress-bar-fill cm" style="width:${pct}%"></div>
-        </div>
-        <div style="font-size:11px;color:var(--text-4);margin-top:6px">
-          ${hechasHoy.length >= META_DIARIA
-            ? '✅ Meta alcanzada'
-            : `${META_DIARIA - hechasHoy.length} cambios para llegar a la meta`}
-        </div>
-      </div>
+  // Cerrar panel al tocar el mapa
+  map_.on('click', closePanel);
 
-      <div class="stat-row anim-up d2">
-        <div class="stat-chip cm-accent">
-          <div class="val">${hechasHoy.length}</div>
-          <div class="lbl">Hechas hoy</div>
-        </div>
-        <div class="stat-chip cm-accent">
-          <div class="val">${visitasHoy.length}</div>
-          <div class="lbl">Visitas hoy</div>
-        </div>
-        <div class="stat-chip">
-          <div class="val">${pendientes.length}</div>
-          <div class="lbl">Pendientes</div>
-        </div>
-        <div class="stat-chip ${bloqueadas.length ? 'warn-accent' : ''}">
-          <div class="val">${bloqueadas.length}</div>
-          <div class="lbl">Bloqueadas</div>
-        </div>
-      </div>
-
-      ${sinActualizar.length ? `
-      <div class="otc-alert-card warn anim-up d2">
-        <div class="otc-alert-header">⚠ ${sinActualizar.length} sin actualizar en DELSUR</div>
-        ${sinActualizar.map(o => `
-          <div class="orden-visita-panel" onclick="window.__cambios.verOrden('${o.id}')" style="margin-top:6px">
-            <div class="status-dot warn pulse"></div>
-            <div>
-              <div style="font-size:12px;font-weight:700">WO ${o.wo || '—'}</div>
-              <div style="font-size:10px;color:var(--text-3)">${o.cliente || '—'}</div>
-            </div>
-          </div>`).join('')}
-      </div>` : ''}
-
-      ${hechasHoy.length ? `
-      <div class="section-label anim-up d3">Realizadas hoy</div>
-      <div class="flex-col gap-6 anim-up d3">
-        ${hechasHoy.map(o => `
-          <div class="orden-visita-panel" onclick="window.__cambios.verOrden('${o.id}')" style="cursor:pointer">
-            <div class="status-dot" style="background:${o.actualizadaDelsur ? '#22c55e' : '#f59e0b'}"></div>
-            <div style="flex:1;min-width:0">
-              <div style="font-size:12px;font-weight:700">WO ${o.wo || '—'}</div>
-              <div style="font-size:10px;color:var(--text-3)">${o.cliente || '—'} · ${o.direccion || ''}</div>
-            </div>
-            <div style="font-size:10px;font-weight:600;color:${o.actualizadaDelsur ? '#22c55e' : '#f59e0b'};flex-shrink:0">
-              ${o.actualizadaDelsur ? '✓ Actualizada' : 'Sin actualizar'}
-            </div>
-          </div>`).join('')}
-      </div>` : ''}
-
-      ${visitasHoy.length ? `
-      <div class="section-label anim-up d3">Visitas hoy</div>
-      <div class="flex-col gap-6 anim-up d3">
-        ${visitasHoy.map(o => `
-          <div class="orden-visita-panel" onclick="window.__cambios.verOrden('${o.id}')" style="cursor:pointer">
-            <div class="status-dot" style="background:#6b7280"></div>
-            <div style="flex:1;min-width:0">
-              <div style="font-size:12px;font-weight:700">WO ${o.wo || '—'}</div>
-              <div style="font-size:10px;color:var(--text-3)">${o.cliente || '—'} · ${o.motivoVisita || ''}</div>
-            </div>
-            <div style="font-size:10px;font-weight:600;color:#6b7280;flex-shrink:0">Visita</div>
-          </div>`).join('')}
-      </div>` : ''}
-
-      ${bloqueadas.length ? `
-      <div class="otc-alert-card warn-soft anim-up d3">
-        <div class="otc-alert-header">🔒 ${bloqueadas.length} bloqueadas por lectura</div>
-        ${bloqueadas.map(o => `
-          <div class="orden-visita-panel" style="margin-top:6px">
-            <div class="status-dot muted"></div>
-            <div>
-              <div style="font-size:12px;font-weight:700">WO ${o.wo || '—'}</div>
-              <div style="font-size:10px;color:var(--text-4)">${o.unidadLectura || '—'}</div>
-            </div>
-          </div>`).join('')}
-      </div>` : ''}
-
-      ${!total ? `
-      <div class="dev-module anim-up d2">
-        <div class="dev-title">Sin órdenes asignadas</div>
-        <p>No tienes órdenes para ${pareja_ || 'hoy'}.</p>
-      </div>` : ''}
-
-    </div>
-  `;
-}
-
-// ── Mapa dentro de Cambios ────────────────────────
-async function renderMapaTab() {
-  const content = document.getElementById('cambios-content');
-  content.innerHTML = '<div style="height:calc(100vh - 180px);min-height:300px;" id="cambios-mapa-container"></div>';
-
-  // Importar y renderizar módulo mapa
-  try {
-    const mapaModule = await import('./mapa.js');
-    mapaModule.init(document.getElementById('cambios-mapa-container'), session_);
-  } catch (err) {
-    console.error('[cambios] Error cargando mapa:', err);
-    content.innerHTML = `<div class="dev-module" style="margin-top:16px">
-      <div class="dev-title">Error al cargar mapa</div>
-      <p>${err.message}</p>
-    </div>`;
+  // Solo admin/asistente tiene el botón de zona
+  if (role_ !== 'tecnico') {
+    map_.on('click', closePanel);
   }
+
+  // Dibujar marcadores
+  plotMarkers();
+
+  // Ajustar bounds si hay órdenes
+  if (ordenes_.length && markers_.length) {
+    const group = L.featureGroup(markers_);
+    map_.fitBounds(group.getBounds().pad(0.1));
+  }
+
+  // Actualizar stat chip
+  updateStatChip();
+
+  // Geolocalización — mostrar posición actual
+  iniciarGeolocalizacion();
 }
 
-// ── PANEL (admin/asistente) ───────────────────────
-function renderPanel() {
-  const content = document.getElementById('cambios-content');
+// ── Geolocalización ───────────────────────────────
+let geoMarker_ = null;
+let geoCircle_ = null;
 
-  // Stats globales
-  const todasHechas   = ordenes.filter(o => o.estadoCampo === 'hecha');
-  const todasVisitas  = ordenes.filter(o => o.estadoCampo === 'visita');
-  const todasAprobadas= ordenes.filter(o => o.estadoCampo === 'aprobada');
-  const pendientes    = ordenes.filter(o => !o.estadoCampo);
-  const total         = ordenes.length;
-  const pct = total ? Math.round((todasAprobadas.length / total) * 100) : 0;
+function iniciarGeolocalizacion() {
+  if (!navigator.geolocation) return;
 
-  content.innerHTML = `
-    <div class="flex-col gap-12">
-
-      <!-- Header -->
-      <div class="panel-header anim-up">
-        <div>
-          <div class="section-title">Panel Cambios</div>
-          <div class="section-sub">${todasAprobadas.length} confirmadas · ${todasHechas.length} por verificar · ${pendientes.length} pendientes</div>
-        </div>
-        <button class="icon-btn" onclick="window.__cambios.openImport()" title="Importar Excel">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
-            <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
-            <polyline points="17 8 12 3 7 8"/>
-            <line x1="12" y1="3" x2="12" y2="15"/>
-          </svg>
-        </button>
-      </div>
-
-      <!-- Barra progreso global -->
-      <div class="progress-card anim-up d1">
-        <div class="progress-bar-bg">
-          <div class="progress-bar-fill cm" style="width:${pct}%"></div>
-        </div>
-        <div class="progress-stats">
-          <span><span class="stat-dot ok"></span>${todasAprobadas.length} confirmadas</span>
-          <span><span class="stat-dot warn" style="background:#fbbf24"></span>${todasHechas.length} por verificar</span>
-          <span><span class="stat-dot" style="background:#111827;border:1px solid #4b5563"></span>${todasVisitas.length} visitas</span>
-          <span><span class="stat-dot muted"></span>${pendientes.length} pendientes</span>
-        </div>
-      </div>
-
-      <!-- Acordeón por pareja -->
-      <div class="section-label anim-up d2">Verificación por pareja</div>
-      <div class="flex-col gap-8 anim-up d2" id="acordeon-parejas">
-        ${PAREJAS.map(p => renderAcordeonPareja(p)).join('')}
-      </div>
-
-    </div>
+  const iconHtml = `
+    <div style="
+      width:16px; height:16px;
+      background:#3b82f6;
+      border:3px solid white;
+      border-radius:50%;
+      box-shadow:0 0 0 4px rgba(59,130,246,.3);
+    "></div>
   `;
 
-  // Inicializar búsquedas
-  PAREJAS.forEach(p => {
-    const inputId = `buscar-${p.replace(' ','-')}`;
-    document.getElementById(inputId)?.addEventListener('input', e => {
-      filtrarOrdenesPareja(p, e.target.value.trim());
+  navigator.geolocation.watchPosition(
+    pos => {
+      const { latitude: lat, longitude: lng, accuracy } = pos.coords;
+
+      if (geoMarker_) {
+        geoMarker_.setLatLng([lat, lng]);
+        geoCircle_.setLatLng([lat, lng]).setRadius(accuracy);
+      } else {
+        geoMarker_ = L.marker([lat, lng], {
+          icon: L.divIcon({
+            className: '',
+            html: iconHtml,
+            iconSize:   [16, 16],
+            iconAnchor: [8, 8],
+          }),
+          zIndexOffset: 1000,
+        }).addTo(map_);
+
+        geoCircle_ = L.circle([lat, lng], {
+          radius:      accuracy,
+          color:       '#3b82f6',
+          fillColor:   '#3b82f6',
+          fillOpacity: 0.08,
+          weight:      1,
+        }).addTo(map_);
+      }
+    },
+    err => console.warn('[mapa] Geolocalización:', err.message),
+    { enableHighAccuracy: true, maximumAge: 5000, timeout: 10000 }
+  );
+}
+
+// ── Marcadores ────────────────────────────────────
+function plotMarkers() {
+  markers_.forEach(m => map_.removeLayer(m));
+  markers_ = [];
+
+  // Solo mostrar órdenes NO aprobadas
+  const visibles = ordenes_.filter(o => o.estadoCampo !== 'aprobada');
+
+  visibles.forEach(orden => {
+    if (!orden.latitud || !orden.longitud) return;
+
+    const color = ESTADO_COLORS[orden.estadoCampo] || PAREJA_COLORS[orden.pareja] || PAREJA_COLORS[null];
+    const size  = orden.estadoCampo === 'hecha' ? 10 : 14;
+
+    const icon = L.divIcon({
+      className: '',
+      html: `
+        <div style="
+          width:${size}px;height:${size}px;
+          background:${color};
+          border:2px solid rgba(255,255,255,.8);
+          border-radius:50%;
+          box-shadow:0 2px 6px rgba(0,0,0,.4);
+          ${orden.estadoCampo === 'hecha' ? 'opacity:0.6' : ''}
+        "></div>
+      `,
+      iconSize:   [size, size],
+      iconAnchor: [size/2, size/2],
     });
+
+    const marker = L.marker([orden.latitud, orden.longitud], { icon });
+    marker.on('click', () => verOrden(orden.id));
+    marker.addTo(map_);
+    markers_.push(marker);
   });
 }
 
-function renderAcordeonPareja(pareja) {
-  const c         = PAREJA_COLORS[pareja] || PAREJA_COLORS['Pareja 1'];
-  const hechas    = ordenes.filter(o => o.pareja === pareja && o.estadoCampo === 'hecha');
-  const visitas   = ordenes.filter(o => o.pareja === pareja && o.estadoCampo === 'visita');
-  const aprobadas = ordenes.filter(o => o.pareja === pareja && o.estadoCampo === 'aprobada');
-  const total     = ordenes.filter(o => o.pareja === pareja).length;
-  const inputId   = `buscar-${pareja.replace(' ','-')}`;
-  const listaId   = `lista-${pareja.replace(' ','-')}`;
+function updateStatChip() {
+  const activas  = ordenes_.filter(o => o.estadoCampo !== 'aprobada');
+  const total    = activas.length;
+  const hechas   = activas.filter(o => o.estadoCampo === 'hecha').length;
+  const sinAsig  = activas.filter(o => !o.pareja).length;
+  const aprobadas = ordenes_.filter(o => o.estadoCampo === 'aprobada').length;
 
-  if (!total) return '';
+  const txt = document.getElementById('mapa-stat-txt');
+  if (!txt) return;
 
-  // Agrupar hechas por fecha
-  const hechasPorFecha = agruparPorFecha(hechas);
-
-  return `
-    <div class="acordeon-card" style="border-color:${c.border};background:${c.glass}">
-
-      <!-- Header acordeón -->
-      <div class="acordeon-header" onclick="window.__cambios.toggleAcordeon('${pareja}')">
-        <div>
-          <div class="acordeon-title" style="color:${c.accent}">${pareja}</div>
-          <div class="acordeon-sub">
-            ${aprobadas.length}/${total} confirmadas
-            ${hechas.length ? `· <span style="color:#fbbf24">${hechas.length} por verificar</span>` : ''}
-            ${visitas.length ? `· <span style="color:var(--text-4)">${visitas.length} visitas</span>` : ''}
-          </div>
-        </div>
-        <div style="display:flex;align-items:center;gap:8px">
-          <div class="acordeon-pct" style="color:${c.accent}">
-            ${total ? Math.round((aprobadas.length/total)*100) : 0}%
-          </div>
-          <svg id="chevron-${pareja.replace(' ','-')}" viewBox="0 0 24 24" fill="none" stroke="${c.accent}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" style="transition:transform .2s">
-            <polyline points="6 9 12 15 18 9"/>
-          </svg>
-        </div>
-      </div>
-
-      <!-- Contenido acordeón -->
-      <div class="acordeon-body" id="body-${pareja.replace(' ','-')}" style="display:none">
-
-        <!-- Barra progreso pareja -->
-        <div class="progress-bar-bg" style="margin-bottom:12px">
-          <div class="progress-bar-fill" style="width:${total ? Math.round((aprobadas.length/total)*100) : 0}%;background:${c.accent}"></div>
-        </div>
-
-        <!-- Buscador -->
-        ${hechas.length ? `
-        <div class="buscar-wrap">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14" style="color:var(--text-4);flex-shrink:0">
-            <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
-          </svg>
-          <input class="buscar-input" id="${inputId}" type="text"
-                 placeholder="Buscar WO o cliente…"
-                 autocomplete="off" autocorrect="off"/>
-        </div>` : ''}
-
-        <!-- Órdenes por verificar agrupadas por fecha -->
-        ${hechas.length ? `
-        <div class="flex-col gap-10" id="${listaId}">
-          ${hechasPorFecha.map(({ fecha, ordenes: grupo }) => `
-            <div>
-              <div class="fecha-grupo-label">${fecha}</div>
-              <div class="flex-col gap-6">
-                ${grupo.map(o => renderOrdenVerificacion(o, c)).join('')}
-              </div>
-            </div>
-          `).join('')}
-        </div>` : `
-        <div style="text-align:center;padding:12px 0;font-size:12px;color:var(--text-4)">
-          ${aprobadas.length ? '✓ Todas confirmadas' : 'Sin órdenes realizadas aún'}
-        </div>`}
-
-        <!-- Visitas -->
-        ${visitas.length ? `
-        <div class="section-label" style="margin:12px 0 6px;font-size:8px">Visitas registradas</div>
-        <div class="flex-col gap-6">
-          ${visitas.map(o => renderOrdenVisitaPanel(o)).join('')}
-        </div>` : ''}
-
-      </div>
-    </div>
-  `;
+  if (sinAsig > 0) {
+    txt.textContent = `${sinAsig} sin asignar · ${hechas}/${total} pendientes`;
+    document.querySelector('.mapa-stat-dot').style.background = '#f59e0b';
+  } else if (total === 0) {
+    txt.textContent = `${aprobadas} órdenes aprobadas ✓`;
+    document.querySelector('.mapa-stat-dot').style.background = '#22c55e';
+  } else {
+    txt.textContent = `${hechas} realizadas · ${total - hechas} pendientes · ${aprobadas} aprobadas`;
+    document.querySelector('.mapa-stat-dot').style.background = '#22c55e';
+  }
 }
 
-function renderOrdenVerificacion(o, c) {
-  return `
-    <div class="orden-verif-card" id="verif-${o.id}">
-      <div class="orden-verif-info" onclick="window.__cambios.verOrden('${o.id}')">
-        <div class="orden-wo" style="font-size:12px">WO ${o.wo || '—'}</div>
-        <div class="orden-cliente" style="font-size:10px">${o.cliente || '—'}</div>
-        ${o.actualizadaDelsur
-          ? '<div style="font-size:9px;color:var(--ok);margin-top:2px">✓ Actualizada en DELSUR</div>'
-          : '<div style="font-size:9px;color:#fbbf24;margin-top:2px">⚠ Pendiente actualizar DELSUR</div>'}
+// ── Panel inferior de detalle ─────────────────────
+function verOrden(id) {
+  const o = ordenes_.find(x => x.id === id);
+  if (!o) return;
+  selectedOrden_ = o;
+
+  const isTecnico = role_ === 'tecnico';
+  const c = PAREJA_COLORS[o.pareja] || '#6b7280';
+
+  const panel   = document.getElementById('mapa-panel');
+  const content = document.getElementById('mapa-panel-content');
+
+  content.innerHTML = `
+    <div class="panel-orden-header">
+      <div style="flex:1;min-width:0">
+        <div class="panel-orden-wo">WO ${o.wo || '—'}</div>
+        <div class="panel-orden-cliente">${o.cliente || '—'}</div>
+        <div class="panel-orden-dir">${o.direccion || ''}</div>
       </div>
-      <button class="btn-confirmar-orden" onclick="window.__cambios.aprobar('${o.id}')">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="14" height="14">
-          <path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
-        </svg>
-        Confirmar
+      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0">
+        ${o.pareja ? `<div class="pareja-chip" style="color:${c};border-color:${c}33;background:${c}15">${o.pareja}</div>` : ''}
+        ${o.estadoCampo === 'hecha'  ? '<div class="estado-badge ok">Realizada</div>'    : ''}
+        ${o.estadoCampo === 'visita' ? '<div class="estado-badge warn">Visita</div>'     : ''}
+        ${!o.estadoCampo             ? '<div class="estado-badge muted">Pendiente</div>' : ''}
+      </div>
+    </div>
+
+    <!-- Info técnica -->
+    <div class="panel-detail-grid">
+      ${o.nc       ? `<div class="panel-detail-item"><div class="panel-detail-key">NC</div><div class="panel-detail-val">${o.nc}</div></div>` : ''}
+      ${o.serie    ? `<div class="panel-detail-item"><div class="panel-detail-key">Serie</div><div class="panel-detail-val">${o.serie}</div></div>` : ''}
+      ${o.dsct     ? `<div class="panel-detail-item"><div class="panel-detail-key">DSCT</div><div class="panel-detail-val">${o.dsct}</div></div>` : ''}
+      ${o.unidadLectura ? `<div class="panel-detail-item"><div class="panel-detail-key">MRU</div><div class="panel-detail-val">${o.unidadLectura}</div></div>` : ''}
+      ${o.concepto ? `<div class="panel-detail-item full"><div class="panel-detail-key">Concepto</div><div class="panel-detail-val">${o.concepto}</div></div>` : ''}
+      ${o.motivoVisita ? `<div class="panel-detail-item full"><div class="panel-detail-key">Motivo visita</div><div class="panel-detail-val" style="color:#fbbf24">${o.motivoVisita}${o.observacionVisita ? ' — ' + o.observacionVisita : ''}</div></div>` : ''}
+    </div>
+
+    ${o.telefono ? `
+    <div class="panel-orden-tel">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="13" height="13">
+        <path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 014.17 9.82a19.79 19.79 0 01-3.07-8.59A2 2 0 013.08 1h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L7.09 8.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"/>
+      </svg>
+      <a href="tel:${o.telefono}">${o.telefono}</a>
+    </div>` : ''}
+
+    <div class="panel-orden-actions">
+      ${isTecnico && (!o.estadoCampo || o.estadoCampo === 'visita') ? `
+        <button class="btn-action cm" onclick="window.__mapa.marcarHecha('${o.id}')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+          Realizada
+        </button>` : ''}
+      ${isTecnico && !o.estadoCampo ? `
+        <button class="btn-action outline" onclick="window.__mapa.marcarVisita('${o.id}')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          Visita
+        </button>` : ''}
+      ${!isTecnico ? `
+        <button class="btn-action cm" onclick="window.__mapa.asignarIndividual('${o.id}')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M17 3a2.828 2.828 0 114 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>
+          Asignar pareja
+        </button>` : ''}
+      <button class="btn-action outline" onclick="window.__mapa.abrirGoogleMaps(${o.latitud},${o.longitud})">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg>
+        Navegar
       </button>
     </div>
   `;
+
+  panel.classList.add('open');
 }
 
-function renderOrdenVisitaPanel(o) {
-  return `
-    <div class="orden-visita-panel" onclick="window.__cambios.verOrden('${o.id}')">
-      <div class="status-dot" style="background:#111827;border:1px solid #4b5563;flex-shrink:0"></div>
-      <div style="flex:1;min-width:0">
-        <div style="font-size:12px;font-weight:700">WO ${o.wo || '—'}</div>
-        <div style="font-size:10px;color:var(--text-3)">${o.motivoVisita || 'Sin motivo registrado'}</div>
-      </div>
-    </div>
-  `;
+function closePanel() {
+  document.getElementById('mapa-panel')?.classList.remove('open');
+  selectedOrden_ = null;
 }
 
-// ── Agrupar por fecha ─────────────────────────────
-function agruparPorFecha(lista) {
-  const grupos = {};
-  const hoy    = new Date();
-  const ayer   = new Date(hoy); ayer.setDate(ayer.getDate() - 1);
-
-  lista.forEach(o => {
-    const ts = o.fechaHecha?.toDate ? o.fechaHecha.toDate() : null;
-    let etiqueta = 'Sin fecha';
-    if (ts) {
-      const d = ts.toLocaleDateString('es-SV', { weekday:'long', day:'2-digit', month:'short' });
-      if (ts.toDateString() === hoy.toDateString())  etiqueta = `Hoy · ${d}`;
-      else if (ts.toDateString() === ayer.toDateString()) etiqueta = `Ayer · ${d}`;
-      else etiqueta = d.charAt(0).toUpperCase() + d.slice(1);
-    }
-    if (!grupos[etiqueta]) grupos[etiqueta] = [];
-    grupos[etiqueta].push(o);
-  });
-
-  // Ordenar: Hoy primero, luego Ayer, luego más antiguas
-  return Object.entries(grupos)
-    .sort(([a], [b]) => {
-      if (a.startsWith('Hoy'))  return -1;
-      if (b.startsWith('Hoy'))  return 1;
-      if (a.startsWith('Ayer')) return -1;
-      if (b.startsWith('Ayer')) return 1;
-      return 0;
-    })
-    .map(([fecha, ordenes]) => ({ fecha, ordenes }));
-}
-function toggleAcordeon(pareja) {
-  const key    = pareja.replace(' ', '-');
-  const body   = document.getElementById(`body-${key}`);
-  const chevron= document.getElementById(`chevron-${key}`);
-  if (!body) return;
-  const open = body.style.display === 'none';
-  body.style.display    = open ? '' : 'none';
-  if (chevron) chevron.style.transform = open ? 'rotate(180deg)' : '';
-}
-
-// ── Filtrar órdenes por WO/cliente ───────────────
-function filtrarOrdenesPareja(pareja, query) {
-  const listaId = `lista-${pareja.replace(' ','-')}`;
-  const lista   = document.getElementById(listaId);
-  if (!lista) return;
-
-  const hechas = ordenes.filter(o => o.pareja === pareja && o.estadoCampo === 'hecha');
-  const c      = PAREJA_COLORS[pareja] || PAREJA_COLORS['Pareja 1'];
-
-  const filtradas = query
-    ? hechas.filter(o =>
-        (o.wo      || '').toLowerCase().includes(query.toLowerCase()) ||
-        (o.cliente || '').toLowerCase().includes(query.toLowerCase())
-      )
-    : hechas;
-
-  if (!filtradas.length) {
-    lista.innerHTML = `<div style="text-align:center;padding:8px;font-size:11px;color:var(--text-4)">Sin resultados</div>`;
-    return;
-  }
-
-  // Mantener agrupación por fecha si no hay búsqueda activa
-  if (!query) {
-    const grupos = agruparPorFecha(filtradas);
-    lista.innerHTML = grupos.map(({ fecha, ordenes: grupo }) => `
-      <div>
-        <div class="fecha-grupo-label">${fecha}</div>
-        <div class="flex-col gap-6">
-          ${grupo.map(o => renderOrdenVerificacion(o, c)).join('')}
-        </div>
-      </div>
-    `).join('');
-  } else {
-    lista.innerHTML = `<div class="flex-col gap-6">${filtradas.map(o => renderOrdenVerificacion(o, c)).join('')}</div>`;
-  }
-}
-
-function renderParejaCard(pareja) {
-  const c = PAREJA_COLORS[pareja] || PAREJA_COLORS['Pareja 1'];
-  const lista = ordenes.filter(o => o.pareja === pareja);
-  if (!lista.length) return '';
-
-  const hechas     = lista.filter(o => o.estadoCampo === 'hecha').length;
-  const sinActual  = lista.filter(o => o.estadoCampo === 'hecha' && !o.actualizadaDelsur).length;
-  const visitas    = lista.filter(o => o.estadoCampo === 'visita').length;
-  const pendientes = lista.filter(o => !o.estadoCampo).length;
-  const total      = lista.length;
-  const pct        = total ? Math.round((hechas / total) * 100) : 0;
-
-  return `
-    <div class="pareja-card" style="border-color:${c.border};background:${c.glass}">
-      <div class="pareja-card-header">
-        <div class="pareja-name" style="color:${c.accent}">${pareja}</div>
-        <div class="pareja-pct" style="color:${c.accent}">${pct}%</div>
-      </div>
-      <div class="progress-bar-bg" style="margin:8px 0">
-        <div class="progress-bar-fill" style="width:${pct}%;background:${c.accent}"></div>
-      </div>
-      <div class="pareja-stats">
-        <span>${hechas}/${total} hechas</span>
-        ${sinActual ? `<span style="color:#f87171">· ${sinActual} sin actualizar</span>` : ''}
-        ${visitas   ? `<span style="color:#fbbf24">· ${visitas} visitas</span>` : ''}
-        ${pendientes? `<span style="color:var(--text-4)">· ${pendientes} pendientes</span>` : ''}
-      </div>
-    </div>
-  `;
-}
-
-// ── ÓRDENES (técnico y admin) ─────────────────────
-function renderOrdenes() {
-  const content = document.getElementById('cambios-content');
-  const lista   = role_ === 'tecnico' ? ordenes.filter(o => o.pareja === pareja_) : ordenes;
-  const { sinActualizar, hechas, visitas, pendientes, bloqueadas } = priorizarOrdenes(lista);
-
-  const isTecnico = role_ === 'tecnico';
-
-  content.innerHTML = `
-    <div class="flex-col gap-12">
-
-      <!-- Header -->
-      <div class="panel-header anim-up">
-        <div>
-          <div class="section-title">${isTecnico ? (pareja_ || 'Mis órdenes') : 'Todas las órdenes'}</div>
-          <div class="section-sub">${lista.length} órdenes · ${hechas.length + sinActualizar.length} realizadas</div>
-        </div>
-        <button class="icon-btn cm" onclick="window.__cambios.openCampo()" title="Orden en campo">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="15" height="15">
-            <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
-          </svg>
-        </button>
-      </div>
-
-      ${!lista.length ? `
-        <div class="dev-module">
-          <div class="dev-title">Sin órdenes</div>
-          <p>No hay órdenes asignadas para ${pareja_ || 'esta vista'}.</p>
-        </div>` : ''}
-
-      <!-- Sin actualizar -->
-      ${sinActualizar.length ? renderGrupo('⚠ Sin actualizar en DELSUR', sinActualizar, 'sin-actualizar', 'd1') : ''}
-
-      <!-- Visitas -->
-      ${visitas.length ? renderGrupo('Visitas registradas', visitas, 'visita', 'd2') : ''}
-
-      <!-- Pendientes -->
-      ${pendientes.length ? renderGrupo('Pendientes', pendientes, 'pendiente', 'd2') : ''}
-
-      <!-- Hechas -->
-      ${hechas.length ? renderGrupo('Realizadas', hechas, 'hecha', 'd3') : ''}
-
-      <!-- Bloqueadas -->
-      ${bloqueadas.length ? renderGrupo('🔒 Bloqueadas por lectura', bloqueadas, 'bloqueada', 'd4') : ''}
-
-    </div>
-  `;
-}
-
-function renderGrupo(titulo, lista, tipo, delay) {
-  return `
-    <div class="anim-up ${delay}">
-      <div class="section-label" style="margin-bottom:8px">${titulo}</div>
-      <div class="flex-col gap-8">
-        ${lista.map(o => renderOrdenCard(o, tipo)).join('')}
-      </div>
-    </div>
-  `;
-}
-
-function renderOrdenCard(o, tipo) {
-  const blocked  = tipo === 'bloqueada';
-  const c        = PAREJA_COLORS[o.pareja] || PAREJA_COLORS['Pareja 1'];
-  const isTecnico = role_ === 'tecnico';
-
-  // Íconos de estado
-  const statusIcon = {
-    'hecha':         `<div class="status-dot ok"></div>`,
-    'sin-actualizar':`<div class="status-dot warn pulse"></div>`,
-    'visita':        `<div class="status-dot warn"></div>`,
-    'pendiente':     `<div class="status-dot muted"></div>`,
-    'bloqueada':     `<div class="status-dot muted"></div>`,
-  }[tipo] || `<div class="status-dot muted"></div>`;
-
-  return `
-    <div class="orden-card ${tipo}" onclick="window.__cambios.verOrden('${o.id}')">
-      <div class="orden-card-left">
-        ${statusIcon}
-        <div class="orden-info">
-          <div class="orden-wo">WO ${o.wo || '—'}</div>
-          ${blocked ? `
-            <div class="orden-bloqueada-label">Bloqueada por lectura</div>
-          ` : `
-            <div class="orden-cliente">${o.cliente || '—'}</div>
-            <div class="orden-dir">${o.direccion || ''}</div>
-          `}
-        </div>
-      </div>
-      <div class="orden-card-right">
-        ${!isTecnico && o.pareja ? `<div class="pareja-chip" style="color:${c.accent};border-color:${c.border};background:${c.glass}">${o.pareja.replace('Pareja ','P')}</div>` : ''}
-        ${tipo === 'sin-actualizar' && isTecnico ? `
-          <button class="action-chip warn" onclick="event.stopPropagation();window.__cambios.actualizadaDelsur('${o.id}')">Ya actualicé</button>
-        ` : ''}
-        ${(tipo === 'sin-actualizar' || tipo === 'hecha') && !isTecnico ? `
-          <div style="display:flex;gap:4px">
-            <button class="action-chip ok" onclick="event.stopPropagation();window.__cambios.aprobar('${o.id}')">✓</button>
-            <button class="action-chip danger" onclick="event.stopPropagation();window.__cambios.rechazar('${o.id}')">✕</button>
-          </div>
-        ` : ''}
-      </div>
-    </div>
-  `;
-}
-
-// ── Ver detalle de orden ──────────────────────────
-function verOrden(id) {
-  const o = ordenes.find(x => x.id === id);
+// ── Acciones desde mapa ───────────────────────────
+function marcarHecha(id) {
+  const o = ordenes_.find(x => x.id === id);
   if (!o) return;
-  selectedOrden = o;
-
-  const blocked   = isBlocked(o);
-  const isTecnico = role_ === 'tecnico';
-  const c         = PAREJA_COLORS[o.pareja] || PAREJA_COLORS['Pareja 1'];
-
-  document.getElementById('sheet-orden-title').textContent = `WO ${o.wo || '—'}`;
-
-  document.getElementById('sheet-orden-body').innerHTML = `
-    <div class="flex-col gap-12">
-
-      <!-- Estado -->
-      <div class="orden-estado-row">
-        ${o.estadoCampo === 'hecha'  ? `<div class="estado-badge ok">Realizada</div>` : ''}
-        ${o.estadoCampo === 'visita' ? `<div class="estado-badge warn">Visita registrada</div>` : ''}
-        ${!o.estadoCampo             ? `<div class="estado-badge muted">Pendiente</div>` : ''}
-        ${blocked                    ? `<div class="estado-badge crit">🔒 Bloqueada</div>` : ''}
-        ${o.actualizadaDelsur        ? `<div class="estado-badge ok-outline">✓ Actualizada DELSUR</div>` : ''}
-        ${o.pareja ? `<div class="estado-badge" style="color:${c.accent};border-color:${c.border};background:${c.glass}">${o.pareja}</div>` : ''}
-      </div>
-
-      ${blocked ? `
-        <div class="card" style="background:rgba(239,68,68,.06);border-color:rgba(239,68,68,.2)">
-          <p style="font-size:12px;color:#f87171">Esta orden está bloqueada por lectura programada. No se puede trabajar en este momento.</p>
-        </div>` : ''}
-
-      <!-- Info cliente -->
-      ${!blocked ? `
-      <div class="detail-section">
-        <div class="detail-label">Cliente</div>
-        <div class="detail-row">
-          <div class="detail-field"><div class="detail-key">NC</div><div class="detail-val">${o.nc || '—'}</div></div>
-          <div class="detail-field"><div class="detail-key">Nombre</div><div class="detail-val">${o.cliente || '—'}</div></div>
-        </div>
-        <div class="detail-field full"><div class="detail-key">Dirección</div><div class="detail-val">${o.direccion || '—'}</div></div>
-        ${o.telefono ? `<div class="detail-field full"><div class="detail-key">Teléfono</div><div class="detail-val">
-          <a href="tel:${o.telefono}" style="color:var(--cm-light)">${o.telefono}</a>
-        </div></div>` : ''}
-      </div>
-
-      <!-- Info técnica -->
-      <div class="detail-section">
-        <div class="detail-label">Datos técnicos</div>
-        <div class="detail-row">
-          <div class="detail-field"><div class="detail-key">Serie</div><div class="detail-val">${o.serie || '—'}</div></div>
-          <div class="detail-field"><div class="detail-key">DSCT</div><div class="detail-val">${o.dsct || '—'}</div></div>
-          <div class="detail-field"><div class="detail-key">MRU</div><div class="detail-val">${o.unidadLectura || '—'}</div></div>
-        </div>
-        ${o.concepto ? `<div class="detail-field full"><div class="detail-key">Concepto</div><div class="detail-val">${o.concepto}</div></div>` : ''}
-      </div>` : ''}
-
-      <!-- Historial -->
-      ${(o.fechaHecha || o.fechaVisita) ? `
-      <div class="detail-section">
-        <div class="detail-label">Historial</div>
-        ${o.fechaHecha  ? `<div class="detail-field full"><div class="detail-key">Realizada</div><div class="detail-val">${formatDate(o.fechaHecha)} · ${o.hechaPor || '—'}</div></div>` : ''}
-        ${o.parejaDelDia?.length > 1 ? `<div class="detail-field full"><div class="detail-key">Trabajaron ese día</div><div class="detail-val">${o.parejaDelDia.join(' · ')}</div></div>` : ''}
-        ${o.fechaVisita ? `<div class="detail-field full"><div class="detail-key">Visita</div><div class="detail-val">${formatDate(o.fechaVisita)} · ${o.visitadoPor || '—'}</div></div>` : ''}
-        ${o.aprobadoPor ? `<div class="detail-field full"><div class="detail-key">Confirmada por</div><div class="detail-val">${o.aprobadoPor}</div></div>` : ''}
-      </div>` : ''}
-
-      <!-- Acciones técnico -->
-      ${isTecnico && !blocked ? `
-      <div class="flex-col gap-8">
-        ${!o.estadoCampo || o.estadoCampo === 'visita' ? `
-          <button class="btn-action cm" onclick="window.__cambios.marcarHecha('${o.id}')">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-            Marcar como realizada
-          </button>` : ''}
-        ${!o.estadoCampo ? `
-          <button class="btn-action outline" onclick="window.__cambios.marcarVisita('${o.id}')">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-            Registrar visita
-          </button>` : ''}
-        ${o.estadoCampo === 'hecha' && !o.actualizadaDelsur ? `
-          <button class="btn-action warn" onclick="window.__cambios.actualizadaDelsur('${o.id}')">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>
-            Ya actualicé en DELSUR
-          </button>` : ''}
-      </div>` : ''}
-
-      <!-- Acciones admin/asistente -->
-      ${!isTecnico && o.estadoCampo === 'hecha' ? `
-      <div class="flex-col gap-8">
-        <button class="btn-action cm" onclick="window.__cambios.aprobar('${o.id}')">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-          Confirmar realizada
-        </button>
-        <button class="btn-action danger" onclick="window.__cambios.rechazar('${o.id}')">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
-          Rechazar — volver a pendiente
-        </button>
-      </div>` : ''}
-
-    </div>
-  `;
-
-  openSheet('sheet-orden');
+  closePanel();           // limpia panel pero también pone selectedOrden_ = null
+  selectedOrden_ = o;     // restaurar después de closePanel
+  openSheet('sheet-realizada');
 }
 
-// ── Acciones ──────────────────────────────────────
-async function marcarHecha(id) {
-  const orden = ordenes.find(o => o.id === id);
-  if (!orden) return;
+async function confirmarRealizada(actualizadaDelsur) {
+  if (!selectedOrden_) return;
+  const id = selectedOrden_.id;
+  closeSheet('sheet-realizada');
+  selectedOrden_ = null;
+
   try {
-    const { abrirConsumoOrden } = await import('../consumo.js');
-    abrirConsumoOrden({
-      orden: { ...orden, id },
-      modulo: 'cambios',
-      session: session_,
-      db,
-      onSuccess: async ({ actualizadoDelsur }) => {
-        let parejaDelDia = [session_.displayName];
-        try {
-          const destino = session_.asignacionActual?.destino;
-          if (destino) {
-            const snap = await db.collection('users')
-              .where('asignacionActual.destino', '==', destino)
-              .where('active', '==', true).get();
-            parejaDelDia = snap.docs.map(d => d.data().displayName);
-          }
-        } catch { /* sin conexión */ }
-        await db.collection('cambios_ordenes').doc(id).update({ parejaDelDia });
-        const idx = ordenes.findIndex(o => o.id === id);
-        if (idx !== -1) ordenes[idx] = { ...ordenes[idx], estadoCampo: 'hecha', actualizadaDelsur: actualizadoDelsur, parejaDelDia };
-        invalidateOrdenes();
-        renderTab();
-      }
-    });
-  } catch(err) {
-    console.error('[cambios] marcarHecha error:', err);
-    toast('Error al cargar formulario: ' + err.message, 'error');
-  }
-}
-
-async function marcarVisita(id) {
-  const now = firebase.firestore.Timestamp.now();
-  await updateOrden(id, {
-    estadoCampo: 'visita',
-    fechaVisita: now,
-    visitadoPor: session_.displayName,
-  }, 'Visita registrada');
-}
-
-async function actualizadaDelsur(id) {
-  await updateOrden(id, {
-    actualizadaDelsur: true,
-  }, 'Actualización registrada');
-}
-
-async function aprobar(id) {
-  const now = firebase.firestore.Timestamp.now();
-  try {
+    const now = firebase.firestore.Timestamp.now();
     await db.collection('cambios_ordenes').doc(id).update({
-      estadoCampo:       'aprobada',
-      actualizadaDelsur:  true,
-      aprobadoPor:       session_.displayName,
-      fechaAprobacion:   now,
+      estadoCampo:       'hecha',
+      fechaHecha:        now,
+      hechaPor:          session_.displayName,
+      actualizadaDelsur,
     });
-    const idx = ordenes.findIndex(o => o.id === id);
-    if (idx !== -1) ordenes[idx] = { ...ordenes[idx], estadoCampo: 'aprobada', actualizadaDelsur: true, aprobadoPor: session_.displayName };
-    invalidateOrdenes();
-
-    // Quitar card del acordeón sin recargar todo el panel
-    const card = document.getElementById(`verif-${id}`);
-    if (card) {
-      card.style.transition = 'opacity .2s, transform .2s';
-      card.style.opacity = '0';
-      card.style.transform = 'translateX(20px)';
-      setTimeout(() => {
-        card.remove();
-        // Actualizar subtítulo del acordeón
-        renderPanel();
-      }, 200);
-    } else {
-      closeSheet('sheet-orden');
-      renderTab();
-    }
-
+    const o = ordenes_.find(x => x.id === id);
+    if (o) { o.estadoCampo = 'hecha'; o.actualizadaDelsur = actualizadaDelsur; }
+    plotMarkers();
+    updateStatChip();
     window.dispatchEvent(new CustomEvent('cambios:updated'));
-    toast('Orden confirmada', 'ok');
+    toast(actualizadaDelsur ? 'Realizada y actualizada en DELSUR' : 'Realizada — pendiente actualizar en DELSUR', 'ok');
   } catch (err) {
-    console.error('[cambios] Error aprobando:', err);
-    toast('Error al confirmar', 'error');
-  }
-}
-
-async function rechazar(id) {
-  if (!confirm('¿Rechazar esta orden? Volverá a pendiente para que el técnico la ejecute nuevamente.')) return;
-  await updateOrden(id, {
-    estadoCampo:       null,
-    actualizadaDelsur: false,
-    fechaHecha:        null,
-    hechaPor:          null,
-  }, 'Orden rechazada — regresa a pendiente');
-}
-
-async function updateOrden(id, data, msg) {
-  try {
-    await db.collection('cambios_ordenes').doc(id).update(data);
-
-    const idx = ordenes.findIndex(o => o.id === id);
-    if (idx !== -1) ordenes[idx] = { ...ordenes[idx], ...data };
-    invalidateOrdenes();
-
-    closeSheet('sheet-orden');
-    renderTab();
-    window.dispatchEvent(new CustomEvent('cambios:updated'));
-    toast(msg, 'ok');
-  } catch (err) {
-    console.error('[cambios] Error actualizando:', err);
+    console.error('[mapa] Error marcando hecha:', err);
     toast('Error al guardar', 'error');
   }
 }
 
-// ── Orden en campo ────────────────────────────────
-function openCampo() { openSheet('sheet-campo'); }
+function marcarVisita(id) {
+  const o = ordenes_.find(x => x.id === id);
+  if (!o) return;
+  closePanel();           // limpia panel pero también pone selectedOrden_ = null
+  selectedOrden_ = o;     // restaurar después de closePanel
 
-async function guardarOrdenCampo() {
-  const wo  = document.getElementById('campo-wo').value.trim();
-  const nc  = document.getElementById('campo-nc').value.trim();
-  const obs = document.getElementById('campo-obs').value.trim();
-  const errEl = document.getElementById('campo-error');
+  document.querySelectorAll('#visita-motivo-row .select-chip').forEach(c => c.classList.remove('active'));
+  document.getElementById('visita-obs').value = '';
+  document.getElementById('visita-error').style.display = 'none';
 
-  errEl.style.display = 'none';
-  if (!wo) {
-    errEl.textContent = 'El número WO es obligatorio.';
+  openSheet('sheet-visita');
+}
+
+async function confirmarVisita() {
+  if (!selectedOrden_) return;
+
+  const motivo = getSelectedChip('visita-motivo-row');
+  const obs    = document.getElementById('visita-obs').value.trim();
+  const errEl  = document.getElementById('visita-error');
+
+  if (!motivo) {
+    errEl.textContent = 'Selecciona un motivo de visita.';
     errEl.style.display = 'block';
     return;
   }
 
-  setLoading('btn-campo-label', 'Registrando…', true);
-  try {
-    const data = {
-      wo,
-      nc:             nc || null,
-      observacion:    obs || null,
-      pareja:         pareja_,
-      estadoCampo:    'hecha',
-      actualizadaDelsur: false,
-      generadaEnCampo: true,
-      generadaPor:    session_.displayName,
-      fechaHecha:     firebase.firestore.Timestamp.now(),
-      hechaPor:       session_.displayName,
-    };
-    const ref = await db.collection('cambios_ordenes').add(data);
-    ordenes.push({ id: ref.id, ...data });
-    invalidateOrdenes();
-
-    closeSheet('sheet-campo');
-    document.getElementById('campo-wo').value  = '';
-    document.getElementById('campo-nc').value  = '';
-    document.getElementById('campo-obs').value = '';
-    renderTab();
-    toast('Orden registrada', 'ok');
-  } catch (err) {
-    console.error('[cambios] Error orden campo:', err);
-    errEl.textContent = 'Error al registrar. Intenta de nuevo.';
-    errEl.style.display = 'block';
-  } finally {
-    setLoading('btn-campo-label', 'Registrar orden', false);
-  }
-}
-
-// ── Import Excel ──────────────────────────────────
-let importData = [];
-
-function openImport() { openSheet('sheet-import'); }
-
-function handleFileSelect(e) {
-  const file = e.target.files[0];
-  if (!file) return;
-
-  const reader = new FileReader();
-  reader.onload = evt => {
-    try {
-      const wb   = XLSX.read(evt.target.result, { type: 'binary' });
-      const ws   = wb.Sheets[wb.SheetNames[0]];
-      const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
-
-      // El Excel de DELSUR tiene 2 filas de cabecera antes de los datos:
-      // Fila 0: metadata (título, fecha entrega)
-      // Fila 1: encabezados reales (MRU, NC, WO, Client...)
-      // Fila 2+: datos
-
-      // Buscar la fila de encabezados reales (la que contiene "WO")
-      let headerRowIdx = -1;
-      for (let i = 0; i < Math.min(rows.length, 5); i++) {
-        const row = rows[i].map(h => String(h).toUpperCase().trim());
-        if (row.includes('WO')) { headerRowIdx = i; break; }
-      }
-
-      if (headerRowIdx === -1) {
-        document.getElementById('import-error').textContent = 'No se encontró la columna WO. Verifica el archivo.';
-        document.getElementById('import-error').style.display = 'block';
-        return;
-      }
-
-      const headers = rows[headerRowIdx].map(h => String(h).trim());
-
-      // Mapeo exacto de columnas del Excel de DELSUR
-      const col = {};
-      headers.forEach((h, i) => {
-        const hu = h.toUpperCase().trim();
-        if (hu === 'MRU')                          col.unidadLectura = i;
-        else if (hu === 'NC')                      col.nc            = i;
-        else if (hu === 'WO')                      col.wo            = i;
-        else if (hu === 'CLIENT')                  col.cliente       = i;
-        else if (hu === '# SERIES')                col.serieActual   = i;
-        else if (hu === 'TRADEMARK')               col.marca         = i;
-        else if (hu === 'DS/CT')                   col.dsct          = i;
-        else if (hu === 'ADDRESS')                 col.direccion     = i;
-        else if (hu === 'CONCEPT')                 col.concepto      = i;
-        else if (hu === 'WO CLASS')                col.woClass       = i;
-        else if (hu === 'LECTURAS Y OBSERVACIONES') col.lecturas     = i;
-        else if (hu === 'LATITUD')                 col.latitud       = i;
-        else if (hu === 'LONGITUD')                col.longitud      = i;
-      });
-
-      if (col.wo === undefined) {
-        document.getElementById('import-error').textContent = 'No se encontró la columna WO.';
-        document.getElementById('import-error').style.display = 'block';
-        return;
-      }
-
-      importData = rows.slice(headerRowIdx + 1)
-        .filter(r => r[col.wo] && String(r[col.wo]).trim())
-        .map(r => ({
-          wo:            String(r[col.wo]            ?? '').trim(),
-          nc:            String(r[col.nc]            ?? '').trim(),
-          cliente:       String(r[col.cliente]       ?? '').trim(),
-          direccion:     String(r[col.direccion]     ?? '').trim(),
-          latitud:       parseFloat(r[col.latitud])  || null,
-          longitud:      parseFloat(r[col.longitud]) || null,
-          serieActual:   String(r[col.serieActual]   ?? '').trim(),
-          marca:         String(r[col.marca]         ?? '').trim(),
-          dsct:          String(r[col.dsct]          ?? '').trim(),
-          unidadLectura: String(r[col.unidadLectura] ?? '').trim(),
-          concepto:      String(r[col.concepto]      ?? '').trim(),
-          woClass:       String(r[col.woClass]       ?? '').trim(),
-          lecturas:      String(r[col.lecturas]      ?? '').trim(),
-        }));
-
-      document.getElementById('import-info').innerHTML = `
-        <div class="import-info-box">
-          <div class="import-info-num">${importData.length}</div>
-          <div class="import-info-label">órdenes encontradas en el archivo</div>
-          <div style="font-size:11px;color:var(--text-4);margin-top:4px">${file.name}</div>
-        </div>
-      `;
-      document.getElementById('import-preview').style.display = '';
-      document.getElementById('import-error').style.display   = 'none';
-
-    } catch (err) {
-      console.error('[cambios] Error leyendo Excel:', err);
-      document.getElementById('import-error').textContent = 'Error al leer el archivo. Verifica que sea un Excel válido.';
-      document.getElementById('import-error').style.display = 'block';
-    }
-  };
-  reader.readAsBinaryString(file);
-}
-
-function findCol(headers, options) {
-  for (const opt of options) {
-    const idx = headers.findIndex(h => h.includes(opt));
-    if (idx !== -1) return idx;
-  }
-  return -1;
-}
-
-async function confirmarImport() {
-  if (!importData.length) return;
-  setLoading('btn-import-label', 'Analizando…', true);
+  const id = selectedOrden_.id;
+  setLoading('btn-visita-label', 'Registrando…', true);
 
   try {
-    // Obtener WOs existentes para detectar duplicados
-    const existSnap = await db.collection('cambios_ordenes')
-      .select('wo', 'estadoCampo', 'pareja').get();
-
-    const existentes = {};
-    existSnap.docs.forEach(d => {
-      existentes[String(d.data().wo).trim()] = {
-        id:          d.id,
-        estadoCampo: d.data().estadoCampo,
-        pareja:      d.data().pareja,
-      };
+    const now = firebase.firestore.Timestamp.now();
+    await db.collection('cambios_ordenes').doc(id).update({
+      estadoCampo:       'visita',
+      fechaVisita:       now,
+      visitadoPor:       session_.displayName,
+      motivoVisita:      motivo,
+      observacionVisita: obs || null,
     });
 
-    const nuevas    = [];
-    const omitidas  = [];
-
-    for (const orden of importData) {
-      const ex = existentes[orden.wo];
-      if (ex) {
-        // Ya existe y está hecha o aprobada → omitir
-        if (ex.estadoCampo === 'hecha' || ex.estadoCampo === 'aprobada') {
-          omitidas.push(orden.wo);
-          continue;
-        }
-        // Ya existe pero pendiente → omitir (no duplicar)
-        omitidas.push(orden.wo);
-        continue;
-      }
-      // Nueva orden
-      nuevas.push({
-        ...orden,
-        pareja:            null,
-        estadoCampo:       null,
-        actualizadaDelsur: false,
-        generadaEnCampo:   false,
-        importadaEn:       firebase.firestore.Timestamp.now(),
-      });
+    const o = ordenes_.find(x => x.id === id);
+    if (o) {
+      o.estadoCampo       = 'visita';
+      o.motivoVisita      = motivo;
+      o.observacionVisita = obs || null;
     }
 
-    // Batch insert solo las nuevas
-    if (nuevas.length > 0) {
-      let batch = db.batch();
-      let count = 0;
-      const batches = [];
-
-      for (const orden of nuevas) {
-        const ref = db.collection('cambios_ordenes').doc();
-        batch.set(ref, orden);
-        count++;
-        if (count === 499) {
-          batches.push(batch.commit());
-          batch = db.batch();
-          count = 0;
-        }
-      }
-      if (count > 0) batches.push(batch.commit());
-      await Promise.all(batches);
-    }
-
-    invalidateOrdenes();
-    closeSheet('sheet-import');
-    await loadOrdenes();
-
-    const msg = nuevas.length > 0
-      ? `${nuevas.length} órdenes nuevas importadas${omitidas.length ? ` · ${omitidas.length} ya existían` : ''}`
-      : `Sin órdenes nuevas — todas ya existían (${omitidas.length})`;
-
-    toast(msg, 'ok');
-    importData = [];
-
+    selectedOrden_ = null;
+    plotMarkers();
+    updateStatChip();
+    window.dispatchEvent(new CustomEvent('cambios:updated'));
+    closeSheet('sheet-visita');
+    toast(`Visita registrada — ${motivo}`, 'ok');
   } catch (err) {
-    console.error('[cambios] Error importando:', err);
-    document.getElementById('import-error').textContent = `Error: ${err.message}`;
-    document.getElementById('import-error').style.display = 'block';
+    console.error('[mapa] Error registrando visita:', err);
+    errEl.textContent = 'Error al guardar. Intenta de nuevo.';
+    errEl.style.display = 'block';
   } finally {
-    setLoading('btn-import-label', 'Importar órdenes', false);
+    setLoading('btn-visita-label', 'Registrar visita', false);
   }
+}
+
+function abrirGoogleMaps(lat, lng) {
+  window.open(`https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`, '_blank');
+}
+
+// ── Asignación individual ─────────────────────────
+function asignarIndividual(id) {
+  const o = ordenes_.find(x => x.id === id);
+  if (!o) return;
+  closePanel();
+  selectedOrden_ = o;
+
+  // Pre-seleccionar pareja actual si existe
+  document.querySelectorAll('#indiv-pareja-row .select-chip').forEach(c => {
+    c.classList.toggle('active', c.dataset.val === (o.pareja || 'null'));
+  });
+  document.getElementById('indiv-error').style.display = 'none';
+  document.getElementById('sheet-indiv-title').textContent = `Asignar: WO ${o.wo || '—'}`;
+  openSheet('sheet-asignar-individual');
+}
+
+async function confirmarIndividual() {
+  if (!selectedOrden_) return;
+  const parejaVal = getSelectedChip('indiv-pareja-row');
+  if (!parejaVal) {
+    document.getElementById('indiv-error').textContent = 'Selecciona una pareja.';
+    document.getElementById('indiv-error').style.display = 'block';
+    return;
+  }
+
+  const pareja = parejaVal === 'null' ? null : parejaVal;
+  const id     = selectedOrden_.id;
+
+  setLoading('btn-indiv-label', 'Guardando…', true);
+  try {
+    await db.collection('cambios_ordenes').doc(id).update({
+      pareja,
+      asignadoEn: firebase.firestore.FieldValue.serverTimestamp(),
+    });
+    const o = ordenes_.find(x => x.id === id);
+    if (o) o.pareja = pareja;
+    selectedOrden_ = null;
+    plotMarkers();
+    updateStatChip();
+    closeSheet('sheet-asignar-individual');
+    toast(pareja ? `Asignada a ${pareja}` : 'Orden desasignada', 'ok');
+  } catch (err) {
+    console.error('[mapa] Error asignando:', err);
+    document.getElementById('indiv-error').textContent = 'Error al guardar.';
+    document.getElementById('indiv-error').style.display = 'block';
+  } finally {
+    setLoading('btn-indiv-label', 'Confirmar', false);
+  }
+}
+
+// ── Asignación por zona (2 clicks) ───────────────
+let zonaActual_ = null;
+let zonaRect_   = null;
+let puntoA_     = null;
+
+function activarModoZona() {
+  if (!map_) return;
+  closePanel();
+  puntoA_ = null;
+  if (zonaRect_) { map_.removeLayer(zonaRect_); zonaRect_ = null; }
+
+  // Cambiar cursor
+  map_.getContainer().style.cursor = 'crosshair';
+
+  // Toast instructivo
+  toast('Click 1: esquina inicial — Click 2: esquina final', 'ok', 5000);
+
+  // Listener de clicks
+  map_.once('click', e => {
+    puntoA_ = e.latlng;
+
+    // Preview mientras mueve el mouse
+    let previewRect = null;
+    function onMove(ev) {
+      const bounds = L.latLngBounds(puntoA_, ev.latlng);
+      if (previewRect) previewRect.setBounds(bounds);
+      else {
+        previewRect = L.rectangle(bounds, { color: '#2dd4bf', weight: 2, fillOpacity: 0.1, dashArray: '6,4' }).addTo(map_);
+      }
+    }
+    map_.on('mousemove', onMove);
+
+    map_.once('click', e2 => {
+      map_.off('mousemove', onMove);
+      if (previewRect) { map_.removeLayer(previewRect); }
+      map_.getContainer().style.cursor = '';
+
+      const bounds = L.latLngBounds(puntoA_, e2.latlng);
+      zonaRect_    = L.rectangle(bounds, { color: '#2dd4bf', weight: 2, fillOpacity: 0.12 }).addTo(map_);
+      zonaActual_  = { getBounds: () => bounds };
+      puntoA_      = null;
+
+      // Contar órdenes dentro
+      const dentro = ordenes_.filter(o =>
+        o.latitud && o.longitud &&
+        bounds.contains(L.latLng(parseFloat(o.latitud), parseFloat(o.longitud)))
+      );
+
+      document.getElementById('zona-count').textContent = dentro.length;
+      document.getElementById('zona-preview').style.display = dentro.length ? '' : 'none';
+      document.getElementById('zona-error').style.display = 'none';
+      document.querySelectorAll('#zona-pareja-row .select-chip').forEach(c => c.classList.remove('active'));
+      openSheet('sheet-zona');
+    });
+  });
+}
+
+async function confirmarZona() {
+  const parejaVal = getSelectedChip('zona-pareja-row');
+  const errEl     = document.getElementById('zona-error');
+
+  if (!parejaVal) {
+    errEl.textContent = 'Selecciona una pareja o "Sin pareja".';
+    errEl.style.display = 'block';
+    return;
+  }
+  if (!zonaActual_) {
+    errEl.textContent = 'Dibuja una zona primero.';
+    errEl.style.display = 'block';
+    return;
+  }
+
+  const pareja = parejaVal === 'null' ? null : parejaVal;
+  const bounds = zonaActual_.getBounds();
+  const dentro = ordenes_.filter(o =>
+    o.latitud && o.longitud &&
+    bounds.contains(L.latLng(o.latitud, o.longitud))
+  );
+
+  if (!dentro.length) {
+    errEl.textContent = 'No hay órdenes en esa zona.';
+    errEl.style.display = 'block';
+    return;
+  }
+
+  setLoading('btn-zona-label', 'Asignando…', true);
+  try {
+    const ts = firebase.firestore.FieldValue.serverTimestamp();
+    let batch = db.batch();
+    let count = 0;
+    const batches = [];
+
+    for (const o of dentro) {
+      batch.update(db.collection('cambios_ordenes').doc(o.id), {
+        pareja,
+        asignadoEn: ts,
+      });
+      count++;
+      if (count === 499) {
+        batches.push(batch.commit());
+        batch = db.batch();
+        count = 0;
+      }
+    }
+    if (count > 0) batches.push(batch.commit());
+    await Promise.all(batches);
+
+    dentro.forEach(o => { o.pareja = pareja; });
+    if (zonaRect_) { map_.removeLayer(zonaRect_); zonaRect_ = null; }
+    zonaActual_ = null;
+    plotMarkers();
+    updateStatChip();
+    closeSheet('sheet-zona');
+    toast(pareja
+      ? `${dentro.length} órdenes asignadas a ${pareja}`
+      : `${dentro.length} órdenes desasignadas`, 'ok');
+  } catch (err) {
+    console.error('[mapa] Error asignando zona:', err);
+    errEl.textContent = 'Error al asignar. Intenta de nuevo.';
+    errEl.style.display = 'block';
+  } finally {
+    setLoading('btn-zona-label', 'Confirmar asignación', false);
+  }
+}
+
+function cancelarZona() {
+  map_.getContainer().style.cursor = '';
+  if (zonaRect_) { map_.removeLayer(zonaRect_); zonaRect_ = null; }
+  zonaActual_ = null;
+  puntoA_     = null;
+  closeSheet('sheet-zona');
 }
 
 // ── Helpers ───────────────────────────────────────
 function openSheet(id)  { document.getElementById(id)?.classList.add('open'); }
 function closeSheet(id) { document.getElementById(id)?.classList.remove('open'); }
+
+function setupSelectChips(rowId) {
+  const row = document.getElementById(rowId);
+  if (!row) return;
+  row.querySelectorAll('.select-chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      row.querySelectorAll('.select-chip').forEach(c => c.classList.remove('active'));
+      chip.classList.add('active');
+    });
+  });
+}
+
+function getSelectedChip(rowId) {
+  return document.querySelector(`#${rowId} .select-chip.active`)?.dataset.val || null;
+}
 
 function setLoading(labelId, text, loading) {
   const el = document.getElementById(labelId);
@@ -1266,10 +849,4 @@ function setLoading(labelId, text, loading) {
   el.innerHTML = loading ? '<div class="spinner"></div>' : text;
   const btn = el.closest('button');
   if (btn) btn.disabled = loading;
-}
-
-function formatDate(ts) {
-  if (!ts) return '—';
-  const d = ts.toDate ? ts.toDate() : new Date(ts);
-  return d.toLocaleDateString('es-SV', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' });
 }
