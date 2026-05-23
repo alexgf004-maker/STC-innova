@@ -60,7 +60,8 @@ export async function init(container, session) {
 function renderShell() {
   const isTecnico = role_ === 'tecnico';
   const tabs = isTecnico
-    ? [{ id:'ordenes', label:'Órdenes' }, { id:'resumen', label:'Resumen' }]
+    ? [{ id:'resumen', label:'Resumen' }, { id:'ordenes', label:'Órdenes' }]
+    : [{ id:'panel',   label:'Panel'   }, { id:'ordenes', label:'Órdenes' }, { id:'mapa', label:'Mapa' }];
     : [{ id:'panel',   label:'Panel'   }, { id:'ordenes', label:'Órdenes' }, { id:'mapa', label:'Mapa' }];
 
   container_.innerHTML = `
