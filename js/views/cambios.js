@@ -63,7 +63,6 @@ function renderShell() {
   const tabs = isTecnico
     ? [{ id:'resumen', label:'Resumen' }, { id:'ordenes', label:'Órdenes' }]
     : [{ id:'panel',   label:'Panel'   }, { id:'ordenes', label:'Órdenes' }, { id:'mapa', label:'Mapa' }];
-    : [{ id:'panel',   label:'Panel'   }, { id:'ordenes', label:'Órdenes' }, { id:'mapa', label:'Mapa' }];
 
   container_.innerHTML = `
     <!-- Tabs -->
