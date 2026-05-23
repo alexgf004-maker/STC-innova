@@ -133,7 +133,7 @@ function renderShell() {
             <p>Toca para seleccionar archivo Excel</p>
             <span>.xlsx · .xls</span>
           </div>
-          <input type="file" id="import-file" accept=".xlsx,.xls" style="display:none"/>
+          <input type="file" id="import-file" accept=".xlsx,.xlsm,.xls" style="display:none"/>
           <div id="import-preview" style="display:none">
             <div class="import-info" id="import-info"></div>
             <div id="import-error" class="form-error"></div>
@@ -1082,46 +1082,67 @@ function handleFileSelect(e) {
       const ws   = wb.Sheets[wb.SheetNames[0]];
       const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
 
-      if (rows.length < 2) {
-        document.getElementById('import-error').textContent = 'El archivo está vacío.';
+      // El Excel de DELSUR tiene 2 filas de cabecera antes de los datos:
+      // Fila 0: metadata (título, fecha entrega)
+      // Fila 1: encabezados reales (MRU, NC, WO, Client...)
+      // Fila 2+: datos
+
+      // Buscar la fila de encabezados reales (la que contiene "WO")
+      let headerRowIdx = -1;
+      for (let i = 0; i < Math.min(rows.length, 5); i++) {
+        const row = rows[i].map(h => String(h).toUpperCase().trim());
+        if (row.includes('WO')) { headerRowIdx = i; break; }
+      }
+
+      if (headerRowIdx === -1) {
+        document.getElementById('import-error').textContent = 'No se encontró la columna WO. Verifica el archivo.';
         document.getElementById('import-error').style.display = 'block';
         return;
       }
 
-      // Mapear columnas: WO, NC, Cliente, Dirección, Latitud, Longitud, Serie, DS, MRU, Concepto, Teléfono
-      const headers = rows[0].map(h => String(h).toLowerCase().trim());
-      const colIdx  = {
-        wo:        findCol(headers, ['wo', 'work order', 'orden']),
-        nc:        findCol(headers, ['nc', 'número cliente', 'num cliente']),
-        cliente:   findCol(headers, ['cliente', 'nombre']),
-        direccion: findCol(headers, ['dirección', 'direccion', 'dir']),
-        latitud:   findCol(headers, ['latitud', 'lat']),
-        longitud:  findCol(headers, ['longitud', 'lng', 'lon']),
-        serie:     findCol(headers, ['serie']),
-        dsct:      findCol(headers, ['ds', 'dsct', 'descuento']),
-        unidadLectura: findCol(headers, ['mru', 'unidad lectura']),
-        concepto:  findCol(headers, ['concepto']),
-        telefono:  findCol(headers, ['teléfono', 'telefono', 'tel']),
-      };
+      const headers = rows[headerRowIdx].map(h => String(h).trim());
 
-      importData = rows.slice(1)
-        .filter(r => r[colIdx.wo])
+      // Mapeo exacto de columnas del Excel de DELSUR
+      const col = {};
+      headers.forEach((h, i) => {
+        const hu = h.toUpperCase().trim();
+        if (hu === 'MRU')                          col.unidadLectura = i;
+        else if (hu === 'NC')                      col.nc            = i;
+        else if (hu === 'WO')                      col.wo            = i;
+        else if (hu === 'CLIENT')                  col.cliente       = i;
+        else if (hu === '# SERIES')                col.serieActual   = i;
+        else if (hu === 'TRADEMARK')               col.marca         = i;
+        else if (hu === 'DS/CT')                   col.dsct          = i;
+        else if (hu === 'ADDRESS')                 col.direccion     = i;
+        else if (hu === 'CONCEPT')                 col.concepto      = i;
+        else if (hu === 'WO CLASS')                col.woClass       = i;
+        else if (hu === 'LECTURAS Y OBSERVACIONES') col.lecturas     = i;
+        else if (hu === 'LATITUD')                 col.latitud       = i;
+        else if (hu === 'LONGITUD')                col.longitud      = i;
+      });
+
+      if (col.wo === undefined) {
+        document.getElementById('import-error').textContent = 'No se encontró la columna WO.';
+        document.getElementById('import-error').style.display = 'block';
+        return;
+      }
+
+      importData = rows.slice(headerRowIdx + 1)
+        .filter(r => r[col.wo] && String(r[col.wo]).trim())
         .map(r => ({
-          wo:           String(r[colIdx.wo]  ?? '').trim(),
-          nc:           String(r[colIdx.nc]  ?? '').trim(),
-          cliente:      String(r[colIdx.cliente] ?? '').trim(),
-          direccion:    String(r[colIdx.direccion] ?? '').trim(),
-          latitud:      parseFloat(r[colIdx.latitud])  || null,
-          longitud:     parseFloat(r[colIdx.longitud]) || null,
-          serie:        String(r[colIdx.serie]    ?? '').trim(),
-          dsct:         String(r[colIdx.dsct]     ?? '').trim(),
-          unidadLectura:String(r[colIdx.unidadLectura] ?? '').trim(),
-          concepto:     String(r[colIdx.concepto] ?? '').trim(),
-          telefono:     String(r[colIdx.telefono] ?? '').trim(),
-          pareja:       null,
-          estadoCampo:  null,
-          actualizadaDelsur: false,
-          generadaEnCampo:   false,
+          wo:            String(r[col.wo]            ?? '').trim(),
+          nc:            String(r[col.nc]            ?? '').trim(),
+          cliente:       String(r[col.cliente]       ?? '').trim(),
+          direccion:     String(r[col.direccion]     ?? '').trim(),
+          latitud:       parseFloat(r[col.latitud])  || null,
+          longitud:      parseFloat(r[col.longitud]) || null,
+          serieActual:   String(r[col.serieActual]   ?? '').trim(),
+          marca:         String(r[col.marca]         ?? '').trim(),
+          dsct:          String(r[col.dsct]          ?? '').trim(),
+          unidadLectura: String(r[col.unidadLectura] ?? '').trim(),
+          concepto:      String(r[col.concepto]      ?? '').trim(),
+          woClass:       String(r[col.woClass]       ?? '').trim(),
+          lecturas:      String(r[col.lecturas]      ?? '').trim(),
         }));
 
       document.getElementById('import-info').innerHTML = `
@@ -1153,35 +1174,82 @@ function findCol(headers, options) {
 
 async function confirmarImport() {
   if (!importData.length) return;
-  setLoading('btn-import-label', 'Importando…', true);
+  setLoading('btn-import-label', 'Analizando…', true);
 
   try {
-    // Batch write (máx 500 por batch)
-    const batches = [];
-    let batch = db.batch();
-    let count = 0;
+    // Obtener WOs existentes para detectar duplicados
+    const existSnap = await db.collection('cambios_ordenes')
+      .select('wo', 'estadoCampo', 'pareja').get();
+
+    const existentes = {};
+    existSnap.docs.forEach(d => {
+      existentes[String(d.data().wo).trim()] = {
+        id:          d.id,
+        estadoCampo: d.data().estadoCampo,
+        pareja:      d.data().pareja,
+      };
+    });
+
+    const nuevas    = [];
+    const omitidas  = [];
 
     for (const orden of importData) {
-      const ref = db.collection('cambios_ordenes').doc();
-      batch.set(ref, orden);
-      count++;
-      if (count === 499) {
-        batches.push(batch.commit());
-        batch = db.batch();
-        count = 0;
+      const ex = existentes[orden.wo];
+      if (ex) {
+        // Ya existe y está hecha o aprobada → omitir
+        if (ex.estadoCampo === 'hecha' || ex.estadoCampo === 'aprobada') {
+          omitidas.push(orden.wo);
+          continue;
+        }
+        // Ya existe pero pendiente → omitir (no duplicar)
+        omitidas.push(orden.wo);
+        continue;
       }
+      // Nueva orden
+      nuevas.push({
+        ...orden,
+        pareja:            null,
+        estadoCampo:       null,
+        actualizadaDelsur: false,
+        generadaEnCampo:   false,
+        importadaEn:       firebase.firestore.Timestamp.now(),
+      });
     }
-    if (count > 0) batches.push(batch.commit());
-    await Promise.all(batches);
+
+    // Batch insert solo las nuevas
+    if (nuevas.length > 0) {
+      let batch = db.batch();
+      let count = 0;
+      const batches = [];
+
+      for (const orden of nuevas) {
+        const ref = db.collection('cambios_ordenes').doc();
+        batch.set(ref, orden);
+        count++;
+        if (count === 499) {
+          batches.push(batch.commit());
+          batch = db.batch();
+          count = 0;
+        }
+      }
+      if (count > 0) batches.push(batch.commit());
+      await Promise.all(batches);
+    }
 
     invalidateOrdenes();
     closeSheet('sheet-import');
     await loadOrdenes();
-    toast(`${importData.length} órdenes importadas`, 'ok');
+
+    const msg = nuevas.length > 0
+      ? `${nuevas.length} órdenes nuevas importadas${omitidas.length ? ` · ${omitidas.length} ya existían` : ''}`
+      : `Sin órdenes nuevas — todas ya existían (${omitidas.length})`;
+
+    toast(msg, 'ok');
     importData = [];
+
   } catch (err) {
     console.error('[cambios] Error importando:', err);
-    document.getElementById('import-error').textContent = 'Error al importar. Intenta de nuevo.';
+    document.getElementById('import-error').textContent = `Error: ${err.message}`;
     document.getElementById('import-error').style.display = 'block';
   } finally {
     setLoading('btn-import-label', 'Importar órdenes', false);
