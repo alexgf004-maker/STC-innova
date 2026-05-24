@@ -322,12 +322,17 @@ export async function abrirConsumoOrden({ orden, modulo, session, db, onSuccess 
 
       // 3. Marcar la orden como hecha
       const col = modulo === 'cambios' ? 'cambios_ordenes' : 'otc_ordenes';
-      batch.update(db.collection(col).doc(orden.id), {
+      const ordenUpdate = {
         estadoCampo:      'hecha',
         fechaHecha:       now,
         hechaPor:         session.displayName,
         actualizadaDelsur: actualizadoDelsur,
-      });
+      };
+      // Si la orden trae parejaDelDia (de cambios.js), guardarlo en el mismo batch
+      if (Array.isArray(orden.parejaDelDia) && orden.parejaDelDia.length) {
+        ordenUpdate.parejaDelDia = orden.parejaDelDia;
+      }
+      batch.update(db.collection(col).doc(orden.id), ordenUpdate);
 
       await batch.commit();
 
