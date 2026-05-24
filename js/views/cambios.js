@@ -1003,14 +1003,6 @@ async function marcarHecha(id) {
       session: session_,
       db,
       onSuccess: async ({ actualizadoDelsur }) => {
-        // Guardar parejaDelDia en Firestore (complemento al batch de consumo.js)
-        console.log('[cambios] parejaDelDia a guardar:', parejaDelDia);
-        try {
-          await db.collection('cambios_ordenes').doc(id).update({ parejaDelDia });
-        } catch(err) {
-          console.error('[cambios] Error guardando parejaDelDia:', err.message);
-        }
-
         const idx = ordenes.findIndex(o => o.id === id);
         if (idx !== -1) ordenes[idx] = { ...ordenes[idx], estadoCampo: 'hecha', actualizadaDelsur: actualizadoDelsur, parejaDelDia };
         invalidateOrdenes();
