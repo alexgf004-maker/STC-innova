@@ -345,7 +345,6 @@ body {
 }
 .topbar-btn:active { background: var(--glass-hov); }
 
-/* Content area */
 /* main-col — columna principal (topbar + content) */
 .main-col {
   flex: 1;
@@ -353,12 +352,16 @@ body {
   flex-direction: column;
   min-height: 0;
   overflow: hidden;
-  order: -1; /* main-col aparece antes que navbar en móvil */
 }
 
-
+/* Content area */
+.content-area {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
   padding: 16px 16px max(80px, calc(64px + env(safe-area-inset-bottom)));
   overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
 }
 .content-area::-webkit-scrollbar { display: none; }
 
