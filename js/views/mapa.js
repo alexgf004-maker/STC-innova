@@ -26,6 +26,26 @@ const ESTADO_COLORS = {
 };
 
 let map_ = null;
+let calendario_ = []; // lecturas cargadas desde Firestore
+
+function isBlocked_(orden) {
+  if (!orden.unidadLectura || !calendario_.length) return false;
+  const hoy = new Date(); hoy.setHours(0,0,0,0);
+  return calendario_.some(cal => {
+    if (!orden.unidadLectura.startsWith(cal.mru)) return false;
+    let fecha;
+    if (cal.fechaLectura?.toDate) {
+      fecha = cal.fechaLectura.toDate();
+    } else if (typeof cal.fechaLectura === 'string') {
+      const [y,m,d] = cal.fechaLectura.split('-').map(Number);
+      fecha = new Date(y, m-1, d);
+    } else {
+      fecha = new Date(cal.fechaLectura);
+    }
+    fecha.setHours(0,0,0,0);
+    return Math.abs((fecha - hoy) / (1000*60*60*24)) <= 2;
+  });
+}
 let markers_ = [];
 let drawnItems_ = null;
 let drawControl_ = null;
@@ -50,6 +70,14 @@ export async function init(container, session) {
 
   // Esperar primera carga antes de inicializar el mapa
   await loadOrdenes();
+
+  // Cargar calendario de lecturas para bloqueos visuales
+  try {
+    const calSnap = await db.collection('cambios_calendario').get();
+    calendario_ = calSnap.docs.map(d => d.data());
+  } catch(err) {
+    console.warn('[mapa] Error cargando calendario:', err);
+  }
   initMap();
 }
 
@@ -417,12 +445,29 @@ function plotMarkers() {
   visibles.forEach(orden => {
     if (!orden.latitud || !orden.longitud) return;
 
-    const color = ESTADO_COLORS[orden.estadoCampo] || PAREJA_COLORS[orden.pareja] || PAREJA_COLORS[null];
+    const bloqueada = !orden.estadoCampo && isBlocked_(orden);
+    const color = bloqueada
+      ? '#4b5563'
+      : ESTADO_COLORS[orden.estadoCampo] || PAREJA_COLORS[orden.pareja] || PAREJA_COLORS[null];
     const size  = orden.estadoCampo === 'hecha' ? 10 : 14;
 
     const icon = L.divIcon({
       className: '',
-      html: `
+      html: bloqueada ? `
+        <div style="
+          width:22px;height:22px;
+          background:#1f2937;
+          border:2px solid #4b5563;
+          border-radius:6px;
+          display:flex;align-items:center;justify-content:center;
+          box-shadow:0 2px 6px rgba(0,0,0,.5);
+        ">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="11" height="11">
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+            <path d="M7 11V7a5 5 0 0110 0v4"/>
+          </svg>
+        </div>
+      ` : `
         <div style="
           width:${size}px;height:${size}px;
           background:${color};
@@ -432,8 +477,8 @@ function plotMarkers() {
           ${orden.estadoCampo === 'hecha' ? 'opacity:0.6' : ''}
         "></div>
       `,
-      iconSize:   [size, size],
-      iconAnchor: [size/2, size/2],
+      iconSize:   bloqueada ? [22,22] : [size, size],
+      iconAnchor: bloqueada ? [11,11]  : [size/2, size/2],
     });
 
     const marker = L.marker([orden.latitud, orden.longitud], { icon });
@@ -476,6 +521,22 @@ function verOrden(id) {
 
   const panel   = document.getElementById('mapa-panel');
   const content = document.getElementById('mapa-panel-content');
+
+  // Si está bloqueada por lectura, mostrar solo el candado
+  if (isBlocked_(o)) {
+    content.innerHTML = `
+      <div style="padding:24px 16px;text-align:center">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" width="40" height="40" style="margin:0 auto 12px">
+          <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+          <path d="M7 11V7a5 5 0 0110 0v4"/>
+        </svg>
+        <div style="font-size:14px;font-weight:700;color:var(--text-2);margin-bottom:6px">Orden bloqueada</div>
+        <div style="font-size:12px;color:var(--text-4)">Esta orden está en período de lectura<br>y no puede realizarse en este momento.</div>
+      </div>
+    `;
+    panel.classList.add('open');
+    return;
+  }
 
   content.innerHTML = `
     <div class="panel-orden-header">
