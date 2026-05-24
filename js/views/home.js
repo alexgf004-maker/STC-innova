@@ -5,6 +5,8 @@
  */
 
 import { db } from '../firebase.js';
+import { leerStats, recalcularStats } from '../stats.js';
+import { setupRefreshBtn } from '../ui.js';
 
 const META_DIARIA = 15;
 
@@ -19,8 +21,28 @@ export async function init(container, session) {
     cargarDatosTecnico(session, area, destino);
     return;
   }
-  if (role === 'admin')     { renderHomeAdmin(container, session);     cargarDatosAdmin(session);     return; }
-  if (role === 'asistente') { renderHomeAsistente(container, session); cargarDatosAsistente(session); return; }
+  if (role === 'admin')     {
+    renderHomeAdmin(container, session);
+    cargarDatosAdmin(session);
+    cargarPersonalHoy();
+    setupRefreshBtn(async () => {
+      await recalcularStats();
+      await cargarDatosAdmin(session);
+      await cargarPersonalHoy();
+    });
+    return;
+  }
+  if (role === 'asistente') {
+    renderHomeAsistente(container, session);
+    cargarDatosAsistente(session);
+    cargarPersonalHoy();
+    setupRefreshBtn(async () => {
+      await recalcularStats();
+      await cargarDatosAsistente(session);
+      await cargarPersonalHoy();
+    });
+    return;
+  }
 
   container.innerHTML = `<p style="color:var(--text-3);padding:24px">Rol no reconocido.</p>`;
 }
@@ -80,29 +102,17 @@ async function cargarDatosTecnico(session, area, destino) {
 // ── Carga datos admin ─────────────────────────────
 async function cargarDatosAdmin(session) {
   try {
-    const hoy = new Date(); hoy.setHours(0,0,0,0);
-    const [cmSnap, otcSnap, solSnap] = await Promise.all([
-      db.collection('cambios_ordenes').get(),
-      db.collection('otc_ordenes').where('estadoCampo', '!=', 'aprobada').get(),
-      db.collection('solicitudes_material').where('estado', '==', 'pendiente').get(),
-    ]);
-
-    const cmHoy = cmSnap.docs.filter(d => {
-      const f = d.data().fechaHecha?.toDate?.();
-      return f && f >= hoy;
-    }).length;
-
-    const sinActualizar = cmSnap.docs.filter(d => {
-      const data = d.data();
-      return (data.estadoCampo === 'hecha' || data.estadoCampo === 'aprobada') && !data.actualizadaDelsur;
-    }).length;
+    let stats = await leerStats();
+    // Si no existe el documento aún, lo calculamos una vez
+    if (!stats) stats = await recalcularStats();
+    if (!stats) return;
 
     const setVal = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
-    setVal('m-stat-cm',    cmHoy);
-    setVal('m-stat-otc',   otcSnap.size);
-    setVal('m-stat-alert', solSnap.size);
+    setVal('m-stat-cm',    stats.cmHechasHoy       ?? '—');
+    setVal('m-stat-otc',   stats.otcActivas        ?? '—');
+    setVal('m-stat-alert', stats.solicitudesPendientes ?? '—');
 
-    renderIndicadorCorte(sinActualizar);
+    renderIndicadorCorte(stats.cmSinActualizar ?? 0);
   } catch(err) {
     console.warn('[home] Error cargando datos admin:', err);
     renderIndicadorCorte(0);
@@ -112,29 +122,16 @@ async function cargarDatosAdmin(session) {
 // ── Carga datos asistente ─────────────────────────
 async function cargarDatosAsistente(session) {
   try {
-    const hoy = new Date(); hoy.setHours(0,0,0,0);
-    const [cmSnap, otcSnap, solSnap] = await Promise.all([
-      db.collection('cambios_ordenes').get(),
-      db.collection('otc_ordenes').where('estadoCampo', '!=', 'aprobada').get(),
-      db.collection('solicitudes_material').where('estado', '==', 'pendiente').get(),
-    ]);
-
-    const cmHoy = cmSnap.docs.filter(d => {
-      const f = d.data().fechaHecha?.toDate?.();
-      return f && f >= hoy;
-    }).length;
-
-    const sinActualizar = cmSnap.docs.filter(d => {
-      const data = d.data();
-      return (data.estadoCampo === 'hecha' || data.estadoCampo === 'aprobada') && !data.actualizadaDelsur;
-    }).length;
+    let stats = await leerStats();
+    if (!stats) stats = await recalcularStats();
+    if (!stats) return;
 
     const setVal = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
-    setVal('a-stat-cm',  cmHoy);
-    setVal('a-stat-otc', otcSnap.size);
-    setVal('a-stat-sol', solSnap.size);
+    setVal('a-stat-cm',  stats.cmHechasHoy       ?? '—');
+    setVal('a-stat-otc', stats.otcActivas        ?? '—');
+    setVal('a-stat-sol', stats.solicitudesPendientes ?? '—');
 
-    renderIndicadorCorte(sinActualizar);
+    renderIndicadorCorte(stats.cmSinActualizar ?? 0);
   } catch(err) {
     console.warn('[home] Error cargando datos asistente:', err);
     renderIndicadorCorte(0);
