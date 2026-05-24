@@ -332,6 +332,8 @@ export async function abrirConsumoOrden({ orden, modulo, session, db, onSuccess 
       if (Array.isArray(orden.parejaDelDia) && orden.parejaDelDia.length) {
         ordenUpdate.parejaDelDia = orden.parejaDelDia;
       }
+      console.log('[consumo] orden.parejaDelDia:', orden.parejaDelDia);
+      console.log('[consumo] ordenUpdate completo:', ordenUpdate);
       batch.update(db.collection(col).doc(orden.id), ordenUpdate);
 
       await batch.commit();
