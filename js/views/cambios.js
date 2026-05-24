@@ -10,6 +10,7 @@
 
 import { db } from '../firebase.js';
 import { toast } from '../ui.js';
+import { recalcularStats } from '../stats.js';
 
 // ── Caché ─────────────────────────────────────────
 const cache = {
@@ -989,6 +990,7 @@ async function marcarHecha(id) {
         if (idx !== -1) ordenes[idx] = { ...ordenes[idx], estadoCampo: 'hecha', actualizadaDelsur: actualizadoDelsur, parejaDelDia };
         invalidateOrdenes();
         renderTab();
+        recalcularStats().catch(()=>{});
       }
     });
   } catch(err) {
@@ -1043,6 +1045,7 @@ async function aprobar(id) {
 
     window.dispatchEvent(new CustomEvent('cambios:updated'));
     toast('Orden confirmada', 'ok');
+    recalcularStats().catch(()=>{});
   } catch (err) {
     console.error('[cambios] Error aprobando:', err);
     toast('Error al confirmar', 'error');
