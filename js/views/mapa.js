@@ -617,6 +617,18 @@ async function confirmarRealizada(actualizadaDelsur) {
   closeSheet('sheet-realizada');
   selectedOrden_ = null;
 
+  // Obtener pareja del día
+  let parejaDelDia = [session_.displayName];
+  try {
+    const destino = session_.asignacionActual?.destino;
+    if (destino) {
+      const snap = await db.collection('users')
+        .where('asignacionActual.destino', '==', destino)
+        .where('active', '==', true).get();
+      parejaDelDia = snap.docs.map(d => d.data().displayName);
+    }
+  } catch { /* sin conexión */ }
+
   try {
     const now = firebase.firestore.Timestamp.now();
     await db.collection('cambios_ordenes').doc(id).update({
@@ -624,9 +636,10 @@ async function confirmarRealizada(actualizadaDelsur) {
       fechaHecha:        now,
       hechaPor:          session_.displayName,
       actualizadaDelsur,
+      parejaDelDia,
     });
     const o = ordenes_.find(x => x.id === id);
-    if (o) { o.estadoCampo = 'hecha'; o.actualizadaDelsur = actualizadaDelsur; }
+    if (o) { o.estadoCampo = 'hecha'; o.actualizadaDelsur = actualizadaDelsur; o.parejaDelDia = parejaDelDia; }
     plotMarkers();
     updateStatChip();
     window.dispatchEvent(new CustomEvent('cambios:updated'));
