@@ -1248,15 +1248,15 @@ async function confirmarImport() {
 
   try {
     // Obtener WOs existentes para detectar duplicados
-    const existSnap = await db.collection('cambios_ordenes')
-      .select('wo', 'estadoCampo', 'pareja').get();
+    const existSnap = await db.collection('cambios_ordenes').get();
 
     const existentes = {};
     existSnap.docs.forEach(d => {
-      existentes[String(d.data().wo).trim()] = {
+      const data = d.data();
+      existentes[String(data.wo).trim()] = {
         id:          d.id,
-        estadoCampo: d.data().estadoCampo,
-        pareja:      d.data().pareja,
+        estadoCampo: data.estadoCampo,
+        pareja:      data.pareja,
       };
     });
 
