@@ -691,63 +691,121 @@ async function confirmarIndividual() {
   }
 }
 
-// ── Asignación por zona (2 clicks) ───────────────
-let zonaActual_ = null;
-let zonaRect_   = null;
-let puntoA_     = null;
+// ── Asignación por polígono ─────────────────────
+let zonaActual_   = null;
+let zonaPoligono_ = null;
+let poliPreview_  = null;
+let puntos_       = [];
+
+// Ray casting — punto dentro de polígono
+function pointInPolygon(point, vertices) {
+  const x = point.lat, y = point.lng;
+  let inside = false;
+  for (let i = 0, j = vertices.length - 1; i < vertices.length; j = i++) {
+    const xi = vertices[i].lat, yi = vertices[i].lng;
+    const xj = vertices[j].lat, yj = vertices[j].lng;
+    const intersect = ((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
+    if (intersect) inside = !inside;
+  }
+  return inside;
+}
 
 function activarModoZona() {
   if (!map_) return;
   closePanel();
-  puntoA_ = null;
-  if (zonaRect_) { map_.removeLayer(zonaRect_); zonaRect_ = null; }
-
-  // Cambiar cursor
+  puntos_ = [];
+  limpiarPoligono();
   map_.getContainer().style.cursor = 'crosshair';
+  toast('Toca para agregar puntos · Cierra el polígono con el botón o doble toque', 'ok', 5000);
 
-  // Toast instructivo
-  toast('Click 1: esquina inicial — Click 2: esquina final', 'ok', 5000);
+  let btnCerrar = document.getElementById('btn-cerrar-poligono');
+  if (!btnCerrar) {
+    btnCerrar = document.createElement('button');
+    btnCerrar.id = 'btn-cerrar-poligono';
+    btnCerrar.textContent = 'Cerrar polígono';
+    btnCerrar.style.cssText = 'position:fixed;bottom:100px;left:50%;transform:translateX(-50%);z-index:500;background:var(--cm-light);color:#0d1117;border:none;border-radius:20px;padding:10px 24px;font-size:13px;font-weight:700;font-family:Outfit,sans-serif;cursor:pointer;display:none;box-shadow:0 4px 20px rgba(0,0,0,.4)';
+    document.body.appendChild(btnCerrar);
+    btnCerrar.addEventListener('click', cerrarPoligono);
+  }
 
-  // Listener de clicks
-  map_.once('click', e => {
-    puntoA_ = e.latlng;
-
-    // Preview mientras mueve el mouse
-    let previewRect = null;
-    function onMove(ev) {
-      const bounds = L.latLngBounds(puntoA_, ev.latlng);
-      if (previewRect) previewRect.setBounds(bounds);
-      else {
-        previewRect = L.rectangle(bounds, { color: '#2dd4bf', weight: 2, fillOpacity: 0.1, dashArray: '6,4' }).addTo(map_);
-      }
-    }
-    map_.on('mousemove', onMove);
-
-    map_.once('click', e2 => {
-      map_.off('mousemove', onMove);
-      if (previewRect) { map_.removeLayer(previewRect); }
-      map_.getContainer().style.cursor = '';
-
-      const bounds = L.latLngBounds(puntoA_, e2.latlng);
-      zonaRect_    = L.rectangle(bounds, { color: '#2dd4bf', weight: 2, fillOpacity: 0.12 }).addTo(map_);
-      zonaActual_  = { getBounds: () => bounds };
-      puntoA_      = null;
-
-      // Contar órdenes dentro
-      const dentro = ordenes_.filter(o =>
-        o.latitud && o.longitud &&
-        bounds.contains(L.latLng(parseFloat(o.latitud), parseFloat(o.longitud)))
-      );
-
-      document.getElementById('zona-count').textContent = dentro.length;
-      document.getElementById('zona-preview').style.display = dentro.length ? '' : 'none';
-      document.getElementById('zona-error').style.display = 'none';
-      document.querySelectorAll('#zona-pareja-row .select-chip').forEach(c => c.classList.remove('active'));
-      openSheet('sheet-zona');
-    });
-  });
+  map_.on('click', onMapClick_);
+  map_.on('dblclick', onMapDblClick_);
 }
 
+function onMapClick_(e) {
+  if (puntos_.length > 0) {
+    const dist = map_.distance(puntos_[puntos_.length - 1], e.latlng);
+    if (dist < 5) return;
+  }
+  puntos_.push(e.latlng);
+
+  if (poliPreview_) map_.removeLayer(poliPreview_);
+
+  if (puntos_.length === 1) {
+    poliPreview_ = L.circleMarker(puntos_[0], {
+      radius: 5, color: '#2dd4bf', fillColor: '#2dd4bf', fillOpacity: 1, weight: 2
+    }).addTo(map_);
+  } else {
+    poliPreview_ = L.polygon(puntos_, {
+      color: '#2dd4bf', weight: 2, fillOpacity: 0.1, dashArray: '6,4'
+    }).addTo(map_);
+  }
+
+  const btnCerrar = document.getElementById('btn-cerrar-poligono');
+  if (btnCerrar) btnCerrar.style.display = puntos_.length >= 3 ? '' : 'none';
+}
+
+function onMapDblClick_(e) {
+  L.DomEvent.stop(e);
+  if (puntos_.length >= 3) cerrarPoligono();
+}
+
+function cerrarPoligono() {
+  if (puntos_.length < 3) { toast('Necesitas al menos 3 puntos', 'warn'); return; }
+
+  map_.off('click', onMapClick_);
+  map_.off('dblclick', onMapDblClick_);
+  map_.getContainer().style.cursor = '';
+
+  const btnCerrar = document.getElementById('btn-cerrar-poligono');
+  if (btnCerrar) btnCerrar.style.display = 'none';
+
+  if (poliPreview_) { map_.removeLayer(poliPreview_); poliPreview_ = null; }
+
+  zonaPoligono_ = L.polygon(puntos_, {
+    color: '#2dd4bf', weight: 2, fillOpacity: 0.12
+  }).addTo(map_);
+  zonaActual_ = zonaPoligono_;
+
+  const dentro = ordenes_.filter(o =>
+    o.latitud && o.longitud &&
+    pointInPolygon(L.latLng(parseFloat(o.latitud), parseFloat(o.longitud)), puntos_)
+  );
+
+  document.getElementById('zona-count').textContent = dentro.length;
+  document.getElementById('zona-preview').style.display = dentro.length ? '' : 'none';
+  document.getElementById('zona-error').style.display = 'none';
+  document.querySelectorAll('#zona-pareja-row .select-chip').forEach(c => c.classList.remove('active'));
+  openSheet('sheet-zona');
+}
+
+function limpiarPoligono() {
+  if (zonaPoligono_) { map_.removeLayer(zonaPoligono_); zonaPoligono_ = null; }
+  if (poliPreview_)  { map_.removeLayer(poliPreview_);  poliPreview_  = null; }
+  const btn = document.getElementById('btn-cerrar-poligono');
+  if (btn) btn.style.display = 'none';
+}
+
+function cancelarZona() {
+  map_.off('click', onMapClick_);
+  map_.off('dblclick', onMapDblClick_);
+  map_.getContainer().style.cursor = '';
+  limpiarPoligono();
+  zonaActual_ = null;
+  puntos_     = [];
+  closeSheet('sheet-zona');
+}
+// ── Helpers ───────────────────────────────────────
 async function confirmarZona() {
   const parejaVal = getSelectedChip('zona-pareja-row');
   const errEl     = document.getElementById('zona-error');
@@ -757,17 +815,16 @@ async function confirmarZona() {
     errEl.style.display = 'block';
     return;
   }
-  if (!zonaActual_) {
+  if (!zonaActual_ || puntos_.length < 3) {
     errEl.textContent = 'Dibuja una zona primero.';
     errEl.style.display = 'block';
     return;
   }
 
   const pareja = parejaVal === 'null' ? null : parejaVal;
-  const bounds = zonaActual_.getBounds();
   const dentro = ordenes_.filter(o =>
     o.latitud && o.longitud &&
-    bounds.contains(L.latLng(o.latitud, o.longitud))
+    pointInPolygon(L.latLng(parseFloat(o.latitud), parseFloat(o.longitud)), puntos_)
   );
 
   if (!dentro.length) {
@@ -784,47 +841,32 @@ async function confirmarZona() {
     const batches = [];
 
     for (const o of dentro) {
-      batch.update(db.collection('cambios_ordenes').doc(o.id), {
-        pareja,
-        asignadoEn: ts,
-      });
+      batch.update(db.collection('cambios_ordenes').doc(o.id), { pareja, asignadoEn: ts });
       count++;
-      if (count === 499) {
-        batches.push(batch.commit());
-        batch = db.batch();
-        count = 0;
-      }
+      if (count === 499) { batches.push(batch.commit()); batch = db.batch(); count = 0; }
     }
     if (count > 0) batches.push(batch.commit());
     await Promise.all(batches);
 
     dentro.forEach(o => { o.pareja = pareja; });
-    if (zonaRect_) { map_.removeLayer(zonaRect_); zonaRect_ = null; }
+    limpiarPoligono();
     zonaActual_ = null;
+    puntos_     = [];
     plotMarkers();
     updateStatChip();
     closeSheet('sheet-zona');
     toast(pareja
       ? `${dentro.length} órdenes asignadas a ${pareja}`
       : `${dentro.length} órdenes desasignadas`, 'ok');
-  } catch (err) {
+  } catch(err) {
     console.error('[mapa] Error asignando zona:', err);
-    errEl.textContent = 'Error al asignar. Intenta de nuevo.';
+    errEl.textContent = `Error: ${err.message}`;
     errEl.style.display = 'block';
   } finally {
     setLoading('btn-zona-label', 'Confirmar asignación', false);
   }
 }
 
-function cancelarZona() {
-  map_.getContainer().style.cursor = '';
-  if (zonaRect_) { map_.removeLayer(zonaRect_); zonaRect_ = null; }
-  zonaActual_ = null;
-  puntoA_     = null;
-  closeSheet('sheet-zona');
-}
-
-// ── Helpers ───────────────────────────────────────
 function openSheet(id)  { document.getElementById(id)?.classList.add('open'); }
 function closeSheet(id) { document.getElementById(id)?.classList.remove('open'); }
 
