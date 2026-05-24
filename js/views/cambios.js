@@ -1004,6 +1004,7 @@ async function marcarHecha(id) {
       db,
       onSuccess: async ({ actualizadoDelsur }) => {
         // Guardar parejaDelDia en Firestore (complemento al batch de consumo.js)
+        console.log('[cambios] parejaDelDia a guardar:', parejaDelDia);
         try {
           await db.collection('cambios_ordenes').doc(id).update({ parejaDelDia });
         } catch(err) {
