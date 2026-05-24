@@ -305,6 +305,7 @@ function renderTab() {
 // ── Resumen técnico (Cambios) ─────────────────────
 function renderResumenTecnico() {
   const content = document.getElementById('cambios-content');
+  if (!content) return;
 
   // Si las órdenes aún no cargaron, mostrar loading y esperar
   if (!ordenes || !ordenes.length) {
@@ -446,6 +447,7 @@ function renderResumenTecnico() {
 // ── Mapa dentro de Cambios ────────────────────────
 async function renderMapaTab() {
   const content = document.getElementById('cambios-content');
+  if (!content) return;
   content.innerHTML = '<div style="height:calc(100vh - 180px);min-height:300px;" id="cambios-mapa-container"></div>';
 
   // Importar y renderizar módulo mapa
@@ -770,6 +772,7 @@ function renderParejaCard(pareja) {
 // ── ÓRDENES (técnico y admin) ─────────────────────
 function renderOrdenes() {
   const content = document.getElementById('cambios-content');
+  if (!content) return; // navegó a otra vista mientras cargaban
   const lista   = role_ === 'tecnico' ? ordenes.filter(o => o.pareja === pareja_) : ordenes;
   const { sinActualizar, hechas, visitas, pendientes, bloqueadas } = priorizarOrdenes(lista);
 
@@ -1003,7 +1006,9 @@ async function marcarHecha(id) {
         // Guardar parejaDelDia en Firestore (complemento al batch de consumo.js)
         try {
           await db.collection('cambios_ordenes').doc(id).update({ parejaDelDia });
-        } catch { /* offline — se sincronizará después */ }
+        } catch(err) {
+          console.error('[cambios] Error guardando parejaDelDia:', err.message);
+        }
 
         const idx = ordenes.findIndex(o => o.id === id);
         if (idx !== -1) ordenes[idx] = { ...ordenes[idx], estadoCampo: 'hecha', actualizadaDelsur: actualizadoDelsur, parejaDelDia };
