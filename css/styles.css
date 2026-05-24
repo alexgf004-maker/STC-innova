@@ -1588,11 +1588,13 @@ body {
   .topbar {
     position: static !important;
     padding: 12px 28px !important;
+    flex-shrink: 0;
   }
 
   .content-area {
-    padding: 28px 32px !important;
-    overflow-y: auto;
+    padding: 28px 32px 40px !important;
+    overflow-y: auto !important;
+    flex: 1;
   }
 
   /* Grids más amplios */
@@ -1616,3 +1618,26 @@ body {
   }
   .sheet-handle { display: none !important; }
 }
+
+/* ── Menú de acciones (panel cambios) ───────────── */
+.menu-accion-btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 11px 12px;
+  background: transparent;
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-2);
+  font-family: 'Outfit', sans-serif;
+  text-align: left;
+  transition: background .15s;
+  -webkit-tap-highlight-color: transparent;
+}
+.menu-accion-btn:hover   { background: var(--glass-hov); }
+.menu-accion-btn:active  { background: var(--glass-hov); }
+.menu-accion-btn svg     { flex-shrink: 0; color: var(--text-4); }
