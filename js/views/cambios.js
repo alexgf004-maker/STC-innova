@@ -264,11 +264,23 @@ async function loadOrdenes() {
 function isBlocked(orden) {
   if (!orden.unidadLectura || !calendario.length) return false;
   const hoy = new Date();
+  // Normalizar hoy a medianoche local
+  hoy.setHours(0, 0, 0, 0);
   return calendario.some(cal => {
     if (!orden.unidadLectura.startsWith(cal.mru)) return false;
-    const fecha = cal.fechaLectura?.toDate ? cal.fechaLectura.toDate() : new Date(cal.fechaLectura);
-    const diff  = Math.abs((fecha - hoy) / (1000 * 60 * 60 * 24));
-    return diff <= 2;
+    let fecha;
+    if (cal.fechaLectura?.toDate) {
+      fecha = cal.fechaLectura.toDate();
+    } else if (typeof cal.fechaLectura === 'string') {
+      // "2026-05-21" — parsear como fecha local, no UTC
+      const [y, m, d] = cal.fechaLectura.split('-').map(Number);
+      fecha = new Date(y, m - 1, d);
+    } else {
+      fecha = new Date(cal.fechaLectura);
+    }
+    fecha.setHours(0, 0, 0, 0);
+    const diffDias = Math.abs((fecha - hoy) / (1000 * 60 * 60 * 24));
+    return diffDias <= 2;
   });
 }
 
