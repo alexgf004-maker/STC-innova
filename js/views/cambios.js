@@ -967,25 +967,32 @@ function verOrden(id) {
 async function marcarHecha(id) {
   const orden = ordenes.find(o => o.id === id);
   if (!orden) return;
+
+  // Obtener pareja del día ANTES de abrir el consumo
+  let parejaDelDia = [session_.displayName];
+  try {
+    const destino = session_.asignacionActual?.destino;
+    if (destino) {
+      const snap = await db.collection('users')
+        .where('asignacionActual.destino', '==', destino)
+        .where('active', '==', true).get();
+      parejaDelDia = snap.docs.map(d => d.data().displayName);
+    }
+  } catch { /* sin conexión — usar solo nombre propio */ }
+
   try {
     const { abrirConsumoOrden } = await import('../consumo.js');
     abrirConsumoOrden({
-      orden: { ...orden, id },
-      modulo: 'cambios',
+      orden:   { ...orden, id, parejaDelDia },
+      modulo:  'cambios',
       session: session_,
       db,
       onSuccess: async ({ actualizadoDelsur }) => {
-        let parejaDelDia = [session_.displayName];
+        // Guardar parejaDelDia en Firestore (complemento al batch de consumo.js)
         try {
-          const destino = session_.asignacionActual?.destino;
-          if (destino) {
-            const snap = await db.collection('users')
-              .where('asignacionActual.destino', '==', destino)
-              .where('active', '==', true).get();
-            parejaDelDia = snap.docs.map(d => d.data().displayName);
-          }
-        } catch { /* sin conexión */ }
-        await db.collection('cambios_ordenes').doc(id).update({ parejaDelDia });
+          await db.collection('cambios_ordenes').doc(id).update({ parejaDelDia });
+        } catch { /* offline — se sincronizará después */ }
+
         const idx = ordenes.findIndex(o => o.id === id);
         if (idx !== -1) ordenes[idx] = { ...ordenes[idx], estadoCampo: 'hecha', actualizadaDelsur: actualizadoDelsur, parejaDelDia };
         invalidateOrdenes();
