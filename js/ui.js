@@ -37,6 +37,16 @@ export function setRefreshLoading(loading) {
   if (svg) svg.style.animation = loading ? 'spin .7s linear infinite' : '';
 }
 
+export function setupRefreshBtn(onRefresh) {
+  const btn = document.getElementById('btn-refresh');
+  if (!btn) return;
+  btn.style.display = '';
+  btn.addEventListener('click', async () => {
+    setRefreshLoading(true);
+    try { await onRefresh(); } finally { setRefreshLoading(false); }
+  });
+}
+
 // ── Confirmación simple ───────────────────────────
 /**
  * Dialog de confirmación nativo (reemplazable por sheet en el futuro).
