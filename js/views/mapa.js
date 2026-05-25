@@ -148,8 +148,22 @@ function renderShell(container) {
   // Calcular alturas reales del topbar y navbar
   const topbar = document.querySelector('.topbar');
   const navbar  = document.querySelector('.navbar');
-  if (topbar) document.getElementById('mapa-wrapper').style.top  = topbar.offsetHeight + 'px';
-  if (navbar)  document.getElementById('mapa-wrapper').style.bottom = navbar.offsetHeight + 'px';
+  const wrapper = document.getElementById('mapa-wrapper');
+
+  const isPC = window.innerWidth >= 768;
+  if (isPC) {
+    // En PC: sidebar a la izquierda, no hay navbar inferior
+    const sidebarW = navbar ? navbar.offsetWidth : 200;
+    const topbarH  = topbar ? topbar.offsetHeight : 56;
+    wrapper.style.top    = topbarH + 'px';
+    wrapper.style.bottom = '0px';
+    wrapper.style.left   = sidebarW + 'px';
+    wrapper.style.right  = '0px';
+  } else {
+    // En móvil: navbar inferior
+    if (topbar) wrapper.style.top    = topbar.offsetHeight + 'px';
+    if (navbar) wrapper.style.bottom = navbar.offsetHeight + 'px';
+  }
 
   // Inyectar sheets fuera del mapa-wrapper (necesitan z-index alto)
   const sheetsHTML = `
