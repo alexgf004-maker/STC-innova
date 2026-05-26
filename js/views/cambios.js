@@ -1263,18 +1263,23 @@ async function confirmarImport() {
     const existentes = {};
     existSnap.docs.forEach(d => {
       const data = d.data();
-      existentes[String(data.wo).trim()] = {
+      // Normalizar WO — puede ser número o string en Firestore
+      const wo = String(data.wo ?? '').trim();
+      if (!wo) return;
+      existentes[wo] = {
         id:          d.id,
         estadoCampo: data.estadoCampo,
         pareja:      data.pareja,
       };
     });
 
-    const nuevas    = [];
-    const omitidas  = [];
+    const nuevas   = [];
+    const omitidas = [];
 
     for (const orden of importData) {
-      const ex = existentes[orden.wo];
+      const wo = String(orden.wo ?? '').trim();
+      if (!wo) continue;
+      const ex = existentes[wo];
       if (ex) {
         // Ya existe y está hecha o aprobada → omitir
         if (ex.estadoCampo === 'hecha' || ex.estadoCampo === 'aprobada') {
@@ -1320,9 +1325,12 @@ async function confirmarImport() {
     closeSheet('sheet-import');
     await loadOrdenes();
 
+    const hechas    = omitidas.filter(wo => existentes[wo]?.estadoCampo === 'hecha' || existentes[wo]?.estadoCampo === 'aprobada').length;
+    const pendientes = omitidas.length - hechas;
+
     const msg = nuevas.length > 0
-      ? `${nuevas.length} órdenes nuevas importadas${omitidas.length ? ` · ${omitidas.length} ya existían` : ''}`
-      : `Sin órdenes nuevas — todas ya existían (${omitidas.length})`;
+      ? `✅ ${nuevas.length} órdenes nuevas importadas${hechas ? ` · ${hechas} ya realizadas` : ''}${pendientes ? ` · ${pendientes} ya existían` : ''}`
+      : `Sin órdenes nuevas — ${hechas ? `${hechas} ya realizadas` : ''}${hechas && pendientes ? ' · ' : ''}${pendientes ? `${pendientes} pendientes ya existían` : ''}(${omitidas.length} total)`;
 
     toast(msg, 'ok');
     importData = [];
