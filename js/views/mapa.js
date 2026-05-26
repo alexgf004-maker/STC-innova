@@ -590,9 +590,9 @@ function verOrden(id) {
 
     <!-- Info técnica -->
     <div class="panel-detail-grid">
-      ${o.nc       ? `<div class="panel-detail-item"><div class="panel-detail-key">NC</div><div class="panel-detail-val">${o.nc}</div></div>` : ''}
-      ${o.serie    ? `<div class="panel-detail-item"><div class="panel-detail-key">Serie</div><div class="panel-detail-val">${o.serie}</div></div>` : ''}
-      ${o.dsct     ? `<div class="panel-detail-item"><div class="panel-detail-key">DSCT</div><div class="panel-detail-val">${o.dsct}</div></div>` : ''}
+      ${o.nc          ? `<div class="panel-detail-item"><div class="panel-detail-key">NC</div><div class="panel-detail-val">${o.nc}</div></div>` : ''}
+      ${(o.serieActual || o.serie) ? `<div class="panel-detail-item"><div class="panel-detail-key">Serie medidor</div><div class="panel-detail-val" style="font-family:monospace;font-weight:700;color:var(--cm-light)">${o.serieActual || o.serie}</div></div>` : ''}
+      ${o.dsct        ? `<div class="panel-detail-item"><div class="panel-detail-key">DSCT</div><div class="panel-detail-val">${o.dsct}</div></div>` : ''}
       ${o.unidadLectura ? `<div class="panel-detail-item"><div class="panel-detail-key">MRU</div><div class="panel-detail-val">${o.unidadLectura}</div></div>` : ''}
       ${o.concepto ? `<div class="panel-detail-item full"><div class="panel-detail-key">Concepto</div><div class="panel-detail-val">${o.concepto}</div></div>` : ''}
       ${o.motivoVisita ? `<div class="panel-detail-item full"><div class="panel-detail-key">Motivo visita</div><div class="panel-detail-val" style="color:#fbbf24">${o.motivoVisita}${o.observacionVisita ? ' — ' + o.observacionVisita : ''}</div></div>` : ''}
