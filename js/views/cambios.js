@@ -146,30 +146,22 @@ function renderShell() {
       </div>
     </div>
 
-    <!-- Sheet importar calendario de lecturas -->
+    <!-- Sheet gestionar lecturas -->
     <div class="sheet-backdrop" id="sheet-lecturas">
-      <div class="sheet">
+      <div class="sheet" style="max-height:90vh">
         <div class="sheet-handle"></div>
-        <div class="sheet-title">Importar calendario de lecturas</div>
-        <div class="sheet-body">
+        <div class="sheet-title">Calendario de lecturas</div>
+        <div class="sheet-body" style="padding-bottom:8px">
           <div style="font-size:12px;color:var(--text-4);margin-bottom:14px;line-height:1.6">
-            Sube el archivo con las columnas <strong>MRU</strong> y <strong>fechaLectura</strong>. Las órdenes cuyo código comience con ese MRU quedarán bloqueadas ±2 días alrededor de esa fecha.
+            Asigna la fecha de lectura a cada MRU. Las órdenes de esa zona se bloquearán ±2 días alrededor de esa fecha.
           </div>
-          <div class="import-dropzone" id="lect-dropzone">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" width="32" height="32" style="color:var(--text-4)">
-              <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
-              <line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/>
-              <line x1="3" y1="10" x2="21" y2="10"/>
-            </svg>
-            <p>Toca para seleccionar archivo Excel</p>
-            <span>.xlsx · .xlsm · .xls</span>
+          <div id="lect-grupos" style="max-height:55vh;overflow-y:auto" class="flex-col gap-12">
+            <div style="text-align:center;padding:24px;color:var(--text-4);font-size:12px">Cargando…</div>
           </div>
-          <input type="file" id="lect-file" accept=".xlsx,.xlsm,.xls" style="display:none"/>
-          <div id="lect-preview" style="display:none">
-            <div class="import-info" id="lect-info"></div>
-            <div id="lect-error" class="form-error"></div>
-            <button class="btn-primary full" id="btn-confirmar-lecturas">
-              <span id="btn-lecturas-label">Guardar calendario</span>
+          <div style="padding-top:12px;border-top:1px solid var(--border);margin-top:12px">
+            <div id="lect-error" class="form-error" style="margin-bottom:8px"></div>
+            <button class="btn-primary full" id="btn-guardar-lecturas">
+              <span id="btn-lect-lbl">Guardar cambios</span>
             </button>
           </div>
         </div>
@@ -206,16 +198,10 @@ function renderShell() {
   document.getElementById('btn-confirmar-import')?.addEventListener('click', confirmarImport);
 
   // Exponer para onclick
-  // Import lecturas
-  const lectDropzone = document.getElementById('lect-dropzone');
-  const lectInput    = document.getElementById('lect-file');
-  if (lectDropzone && lectInput) {
-    lectDropzone.addEventListener('click', () => lectInput.click());
-    lectInput.addEventListener('change', handleLecturasSelect);
-  }
-  document.getElementById('btn-confirmar-lecturas')?.addEventListener('click', confirmarLecturas);
+  // Gestionar lecturas
+  document.getElementById('btn-guardar-lecturas')?.addEventListener('click', guardarLecturas);
 
-  window.__cambios = { verOrden, marcarHecha, marcarVisita, actualizadaDelsur, aprobar, rechazar, openCampo, openImport, openImportLecturas, toggleAcordeon, descargarHoy, descargarMensual, toggleMenuAcciones };
+  window.__cambios = { verOrden, marcarHecha, marcarVisita, actualizadaDelsur, aprobar, rechazar, openCampo, openImport, openGestionarLecturas, toggleAcordeon, descargarHoy, descargarMensual, toggleMenuAcciones };
 }
 
 // ── Cargar datos ──────────────────────────────────
@@ -498,9 +484,9 @@ function renderPanel() {
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
             Importar órdenes (Excel DELSUR)
           </button>
-          <button class="menu-accion-btn" onclick="window.__cambios.openImportLecturas();window.__cambios.toggleMenuAcciones()">
+          <button class="menu-accion-btn" onclick="window.__cambios.openGestionarLecturas();window.__cambios.toggleMenuAcciones()">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-            Importar calendario de lecturas
+            Gestionar calendario de lecturas
           </button>
           <div style="height:1px;background:var(--border)"></div>
           <button class="menu-accion-btn" onclick="window.__cambios.descargarHoy();window.__cambios.toggleMenuAcciones()">
@@ -1423,94 +1409,90 @@ function toggleMenuAcciones() {
   if (menu) menu.style.display = menu.style.display === 'none' ? '' : 'none';
 }
 
-function openImportLecturas() { openSheet('sheet-lecturas'); }
+function openImportLecturas() { openSheet('sheet-lecturas'); } // compatibilidad
 
-// ── Importar calendario de lecturas ───────────────
-let lecturasData = [];
+async function openGestionarLecturas() {
+  openSheet('sheet-lecturas');
 
-function handleLecturasSelect(e) {
-  const file = e.target.files[0];
-  if (!file) return;
-  const reader = new FileReader();
-  reader.onload = evt => {
-    try {
-      const wb   = XLSX.read(evt.target.result, { type: 'binary' });
-      const ws   = wb.Sheets[wb.SheetNames[0]];
-      const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+  const el = document.getElementById('lect-grupos');
+  if (!el) return;
+  el.innerHTML = '<div style="text-align:center;padding:24px;color:var(--text-4);font-size:12px">Cargando…</div>';
 
-      // Buscar fila de encabezados
-      let headerIdx = -1;
-      for (let i = 0; i < Math.min(rows.length, 5); i++) {
-        const row = rows[i].map(h => String(h).toUpperCase().trim());
-        if (row.includes('MRU') && row.some(h => h.includes('FECHA'))) { headerIdx = i; break; }
-      }
-      if (headerIdx === -1) {
-        document.getElementById('lect-error').textContent = 'No se encontraron columnas MRU y fechaLectura.';
-        document.getElementById('lect-error').style.display = 'block';
-        return;
-      }
+  try {
+    const snap = await db.collection('cambios_calendario').get();
+    const mrus = snap.docs.map(d => d.data()).sort((a, b) => a.mru.localeCompare(b.mru));
 
-      const headers = rows[headerIdx].map(h => String(h).trim().toUpperCase());
-      const colMRU   = headers.findIndex(h => h === 'MRU');
-      const colFecha = headers.findIndex(h => h.includes('FECHA'));
-
-      lecturasData = rows.slice(headerIdx + 1)
-        .filter(r => r[colMRU])
-        .map(r => {
-          const mru = String(r[colMRU]).trim();
-          // La fecha viene como número serial de Excel — convertir
-          const rawFecha = r[colFecha];
-          let fecha = null;
-          if (typeof rawFecha === 'number') {
-            // Número serial de Excel → fecha JS
-            fecha = new Date(Math.round((rawFecha - 25569) * 86400 * 1000));
-          } else if (rawFecha) {
-            fecha = new Date(rawFecha);
-          }
-          return { mru, fecha: fecha && !isNaN(fecha) ? fecha.toISOString().split('T')[0] : null };
-        })
-        .filter(r => r.mru && r.fecha);
-
-      document.getElementById('lect-info').innerHTML = `
-        <div class="import-info-box">
-          <div class="import-info-num">${lecturasData.length}</div>
-          <div class="import-info-label">rutas de lectura encontradas</div>
-          <div style="font-size:11px;color:var(--text-4);margin-top:4px">${file.name}</div>
-        </div>
-      `;
-      document.getElementById('lect-preview').style.display = '';
-      document.getElementById('lect-error').style.display   = 'none';
-    } catch(err) {
-      document.getElementById('lect-error').textContent = 'Error al leer el archivo.';
-      document.getElementById('lect-error').style.display = 'block';
+    if (!mrus.length) {
+      el.innerHTML = `<div style="text-align:center;padding:24px;font-size:12px;color:var(--text-4)">
+        Sin MRUs registrados. Importa el Excel de lecturas primero para cargar los códigos.
+      </div>`;
+      return;
     }
-  };
-  reader.readAsBinaryString(file);
+
+    // Agrupar por prefijo (SS, LL, OP, QZ, RP...)
+    const grupos = {};
+    mrus.forEach(m => {
+      const prefijo = m.mru.split('_')[0];
+      if (!grupos[prefijo]) grupos[prefijo] = [];
+      grupos[prefijo].push(m);
+    });
+
+    el.innerHTML = Object.entries(grupos).sort(([a],[b]) => a.localeCompare(b)).map(([prefijo, items]) => `
+      <div>
+        <div class="section-label" style="margin-bottom:8px">${prefijo}</div>
+        <div class="flex-col gap-6">
+          ${items.map(m => `
+            <div style="display:flex;align-items:center;gap:10px;padding:8px 12px;background:var(--glass);border:1px solid var(--border);border-radius:10px">
+              <div style="font-size:13px;font-weight:700;min-width:60px;color:var(--text-2)">${m.mru}</div>
+              <input type="date" class="form-input lect-fecha-input" data-mru="${m.mru}"
+                value="${m.fechaLectura || ''}"
+                style="flex:1;padding:6px 10px;font-size:13px"/>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    `).join('');
+
+  } catch(err) {
+    el.innerHTML = `<div style="color:#ef4444;font-size:12px;padding:16px">Error: ${err.message}</div>`;
+  }
 }
 
-async function confirmarLecturas() {
-  if (!lecturasData.length) return;
-  setLoading('btn-lecturas-label', 'Guardando…', true);
+async function guardarLecturas() {
+  const inputs = document.querySelectorAll('.lect-fecha-input');
+  const errEl  = document.getElementById('lect-error');
+  errEl.style.display = 'none';
+
+  const cambios = [];
+  inputs.forEach(inp => {
+    if (inp.value) cambios.push({ mru: inp.dataset.mru, fecha: inp.value });
+  });
+
+  if (!cambios.length) {
+    errEl.textContent = 'No hay fechas asignadas.';
+    errEl.style.display = 'block';
+    return;
+  }
+
+  setLoading('btn-lect-lbl', 'Guardando…', true);
   try {
     const batch = db.batch();
-    // Guardar en colección cambios_calendario con formato mru → fecha
-    for (const r of lecturasData) {
-      const ref = db.collection('cambios_calendario').doc(r.mru);
-      batch.set(ref, { mru: r.mru, fechaLectura: r.fecha, actualizadoEn: firebase.firestore.Timestamp.now() });
-    }
+    cambios.forEach(({ mru, fecha }) => {
+      batch.set(db.collection('cambios_calendario').doc(mru), {
+        mru, fechaLectura: fecha, actualizadoEn: firebase.firestore.Timestamp.now()
+      });
+    });
     await batch.commit();
 
-    // Recargar calendario para que isBlocked() funcione de inmediato
+    // Recargar calendario local
     await loadCalendario();
-    renderTab();
     closeSheet('sheet-lecturas');
-    toast(`${lecturasData.length} rutas de lectura guardadas`, 'ok');
-    lecturasData = [];
+    toast(`${cambios.length} fechas de lectura guardadas`, 'ok');
   } catch(err) {
-    document.getElementById('lect-error').textContent = `Error: ${err.message}`;
-    document.getElementById('lect-error').style.display = 'block';
+    errEl.textContent = `Error: ${err.message}`;
+    errEl.style.display = 'block';
   } finally {
-    setLoading('btn-lecturas-label', 'Guardar calendario', false);
+    setLoading('btn-lect-lbl', 'Guardar cambios', false);
   }
 }
 
