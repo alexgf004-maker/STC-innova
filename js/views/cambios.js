@@ -166,6 +166,36 @@ function renderShell() {
           </div>
         </div>
       </div>
+    </div>
+
+    <!-- Sheet importar calendario Excel -->
+    <div class="sheet-backdrop" id="sheet-import-lecturas">
+      <div class="sheet">
+        <div class="sheet-handle"></div>
+        <div class="sheet-title">Importar calendario (Excel)</div>
+        <div class="sheet-body">
+          <div style="font-size:12px;color:var(--text-4);margin-bottom:14px;line-height:1.6">
+            Sube el Excel con columnas <strong>MRU</strong> y <strong>fechaLectura</strong>. Úsalo la primera vez para registrar todos los MRUs.
+          </div>
+          <div class="import-dropzone" id="lect-dropzone">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" width="32" height="32" style="color:var(--text-4)">
+              <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
+              <line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/>
+              <line x1="3" y1="10" x2="21" y2="10"/>
+            </svg>
+            <p>Toca para seleccionar archivo Excel</p>
+            <span>.xlsx · .xlsm · .xls</span>
+          </div>
+          <input type="file" id="lect-file" accept=".xlsx,.xlsm,.xls" style="display:none"/>
+          <div id="lect-preview" style="display:none">
+            <div class="import-info" id="lect-info"></div>
+            <div id="lect-import-error" class="form-error"></div>
+            <button class="btn-primary full" id="btn-confirmar-lecturas">
+              <span id="btn-lecturas-label">Guardar calendario</span>
+            </button>
+          </div>
+        </div>
+      </div>
     </div>` : ''}
   `;
 
@@ -181,7 +211,7 @@ function renderShell() {
   });
 
   // Cerrar sheets
-  ['sheet-orden', 'sheet-campo', 'sheet-import', 'sheet-lecturas'].forEach(id => {
+  ['sheet-orden', 'sheet-campo', 'sheet-import', 'sheet-lecturas', 'sheet-import-lecturas'].forEach(id => {
     const el = document.getElementById(id);
     if (!el) return;
     el.addEventListener('click', e => { if (e.target === el) closeSheet(id); });
@@ -201,7 +231,16 @@ function renderShell() {
   // Gestionar lecturas
   document.getElementById('btn-guardar-lecturas')?.addEventListener('click', guardarLecturas);
 
-  window.__cambios = { verOrden, marcarHecha, marcarVisita, actualizadaDelsur, aprobar, rechazar, openCampo, openImport, openGestionarLecturas, toggleAcordeon, descargarHoy, descargarMensual, toggleMenuAcciones };
+  // Importar lecturas Excel
+  const lectDropzone = document.getElementById('lect-dropzone');
+  const lectInput    = document.getElementById('lect-file');
+  if (lectDropzone && lectInput) {
+    lectDropzone.addEventListener('click', () => lectInput.click());
+    lectInput.addEventListener('change', handleLecturasSelect);
+  }
+  document.getElementById('btn-confirmar-lecturas')?.addEventListener('click', confirmarLecturas);
+
+  window.__cambios = { verOrden, marcarHecha, marcarVisita, actualizadaDelsur, aprobar, rechazar, openCampo, openImport, openImportLecturas, openGestionarLecturas, toggleAcordeon, descargarHoy, descargarMensual, toggleMenuAcciones };
 }
 
 // ── Cargar datos ──────────────────────────────────
@@ -483,6 +522,10 @@ function renderPanel() {
           <button class="menu-accion-btn" onclick="window.__cambios.openImport();window.__cambios.toggleMenuAcciones()">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
             Importar órdenes (Excel DELSUR)
+          </button>
+          <button class="menu-accion-btn" onclick="window.__cambios.openImportLecturas();window.__cambios.toggleMenuAcciones()">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            Importar calendario (Excel)
           </button>
           <button class="menu-accion-btn" onclick="window.__cambios.openGestionarLecturas();window.__cambios.toggleMenuAcciones()">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
@@ -1409,7 +1452,89 @@ function toggleMenuAcciones() {
   if (menu) menu.style.display = menu.style.display === 'none' ? '' : 'none';
 }
 
-function openImportLecturas() { openSheet('sheet-lecturas'); } // compatibilidad
+function openImportLecturas() { openSheet('sheet-import-lecturas'); }
+
+let lecturasData_ = [];
+
+function handleLecturasSelect(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = evt => {
+    try {
+      const wb   = XLSX.read(evt.target.result, { type: 'binary' });
+      const ws   = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+
+      let headerIdx = -1;
+      for (let i = 0; i < Math.min(rows.length, 5); i++) {
+        const row = rows[i].map(h => String(h).toUpperCase().trim());
+        if (row.includes('MRU') && row.some(h => h.includes('FECHA'))) { headerIdx = i; break; }
+      }
+      if (headerIdx === -1) {
+        document.getElementById('lect-import-error').textContent = 'No se encontraron columnas MRU y fechaLectura.';
+        document.getElementById('lect-import-error').style.display = 'block';
+        return;
+      }
+
+      const headers  = rows[headerIdx].map(h => String(h).trim().toUpperCase());
+      const colMRU   = headers.findIndex(h => h === 'MRU');
+      const colFecha = headers.findIndex(h => h.includes('FECHA'));
+
+      lecturasData_ = rows.slice(headerIdx + 1)
+        .filter(r => r[colMRU])
+        .map(r => {
+          const mru = String(r[colMRU]).trim();
+          const rawFecha = r[colFecha];
+          let fecha = null;
+          if (typeof rawFecha === 'number') {
+            fecha = new Date(Math.round((rawFecha - 25569) * 86400 * 1000));
+          } else if (rawFecha) {
+            fecha = new Date(rawFecha);
+          }
+          return { mru, fecha: fecha && !isNaN(fecha) ? fecha.toISOString().split('T')[0] : null };
+        })
+        .filter(r => r.mru);
+
+      document.getElementById('lect-info').innerHTML = `
+        <div class="import-info-box">
+          <div class="import-info-num">${lecturasData_.length}</div>
+          <div class="import-info-label">MRUs encontrados en el archivo</div>
+          <div style="font-size:11px;color:var(--text-4);margin-top:4px">${file.name}</div>
+        </div>
+      `;
+      document.getElementById('lect-preview').style.display = '';
+      document.getElementById('lect-import-error').style.display = 'none';
+    } catch(err) {
+      document.getElementById('lect-import-error').textContent = 'Error al leer el archivo.';
+      document.getElementById('lect-import-error').style.display = 'block';
+    }
+  };
+  reader.readAsBinaryString(file);
+}
+
+async function confirmarLecturas() {
+  if (!lecturasData_.length) return;
+  setLoading('btn-lecturas-label', 'Guardando…', true);
+  try {
+    const batch = db.batch();
+    for (const r of lecturasData_) {
+      batch.set(db.collection('cambios_calendario').doc(r.mru), {
+        mru: r.mru, fechaLectura: r.fecha || null, actualizadoEn: firebase.firestore.Timestamp.now()
+      });
+    }
+    await batch.commit();
+    await loadCalendario();
+    closeSheet('sheet-import-lecturas');
+    toast(`${lecturasData_.length} MRUs registrados`, 'ok');
+    lecturasData_ = [];
+  } catch(err) {
+    document.getElementById('lect-import-error').textContent = `Error: ${err.message}`;
+    document.getElementById('lect-import-error').style.display = 'block';
+  } finally {
+    setLoading('btn-lecturas-label', 'Guardar calendario', false);
+  }
+}
 
 async function openGestionarLecturas() {
   openSheet('sheet-lecturas');
