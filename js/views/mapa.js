@@ -378,10 +378,11 @@ function initMap() {
   // Cerrar panel al tocar el mapa
   map_.on('click', closePanel);
 
-  // Solo admin/asistente tiene el botón de zona
-  if (role_ !== 'tecnico') {
-    map_.on('click', closePanel);
-  }
+  // Redibujar etiquetas al cambiar zoom
+  map_.on('zoomend', () => plotMarkers());
+
+  // Solo admin/asistente tiene el botón de zona — se activa con btn-asignar-zona
+  // (no hay listener de click aquí, se maneja en activarModoZona)
 
   // Dibujar marcadores
   plotMarkers();
@@ -453,7 +454,7 @@ function plotMarkers() {
   markers_.forEach(m => map_.removeLayer(m));
   markers_ = [];
 
-  // Solo mostrar órdenes NO aprobadas
+  const mostrarLabels = map_.getZoom() >= 16;
   const visibles = ordenes_.filter(o => o.estadoCampo !== 'aprobada');
 
   visibles.forEach(orden => {
@@ -464,6 +465,23 @@ function plotMarkers() {
       ? '#4b5563'
       : ESTADO_COLORS[orden.estadoCampo] || PAREJA_COLORS[orden.pareja] || PAREJA_COLORS[null];
     const size  = orden.estadoCampo === 'hecha' ? 10 : 14;
+    const wo    = orden.wo || '';
+
+    const labelHtml = mostrarLabels && wo && !bloqueada ? `
+      <div style="
+        position:absolute;
+        top:${size + 3}px;
+        left:50%;
+        transform:translateX(-50%);
+        white-space:nowrap;
+        font-size:9px;
+        font-weight:700;
+        font-family:'Outfit',sans-serif;
+        color:white;
+        text-shadow:0 1px 3px rgba(0,0,0,.9),0 0 6px rgba(0,0,0,.7);
+        pointer-events:none;
+        letter-spacing:.02em;
+      ">${wo}</div>` : '';
 
     const icon = L.divIcon({
       className: '',
@@ -482,14 +500,17 @@ function plotMarkers() {
           </svg>
         </div>
       ` : `
-        <div style="
-          width:${size}px;height:${size}px;
-          background:${color};
-          border:2px solid rgba(255,255,255,.8);
-          border-radius:50%;
-          box-shadow:0 2px 6px rgba(0,0,0,.4);
-          ${orden.estadoCampo === 'hecha' ? 'opacity:0.6' : ''}
-        "></div>
+        <div style="position:relative">
+          <div style="
+            width:${size}px;height:${size}px;
+            background:${color};
+            border:2px solid rgba(255,255,255,.8);
+            border-radius:50%;
+            box-shadow:0 2px 6px rgba(0,0,0,.4);
+            ${orden.estadoCampo === 'hecha' ? 'opacity:0.6' : ''}
+          "></div>
+          ${labelHtml}
+        </div>
       `,
       iconSize:   bloqueada ? [22,22] : [size, size],
       iconAnchor: bloqueada ? [11,11]  : [size/2, size/2],
