@@ -951,7 +951,7 @@ function verOrden(id) {
       <div class="detail-section">
         <div class="detail-label">Datos técnicos</div>
         <div class="detail-row">
-          <div class="detail-field"><div class="detail-key">Serie</div><div class="detail-val">${o.serie || '—'}</div></div>
+          <div class="detail-field"><div class="detail-key">Serie medidor</div><div class="detail-val" style="font-family:monospace;font-weight:700;color:var(--cm-light)">${o.serieActual || o.serie || '—'}</div></div>
           <div class="detail-field"><div class="detail-key">DSCT</div><div class="detail-val">${o.dsct || '—'}</div></div>
           <div class="detail-field"><div class="detail-key">MRU</div><div class="detail-val">${o.unidadLectura || '—'}</div></div>
         </div>
