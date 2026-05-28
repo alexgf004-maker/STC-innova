@@ -240,7 +240,7 @@ function renderShell() {
   }
   document.getElementById('btn-confirmar-lecturas')?.addEventListener('click', confirmarLecturas);
 
-  window.__cambios = { verOrden, marcarHecha, marcarVisita, actualizadaDelsur, aprobar, rechazar, openCampo, openImport, openImportLecturas, openGestionarLecturas, toggleAcordeon, descargarHoy, descargarMensual, toggleMenuAcciones };
+  window.__cambios = { verOrden, marcarHecha, marcarVisita, actualizadaDelsur, aprobar, rechazar, eliminarOrden, openCampo, openImport, openImportLecturas, openGestionarLecturas, toggleAcordeon, descargarHoy, descargarMensual, toggleMenuAcciones };
 }
 
 // ── Cargar datos ──────────────────────────────────
@@ -823,11 +823,12 @@ function renderOrdenes() {
         </button>
       </div>
 
-      ${!lista.length ? `
-        <div class="dev-module">
-          <div class="dev-title">Sin órdenes</div>
-          <p>No hay órdenes asignadas para ${pareja_ || 'esta vista'}.</p>
-        </div>` : ''}
+      <!-- Buscador (solo admin/asistente) -->
+      ${!isTecnico ? `
+      <div class="buscar-wrap anim-up d1">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14" style="color:var(--text-4);flex-shrink:0"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input class="buscar-input" id="buscar-ordenes-all" placeholder="Buscar por WO, NC o cliente…" autocomplete="off"/>
+      </div>` : ''}
 
       <!-- Sin actualizar -->
       ${sinActualizar.length ? renderGrupo('⚠ Sin actualizar en DELSUR', sinActualizar, 'sin-actualizar', 'd1') : ''}
@@ -846,6 +847,28 @@ function renderOrdenes() {
 
     </div>
   `;
+
+  // Buscador — filtra en tiempo real
+  if (!isTecnico) {
+    document.getElementById('buscar-ordenes-all')?.addEventListener('input', e => {
+      const q = e.target.value.toLowerCase().trim();
+      let div = document.getElementById('buscar-resultados');
+      if (!div) {
+        div = document.createElement('div');
+        div.id = 'buscar-resultados';
+        document.getElementById('buscar-ordenes-all')?.closest('.buscar-wrap')?.insertAdjacentElement('afterend', div);
+      }
+      if (!q) { div.innerHTML = ''; return; }
+      const filtradas = ordenes.filter(o =>
+        (o.wo     && String(o.wo).toLowerCase().includes(q)) ||
+        (o.nc     && String(o.nc).toLowerCase().includes(q)) ||
+        (o.cliente && o.cliente.toLowerCase().includes(q))
+      );
+      div.innerHTML = filtradas.length
+        ? `<div class="flex-col gap-8 anim-up">${filtradas.map(o => renderOrdenCard(o, o.estadoCampo || 'pendiente')).join('')}</div>`
+        : `<div class="dev-module"><div class="dev-title">Sin resultados</div><p>No se encontraron órdenes con "${q}".</p></div>`;
+    });
+  }
 }
 
 function renderGrupo(titulo, lista, tipo, delay) {
@@ -990,8 +1013,9 @@ function verOrden(id) {
       </div>` : ''}
 
       <!-- Acciones admin/asistente -->
-      ${!isTecnico && o.estadoCampo === 'hecha' ? `
+      ${!isTecnico ? `
       <div class="flex-col gap-8">
+        ${o.estadoCampo === 'hecha' ? `
         <button class="btn-action cm" onclick="window.__cambios.aprobar('${o.id}')">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
           Confirmar realizada
@@ -999,6 +1023,10 @@ function verOrden(id) {
         <button class="btn-action danger" onclick="window.__cambios.rechazar('${o.id}')">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
           Rechazar — volver a pendiente
+        </button>` : ''}
+        <button class="btn-action danger" onclick="window.__cambios.eliminarOrden('${o.id}')" style="opacity:.7">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+          Eliminar orden
         </button>
       </div>` : ''}
 
@@ -1128,7 +1156,23 @@ async function updateOrden(id, data, msg) {
 }
 
 // ── Orden en campo ────────────────────────────────
-function openCampo() { openSheet('sheet-campo'); }
+async function eliminarOrden(id) {
+  const o = ordenes.find(x => x.id === id);
+  if (!o) return;
+  if (!confirm(`¿Eliminar la orden WO ${o.wo || id}?\n\nEsta acción no se puede deshacer.`)) return;
+  try {
+    await db.collection('cambios_ordenes').doc(id).delete();
+    ordenes = ordenes.filter(x => x.id !== id);
+    invalidateOrdenes();
+    closeSheet('sheet-orden');
+    renderTab();
+    recalcularStats().catch(() => {});
+    toast('Orden eliminada', 'ok');
+  } catch(err) {
+    console.error('[cambios] Error eliminando:', err);
+    toast('Error al eliminar: ' + err.message, 'error');
+  }
+}
 
 async function guardarOrdenCampo() {
   const wo  = document.getElementById('campo-wo').value.trim();
