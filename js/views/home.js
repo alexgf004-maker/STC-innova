@@ -445,7 +445,11 @@ function renderHomeAsistente(container, session) {
 
       <!-- Indicador corte del 15 -->
       <div id="indicador-corte" class="anim-up d2"></div>
-      <div class="quick-grid anim-up d2">
+
+      <!-- Personal asignado hoy -->
+      <div id="personal-hoy" class="anim-up d3"></div>
+
+      <div class="quick-grid anim-up d3">
         <div class="quick-card cm" onclick="window.__router.navigateTo('cambios')">
           <div class="qc-icon" style="background:rgba(13,148,136,.15)">
             <svg viewBox="0 0 24 24" fill="none" stroke="var(--cm-light)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v2M12 20v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M2 12h2M20 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
@@ -478,4 +482,5 @@ function renderHomeAsistente(container, session) {
     </div>
   `;
   renderIndicadorCorte(null);
+  cargarPersonalHoy();
 }
