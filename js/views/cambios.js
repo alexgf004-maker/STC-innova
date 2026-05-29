@@ -260,7 +260,7 @@ function renderShell() {
   }
   document.getElementById('btn-confirmar-lecturas')?.addEventListener('click', confirmarLecturas);
 
-  window.__cambios = { verOrden, marcarHecha, marcarVisita, actualizadaDelsur, aprobar, rechazar, openCampo, openImport, openImportLecturas, openGestionarLecturas, openBuscar, eliminarOrden, toggleAcordeon, descargarHoy, descargarMensual, toggleMenuAcciones };
+  window.__cambios = { verOrden, verOrdenDesdeBuscar, marcarHecha, marcarVisita, actualizadaDelsur, aprobar, rechazar, openCampo, openImport, openImportLecturas, openGestionarLecturas, openBuscar, eliminarOrden, toggleAcordeon, descargarHoy, descargarMensual, toggleMenuAcciones };
 }
 
 // ── Cargar datos ──────────────────────────────────
@@ -1190,7 +1190,7 @@ function onBuscarInput(e) {
       : o.estadoCampo === 'hecha'  ? '#2dd4bf'
       : o.estadoCampo === 'visita' ? '#fbbf24'
       : 'var(--text-4)';
-    return `<div onclick="closeSheet('sheet-buscar');setTimeout(()=>window.__cambios.verOrden('${o.id}'),150)"
+    return `<div onclick="window.__cambios.verOrdenDesdeBuscar('${o.id}')"
       style="padding:12px 14px;background:var(--glass);border:1px solid var(--border);border-radius:12px;cursor:pointer;active:opacity:.7">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
         <div style="font-size:13px;font-weight:700">WO ${o.wo || '—'}</div>
@@ -1217,6 +1217,11 @@ async function eliminarOrden(id) {
   } catch(err) {
     toast('Error al eliminar: ' + err.message, 'error');
   }
+}
+
+function verOrdenDesdeBuscar(id) {
+  closeSheet('sheet-buscar');
+  setTimeout(() => verOrden(id), 150);
 }
 
 function openCampo() { openSheet('sheet-campo'); }
