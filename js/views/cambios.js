@@ -311,8 +311,8 @@ function isBlocked(orden) {
 
 // ── Priorizar órdenes ─────────────────────────────
 function priorizarOrdenes(lista) {
-  const sinActualizar = lista.filter(o => o.estadoCampo === 'hecha' && !o.actualizadaDelsur);
-  const hechas        = lista.filter(o => o.estadoCampo === 'hecha' && o.actualizadaDelsur);
+  const sinActualizar = lista.filter(o => (o.estadoCampo === 'hecha' || o.estadoCampo === 'aprobada') && !o.actualizadaDelsur);
+  const hechas        = lista.filter(o => (o.estadoCampo === 'hecha' || o.estadoCampo === 'aprobada') && o.actualizadaDelsur);
   const visitas       = lista.filter(o => o.estadoCampo === 'visita');
   const pendientes    = lista.filter(o => !o.estadoCampo && !isBlocked(o));
   const bloqueadas    = lista.filter(o => !o.estadoCampo && isBlocked(o));
@@ -353,7 +353,7 @@ function renderResumenTecnico() {
   });
   const pendientes    = miLista.filter(o => !o.estadoCampo && !isBlocked(o));
   const bloqueadas    = miLista.filter(o => !o.estadoCampo && isBlocked(o));
-  const sinActualizar = miLista.filter(o => o.estadoCampo === 'hecha' && !o.actualizadaDelsur);
+  const sinActualizar = miLista.filter(o => (o.estadoCampo === 'hecha' || o.estadoCampo === 'aprobada') && !o.actualizadaDelsur);
   const META_DIARIA   = 15;
   const total         = miLista.length;
   const pct           = Math.min(100, Math.round((hechasHoy.length / META_DIARIA) * 100));
@@ -773,7 +773,7 @@ function renderParejaCard(pareja) {
   if (!lista.length) return '';
 
   const hechas     = lista.filter(o => o.estadoCampo === 'hecha').length;
-  const sinActual  = lista.filter(o => o.estadoCampo === 'hecha' && !o.actualizadaDelsur).length;
+  const sinActual  = lista.filter(o => (o.estadoCampo === 'hecha' || o.estadoCampo === 'aprobada') && !o.actualizadaDelsur).length;
   const visitas    = lista.filter(o => o.estadoCampo === 'visita').length;
   const pendientes = lista.filter(o => !o.estadoCampo).length;
   const total      = lista.length;
@@ -982,7 +982,7 @@ function verOrden(id) {
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
             Registrar visita
           </button>` : ''}
-        ${o.estadoCampo === 'hecha' && !o.actualizadaDelsur ? `
+        ${(o.estadoCampo === 'hecha' || o.estadoCampo === 'aprobada') && !o.actualizadaDelsur ? `
           <button class="btn-action warn" onclick="window.__cambios.actualizadaDelsur('${o.id}')">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>
             Ya actualicé en DELSUR
@@ -1066,12 +1066,12 @@ async function aprobar(id) {
   try {
     await db.collection('cambios_ordenes').doc(id).update({
       estadoCampo:       'aprobada',
-      actualizadaDelsur:  true,
       aprobadoPor:       session_.displayName,
       fechaAprobacion:   now,
+      // NO se toca actualizadaDelsur — eso lo confirma el técnico por separado
     });
     const idx = ordenes.findIndex(o => o.id === id);
-    if (idx !== -1) ordenes[idx] = { ...ordenes[idx], estadoCampo: 'aprobada', actualizadaDelsur: true, aprobadoPor: session_.displayName };
+    if (idx !== -1) ordenes[idx] = { ...ordenes[idx], estadoCampo: 'aprobada', aprobadoPor: session_.displayName };
     invalidateOrdenes();
 
     // Quitar card del acordeón sin recargar todo el panel
