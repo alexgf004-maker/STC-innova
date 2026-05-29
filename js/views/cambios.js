@@ -168,22 +168,8 @@ function renderShell() {
       </div>
     </div>
 
-    <!-- Sheet buscar orden -->
-    <div class="sheet-backdrop" id="sheet-buscar">
-      <div class="sheet" style="max-height:90vh">
-        <div class="sheet-handle"></div>
-        <div class="sheet-title">Buscar orden</div>
-        <div class="sheet-body" style="padding-bottom:8px">
-          <div class="buscar-wrap" style="margin-bottom:12px">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14" style="color:var(--text-4);flex-shrink:0"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-            <input class="buscar-input" id="buscar-orden-input" placeholder="WO, NC o nombre del cliente…" autocomplete="off"/>
-          </div>
-          <div id="buscar-resultados" style="max-height:65vh;overflow-y:auto" class="flex-col gap-6">
-            <p style="text-align:center;font-size:12px;color:var(--text-4);padding:20px">Escribe para buscar…</p>
-          </div>
-        </div>
-      </div>
-    </div>
+    <!-- Sheet importar calendario Excel -->
+    <div class="sheet-backdrop" id="sheet-import-lecturas">
       <div class="sheet">
         <div class="sheet-handle"></div>
         <div class="sheet-title">Importar calendario (Excel)</div>
@@ -210,6 +196,23 @@ function renderShell() {
           </div>
         </div>
       </div>
+    </div>
+
+    <!-- Sheet buscador de órdenes -->
+    <div class="sheet-backdrop" id="sheet-buscar">
+      <div class="sheet" style="max-height:90vh">
+        <div class="sheet-handle"></div>
+        <div class="sheet-title">Buscar orden</div>
+        <div class="sheet-body" style="padding-bottom:8px">
+          <div class="buscar-wrap" style="margin-bottom:12px">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14" style="color:var(--text-4);flex-shrink:0"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input class="buscar-input" id="buscar-orden-input" placeholder="WO, NC o nombre del cliente…" autocomplete="off" spellcheck="false"/>
+          </div>
+          <div id="buscar-resultados" style="max-height:65vh;overflow-y:auto" class="flex-col gap-6">
+            <p style="text-align:center;font-size:12px;color:var(--text-4);padding:20px">Escribe para buscar…</p>
+          </div>
+        </div>
+      </div>
     </div>` : ''}
   `;
 
@@ -230,6 +233,9 @@ function renderShell() {
     if (!el) return;
     el.addEventListener('click', e => { if (e.target === el) closeSheet(id); });
   });
+
+  // Buscador de órdenes
+  document.getElementById('buscar-orden-input')?.addEventListener('input', onBuscarInput);
 
   // Orden en campo
   document.getElementById('btn-guardar-campo')?.addEventListener('click', guardarOrdenCampo);
@@ -253,9 +259,6 @@ function renderShell() {
     lectInput.addEventListener('change', handleLecturasSelect);
   }
   document.getElementById('btn-confirmar-lecturas')?.addEventListener('click', confirmarLecturas);
-
-  // Buscador
-  document.getElementById('buscar-orden-input')?.addEventListener('input', onBuscarInput);
 
   window.__cambios = { verOrden, marcarHecha, marcarVisita, actualizadaDelsur, aprobar, rechazar, openCampo, openImport, openImportLecturas, openGestionarLecturas, openBuscar, eliminarOrden, toggleAcordeon, descargarHoy, descargarMensual, toggleMenuAcciones };
 }
@@ -526,7 +529,7 @@ function renderPanel() {
           <div class="section-title">Panel Cambios</div>
           <div class="section-sub">${todasAprobadas.length} confirmadas · ${todasHechas.length} por verificar · ${pendientes.length} pendientes</div>
         </div>
-        <div style="display:flex;gap:6px">
+        <div style="display:flex;gap:6px;align-items:center">
           <button class="icon-btn" onclick="window.__cambios.openBuscar()" title="Buscar orden">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
           </button>
@@ -1023,7 +1026,8 @@ function verOrden(id) {
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
           Rechazar — volver a pendiente
         </button>` : ''}
-        <button class="btn-action outline" onclick="window.__cambios.eliminarOrden('${o.id}')" style="border-color:rgba(239,68,68,.3);color:#f87171">
+        <button onclick="window.__cambios.eliminarOrden('${o.id}')"
+          style="width:100%;height:44px;border-radius:12px;border:1px solid rgba(239,68,68,.3);background:transparent;color:#f87171;font-size:13px;font-weight:600;font-family:'Outfit',sans-serif;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg>
           Eliminar orden
         </button>
@@ -1161,52 +1165,47 @@ function openBuscar() {
 }
 
 function onBuscarInput(e) {
-  const q = e.target.value.toLowerCase().trim();
+  const q  = e.target.value.toLowerCase().trim();
   const el = document.getElementById('buscar-resultados');
   if (!el) return;
-
   if (!q) {
     el.innerHTML = '<p style="text-align:center;font-size:12px;color:var(--text-4);padding:20px">Escribe para buscar…</p>';
     return;
   }
-
   const filtradas = ordenes.filter(o =>
     (o.wo     && String(o.wo).toLowerCase().includes(q)) ||
     (o.nc     && String(o.nc).toLowerCase().includes(q)) ||
     (o.cliente && o.cliente.toLowerCase().includes(q))
   );
-
   if (!filtradas.length) {
     el.innerHTML = `<p style="text-align:center;font-size:12px;color:var(--text-4);padding:20px">Sin resultados para "${q}"</p>`;
     return;
   }
-
   el.innerHTML = filtradas.map(o => {
     const estado = o.estadoCampo === 'aprobada' ? 'Confirmada'
-      : o.estadoCampo === 'hecha' ? 'Realizada'
-      : o.estadoCampo === 'visita' ? 'Visita'
+      : o.estadoCampo === 'hecha'   ? 'Realizada'
+      : o.estadoCampo === 'visita'  ? 'Visita'
       : isBlocked(o) ? '🔒 Bloqueada' : 'Pendiente';
     const color = o.estadoCampo === 'aprobada' ? '#22c55e'
-      : o.estadoCampo === 'hecha' ? '#2dd4bf'
+      : o.estadoCampo === 'hecha'  ? '#2dd4bf'
       : o.estadoCampo === 'visita' ? '#fbbf24'
       : 'var(--text-4)';
-    return `
-      <div onclick="closeSheet('sheet-buscar');setTimeout(()=>window.__cambios.verOrden('${o.id}'),150)"
-        style="padding:12px 14px;background:var(--glass);border:1px solid var(--border);border-radius:12px;cursor:pointer">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
-          <div style="font-size:13px;font-weight:700">WO ${o.wo || '—'}</div>
-          <div style="font-size:10px;font-weight:600;color:${color}">${estado}</div>
-        </div>
-        <div style="font-size:11px;color:var(--text-3)">${o.cliente || '—'}</div>
-        <div style="font-size:10px;color:var(--text-4)">${o.nc ? `NC: ${o.nc} · ` : ''}${o.pareja || 'Sin pareja'}</div>
-      </div>`;
+    return `<div onclick="closeSheet('sheet-buscar');setTimeout(()=>window.__cambios.verOrden('${o.id}'),150)"
+      style="padding:12px 14px;background:var(--glass);border:1px solid var(--border);border-radius:12px;cursor:pointer;active:opacity:.7">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+        <div style="font-size:13px;font-weight:700">WO ${o.wo || '—'}</div>
+        <div style="font-size:10px;font-weight:600;color:${color}">${estado}</div>
+      </div>
+      <div style="font-size:11px;color:var(--text-3)">${o.cliente || '—'}</div>
+      <div style="font-size:10px;color:var(--text-4)">${o.nc ? `NC: ${o.nc} · ` : ''}${o.pareja || 'Sin pareja'}</div>
+    </div>`;
   }).join('');
 }
 
 async function eliminarOrden(id) {
   const o = ordenes.find(x => x.id === id);
   if (!o) return;
-  if (!confirm(`¿Eliminar la orden WO ${o.wo || id}?\n\nEsta acción no se puede deshacer.`)) return;
+  if (!confirm(`¿Eliminar WO ${o.wo || id}?\nEsta acción no se puede deshacer.`)) return;
   try {
     await db.collection('cambios_ordenes').doc(id).delete();
     ordenes = ordenes.filter(x => x.id !== id);
@@ -1216,10 +1215,11 @@ async function eliminarOrden(id) {
     recalcularStats().catch(() => {});
     toast('Orden eliminada', 'ok');
   } catch(err) {
-    console.error('[cambios] Error eliminando:', err);
     toast('Error al eliminar: ' + err.message, 'error');
   }
 }
+
+function openCampo() { openSheet('sheet-campo'); }
 
 async function guardarOrdenCampo() {
   const wo  = document.getElementById('campo-wo').value.trim();
