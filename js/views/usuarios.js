@@ -125,12 +125,39 @@ function renderShell() {
         </div>
       </div>
     </div>
+
+    <!-- Sheet editar credenciales -->
+    <div class="sheet-backdrop" id="sheet-credenciales">
+      <div class="sheet">
+        <div class="sheet-handle"></div>
+        <div class="sheet-title" id="sheet-cred-title">Editar credenciales</div>
+        <div class="sheet-body">
+          <div class="form-field">
+            <div class="form-label">Username</div>
+            <input class="form-input" id="cred-username" type="text" autocomplete="off" autocapitalize="none"/>
+          </div>
+          <div class="form-field">
+            <div class="form-label">Nuevo PIN (dejar vacío para no cambiar)</div>
+            <input class="form-input" id="cred-pin" type="password" inputmode="numeric" maxlength="8" placeholder="••••"/>
+          </div>
+          <div class="form-field">
+            <div class="form-label">Confirmar PIN</div>
+            <input class="form-input" id="cred-pin2" type="password" inputmode="numeric" maxlength="8" placeholder="••••"/>
+          </div>
+          <div id="cred-error" class="form-error"></div>
+          <button class="btn-primary full" id="btn-guardar-cred">
+            <span id="btn-cred-label">Guardar cambios</span>
+          </button>
+        </div>
+      </div>
+    </div>
   `;
 
   // Eventos
   document.getElementById('btn-nuevo-usuario').addEventListener('click', () => openSheet('sheet-nuevo'));
   document.getElementById('btn-crear-usuario').addEventListener('click', crearUsuario);
   document.getElementById('btn-guardar-asig').addEventListener('click', guardarAsignacion);
+  document.getElementById('btn-guardar-cred')?.addEventListener('click', guardarCredenciales);
 
   // Filtros
   document.querySelectorAll('.filter-chip').forEach(chip => {
@@ -153,8 +180,9 @@ function renderShell() {
   });
 
   // Cerrar sheets al tocar backdrop
-  ['sheet-nuevo', 'sheet-asignar'].forEach(id => {
+  ['sheet-nuevo', 'sheet-asignar', 'sheet-credenciales'].forEach(id => {
     const el = document.getElementById(id);
+    if (!el) return;
     el.addEventListener('click', e => {
       if (e.target === el) closeSheet(id);
     });
@@ -226,6 +254,12 @@ function renderLista(filtro) {
                 <path d="M17 3a2.828 2.828 0 114 4L7.5 20.5 2 22l1.5-5.5L17 3z"/>
               </svg>
             </button>` : ''}
+          <button class="icon-btn" onclick="window.__usuarios.editarCredenciales('${u.id}')" title="Cambiar PIN / username">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
+              <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+              <path d="M7 11V7a5 5 0 0110 0v4"/>
+            </svg>
+          </button>
           ${puedeToggle(u) ? `
           <button class="icon-btn ${u.active ? 'danger' : 'ok'}"
                   onclick="window.__usuarios.toggleActive('${u.id}', ${u.active})"
@@ -503,4 +537,58 @@ function getRoleLabel(role) {
 }
 
 // Exponer funciones para los onclick del HTML
-window.__usuarios = { asignar, toggleActive };
+// ── Editar credenciales ───────────────────────────
+let credUid_ = null;
+
+function editarCredenciales(uid) {
+  const u = usuarios.find(x => x.id === uid);
+  if (!u) return;
+  credUid_ = uid;
+  document.getElementById('sheet-cred-title').textContent = `Credenciales · ${u.displayName}`;
+  document.getElementById('cred-username').value = u.username || '';
+  document.getElementById('cred-pin').value  = '';
+  document.getElementById('cred-pin2').value = '';
+  document.getElementById('cred-error').style.display = 'none';
+  openSheet('sheet-credenciales');
+}
+
+async function guardarCredenciales() {
+  const username = document.getElementById('cred-username').value.trim().toLowerCase();
+  const pin      = document.getElementById('cred-pin').value;
+  const pin2     = document.getElementById('cred-pin2').value;
+  const errEl    = document.getElementById('cred-error');
+  errEl.style.display = 'none';
+
+  if (!username) { errEl.textContent = 'El username no puede estar vacío.'; errEl.style.display = 'block'; return; }
+  if (pin && pin.length < 4) { errEl.textContent = 'El PIN debe tener al menos 4 dígitos.'; errEl.style.display = 'block'; return; }
+  if (pin && pin !== pin2) { errEl.textContent = 'Los PINs no coinciden.'; errEl.style.display = 'block'; return; }
+
+  const duplicado = usuarios.find(u => u.username === username && u.id !== credUid_);
+  if (duplicado) { errEl.textContent = 'Ese username ya está en uso.'; errEl.style.display = 'block'; return; }
+
+  setLoading('btn-cred-label', 'Guardando…', true);
+  try {
+    const update = { username };
+
+    if (pin) {
+      const salt    = generateSalt();
+      const pinHash = await hashPin(salt, pin);
+      update.pinHash = pinHash;
+      update.pinSalt = salt;
+    }
+
+    await db.collection('users').doc(credUid_).update(update);
+    const idx = usuarios.findIndex(u => u.id === credUid_);
+    if (idx !== -1) usuarios[idx] = { ...usuarios[idx], ...update };
+    closeSheet('sheet-credenciales');
+    renderLista(document.querySelector('.filter-chip.active')?.dataset.filter || 'todos');
+    toast('Credenciales actualizadas', 'ok');
+  } catch(err) {
+    errEl.textContent = `Error: ${err.message}`;
+    errEl.style.display = 'block';
+  } finally {
+    setLoading('btn-cred-label', 'Guardar cambios', false);
+  }
+}
+
+window.__usuarios = { asignar, toggleActive, editarCredenciales };
