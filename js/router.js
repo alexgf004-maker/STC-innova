@@ -52,22 +52,19 @@ export function initRouter(session) {
 
 export async function navigateTo(tabId) {
   if (currentTab === tabId && tabId !== 'otc_mapa') return;
-  currentTab = tabId;
-  window.__router.currentTab = tabId;
 
   document.querySelectorAll('.nav-item').forEach(el => {
     el.classList.toggle('active', el.dataset.tab === tabId);
   });
 
-  contentArea.scrollTop = 0;
-  contentArea.innerHTML = '';
-
   // otc_mapa — renderiza mapa OTC directamente
   if (tabId === 'otc_mapa') {
+    currentTab = tabId;
+    window.__router.currentTab = tabId;
+    contentArea.scrollTop = 0;
+    contentArea.innerHTML = '';
     try {
-      if (!viewCache['otc']) {
-        viewCache['otc'] = await import('./views/otc.js');
-      }
+      if (!viewCache['otc']) viewCache['otc'] = await import('./views/otc.js');
       await viewCache['otc'].initConTab(contentArea, currentSession, 'mapa');
     } catch (err) {
       console.warn('[router] Error cargando otc_mapa:', err.message);
@@ -75,13 +72,51 @@ export async function navigateTo(tabId) {
     return;
   }
 
+  // Guardar contenido actual por si falla offline
+  const prevContent = contentArea.innerHTML;
+  const prevTab     = currentTab;
+
+  currentTab = tabId;
+  window.__router.currentTab = tabId;
+
+  // Solo limpiar si hay que cargar el módulo (no está en caché)
+  if (!viewCache[tabId]) {
+    contentArea.innerHTML = `
+      <div style="padding:32px 20px;text-align:center">
+        <div class="spinner" style="margin:0 auto 12px"></div>
+        <p style="font-size:12px;color:var(--text-4)">Cargando…</p>
+      </div>`;
+  }
+
   try {
     if (!viewCache[tabId]) {
       viewCache[tabId] = await import(`./views/${tabId}.js`);
     }
+    contentArea.scrollTop = 0;
+    contentArea.innerHTML = '';
     viewCache[tabId].init(contentArea, currentSession);
   } catch (err) {
-    console.warn(`[router] Vista '${tabId}' no implementada:`, err.message);
+    console.warn(`[router] Vista '${tabId}' error:`, err.message);
+
+    // Si es error de red/offline y había contenido previo, restaurarlo
+    if (!navigator.onLine && prevContent) {
+      currentTab = prevTab;
+      window.__router.currentTab = prevTab;
+      contentArea.innerHTML = prevContent;
+      // Restaurar nav item activo
+      document.querySelectorAll('.nav-item').forEach(el => {
+        el.classList.toggle('active', el.dataset.tab === prevTab);
+      });
+      // Mostrar toast de offline
+      const t = document.createElement('div');
+      t.style.cssText = 'position:fixed;bottom:90px;left:50%;transform:translateX(-50%);background:#1f2937;color:#9ca3af;border:1px solid #374151;padding:10px 20px;border-radius:20px;font-size:12px;font-weight:600;z-index:9999;font-family:Outfit,sans-serif;white-space:nowrap';
+      t.textContent = '📵 Sin señal — usando datos guardados';
+      document.body.appendChild(t);
+      setTimeout(() => t.remove(), 3000);
+      return;
+    }
+
+    // Si el módulo simplemente no existe
     contentArea.innerHTML = `
       <div class="dev-module anim-up" style="margin-top:16px">
         <div class="dev-title">Módulo en desarrollo</div>
