@@ -1666,3 +1666,19 @@ body {
 .menu-accion-btn:hover   { background: var(--glass-hov); }
 .menu-accion-btn:active  { background: var(--glass-hov); }
 .menu-accion-btn svg     { flex-shrink: 0; color: var(--text-4); }
+
+/* ── Opciones de ayuda (mapa) ───────────────────── */
+.ayuda-opcion {
+  width: 100%;
+  padding: 14px 16px;
+  background: var(--glass);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  cursor: pointer;
+  text-align: left;
+  font-family: 'Outfit', sans-serif;
+  transition: background .15s;
+  -webkit-tap-highlight-color: transparent;
+}
+.ayuda-opcion:active,
+.ayuda-opcion:hover { background: var(--glass-hov); border-color: var(--cm-light); }
