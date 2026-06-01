@@ -1121,9 +1121,11 @@ window.__mapaCloseSheet = closeSheet;
 
 // Llamado por el router al navegar fuera del mapa
 export function cleanup() {
-  ['sheet-visita','sheet-realizada','sheet-zona','sheet-ya-cambiado','sheet-pedir-ayuda','sheet-asignar-individual'].forEach(id => closeSheet(id));
+  ['sheet-visita','sheet-realizada','sheet-zona','sheet-ya-cambiado','sheet-pedir-ayuda','sheet-asignar-individual'].forEach(id => {
+    document.getElementById(id)?.remove();
+  });
   const btn = document.getElementById('btn-cerrar-poligono');
-  if (btn) btn.style.display = 'none';
+  if (btn) btn.remove();
 }
 
 function setupSelectChips(rowId) {
