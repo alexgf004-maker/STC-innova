@@ -320,7 +320,10 @@ function renderShell(container) {
   });
 
   // Insertar en body directamente
-  document.body.insertAdjacentHTML('beforeend', sheetsHTML);
+  // Solo insertar sheets si no existen ya en el DOM
+  if (!document.getElementById('sheet-visita')) {
+    document.body.insertAdjacentHTML('beforeend', sheetsHTML);
+  }
 
   // Eventos del mapa-wrapper
   document.getElementById('btn-asignar-zona')?.addEventListener('click', activarModoZona);
@@ -1122,10 +1125,10 @@ window.__mapaCloseSheet = closeSheet;
 // Llamado por el router al navegar fuera del mapa
 export function cleanup() {
   ['sheet-visita','sheet-realizada','sheet-zona','sheet-ya-cambiado','sheet-pedir-ayuda','sheet-asignar-individual'].forEach(id => {
-    document.getElementById(id)?.remove();
+    document.getElementById(id)?.classList.remove('open');
   });
   const btn = document.getElementById('btn-cerrar-poligono');
-  if (btn) btn.remove();
+  if (btn) btn.style.display = 'none';
 }
 
 function setupSelectChips(rowId) {
