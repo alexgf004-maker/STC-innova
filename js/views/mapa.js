@@ -145,8 +145,14 @@ function renderShell(container) {
       </div>
 
     </div>
-    ${sheetsMapaHTML()}
   `;
+
+  // Eliminar sheets anteriores si quedaron del body
+  ['sheet-visita','sheet-realizada','sheet-zona','sheet-ya-cambiado','sheet-pedir-ayuda','sheet-asignar-individual'].forEach(id => {
+    document.getElementById(id)?.remove();
+  });
+  // Insertar sheets en body (position:fixed necesita estar fuera de content-area)
+  document.body.insertAdjacentHTML('beforeend', sheetsMapaHTML());
 
   // Calcular alturas reales del topbar y navbar
   const topbar = document.querySelector('.topbar');
@@ -968,6 +974,9 @@ window.__mapaCloseSheet = closeSheet;
 
 // Llamado por el router al navegar fuera del mapa
 export function cleanup() {
+  ['sheet-visita','sheet-realizada','sheet-zona','sheet-ya-cambiado','sheet-pedir-ayuda','sheet-asignar-individual'].forEach(id => {
+    document.getElementById(id)?.remove();
+  });
   const btn = document.getElementById('btn-cerrar-poligono');
   if (btn) btn.remove();
 }
