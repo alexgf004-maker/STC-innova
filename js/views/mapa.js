@@ -732,7 +732,7 @@ function enviarAyudaWhatsApp(motivo) {
     + `Marca: ${o.marca || '—'}\n`
     + `\nMotivo: ${motivo}`;
 
-  const url = `https://wa.me/50360240176?text=${encodeURIComponent(msg)}`;
+  const url = `https://wa.me/50371185821?text=${encodeURIComponent(msg)}`;
   closeSheet('sheet-pedir-ayuda');
   window.open(url, '_blank');
 }
