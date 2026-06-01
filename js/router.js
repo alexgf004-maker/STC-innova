@@ -72,6 +72,11 @@ export async function navigateTo(tabId) {
     return;
   }
 
+  // Limpiar vista anterior si tiene cleanup (ej. mapa cierra sus sheets)
+  if (viewCache[currentTab]?.cleanup) {
+    try { viewCache[currentTab].cleanup(); } catch {}
+  }
+
   // Guardar contenido actual por si falla offline
   const prevContent = contentArea.innerHTML;
   const prevTab     = currentTab;
