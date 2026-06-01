@@ -20,9 +20,11 @@ const PAREJA_COLORS = {
 };
 
 const ESTADO_COLORS = {
-  'hecha':   '#22c55e',
-  'visita':  '#111827',
-  null:      null, // usa color de pareja
+  'hecha':       '#22c55e',
+  'aprobada':    '#22c55e',
+  'visita':      '#111827',
+  'ya_cambiado': '#f97316',
+  null:          null,
 };
 
 let map_ = null;
@@ -167,8 +169,51 @@ function renderShell(container) {
 
   // Inyectar sheets fuera del mapa-wrapper (necesitan z-index alto)
   const sheetsHTML = `
-    <!-- Sheet motivo visita -->
-    <div class="sheet-backdrop" id="sheet-visita">
+    <!-- Sheet ya estaba cambiado -->
+    <div class="sheet-backdrop" id="sheet-ya-cambiado">
+      <div class="sheet">
+        <div class="sheet-handle"></div>
+        <div class="sheet-title">Reportar: Ya estaba cambiado</div>
+        <div class="sheet-body">
+          <div style="font-size:13px;color:var(--text-2);margin-bottom:16px;line-height:1.6">
+            Indica que el medidor de esta orden ya fue cambiado anteriormente. La orden quedará marcada como error para que el asistente la revise.
+          </div>
+          <div class="form-field">
+            <div class="form-label">Comentario (opcional)</div>
+            <textarea class="form-input" id="ya-cambiado-comentario" rows="3" placeholder="Ej. El medidor nuevo es de marca X..." style="resize:none"></textarea>
+          </div>
+          <div id="ya-cambiado-error" class="form-error"></div>
+          <button class="btn-primary full" style="background:rgba(249,115,22,.2);border:1px solid rgba(249,115,22,.4);color:#fb923c" id="btn-confirmar-ya-cambiado">
+            <span id="btn-ya-cambiado-lbl">Confirmar reporte</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Sheet pedir ayuda -->
+    <div class="sheet-backdrop" id="sheet-pedir-ayuda">
+      <div class="sheet">
+        <div class="sheet-handle"></div>
+        <div class="sheet-title">⚠️ Pedir ayuda</div>
+        <div class="sheet-body">
+          <div class="form-label" style="margin-bottom:10px">¿Cuál es el problema?</div>
+          <div class="flex-col gap-8" id="ayuda-opciones">
+            <button class="ayuda-opcion" data-motivo="📍 Punto mal ubicado — la dirección no coincide con el lugar físico">
+              <div style="font-size:13px;font-weight:600">Punto mal ubicado</div>
+              <div style="font-size:11px;color:var(--text-4)">La dirección no coincide con el lugar</div>
+            </button>
+            <button class="ayuda-opcion" data-motivo="❓ Medidor ya fue cambiado — aparece como pendiente pero ya fue reemplazado">
+              <div style="font-size:13px;font-weight:600">Medidor ya fue cambiado</div>
+              <div style="font-size:11px;color:var(--text-4)">Aparece pendiente pero ya fue reemplazado</div>
+            </button>
+            <button class="ayuda-opcion" data-motivo="🔧 Otro problema">
+              <div style="font-size:13px;font-weight:600">Otro problema</div>
+              <div style="font-size:11px;color:var(--text-4)">Especifica en el mensaje</div>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
       <div class="sheet">
         <div class="sheet-handle"></div>
         <div class="sheet-title">Motivo de visita</div>
@@ -266,7 +311,7 @@ function renderShell(container) {
   `;
 
   // Eliminar sheets anteriores si existen
-  ['sheet-visita','sheet-realizada','sheet-zona'].forEach(id => {
+  ['sheet-visita','sheet-realizada','sheet-zona','sheet-ya-cambiado','sheet-pedir-ayuda'].forEach(id => {
     document.getElementById(id)?.remove();
   });
 
@@ -310,7 +355,17 @@ function renderShell(container) {
     });
   });
 
-  window.__mapa = { verOrden, marcarHecha, marcarVisita, abrirGoogleMaps, confirmarRealizada, confirmarVisita, asignarIndividual, confirmarIndividual, confirmarZona, cancelarZona };
+  document.getElementById('btn-confirmar-ya-cambiado')?.addEventListener('click', confirmarYaCambiado);
+
+  // Opciones de ayuda
+  document.querySelectorAll('.ayuda-opcion').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const motivo = btn.dataset.motivo;
+      enviarAyudaWhatsApp(motivo);
+    });
+  });
+
+  window.__mapa = { verOrden, marcarHecha, marcarVisita, abrirGoogleMaps, confirmarRealizada, confirmarVisita, asignarIndividual, confirmarIndividual, confirmarZona, cancelarZona, abrirYaCambiado, abrirPedirAyuda };
 
   // onSnapshot ya maneja actualizaciones en tiempo real
   // Este listener es fallback para cambios desde cambios.js
@@ -483,6 +538,7 @@ function plotMarkers() {
         letter-spacing:.02em;
       ">${wo}</div>` : '';
 
+    const yaCambiado = orden.estadoCampo === 'ya_cambiado';
     const icon = L.divIcon({
       className: '',
       html: bloqueada ? `
@@ -499,6 +555,21 @@ function plotMarkers() {
             <path d="M7 11V7a5 5 0 0110 0v4"/>
           </svg>
         </div>
+      ` : yaCambiado ? `
+        <div style="
+          width:22px;height:22px;
+          background:rgba(249,115,22,.15);
+          border:2px solid #f97316;
+          border-radius:6px;
+          display:flex;align-items:center;justify-content:center;
+          box-shadow:0 2px 6px rgba(0,0,0,.5);
+        ">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#f97316" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="11" height="11">
+            <circle cx="12" cy="12" r="10"/>
+            <line x1="12" y1="8" x2="12" y2="12"/>
+            <line x1="12" y1="16" x2="12.01" y2="16"/>
+          </svg>
+        </div>
       ` : `
         <div style="position:relative">
           <div style="
@@ -512,8 +583,8 @@ function plotMarkers() {
           ${labelHtml}
         </div>
       `,
-      iconSize:   bloqueada ? [22,22] : [size, size],
-      iconAnchor: bloqueada ? [11,11]  : [size/2, size/2],
+      iconSize:   (bloqueada || yaCambiado) ? [22,22] : [size, size],
+      iconAnchor: (bloqueada || yaCambiado) ? [11,11]  : [size/2, size/2],
     });
 
     const marker = L.marker([orden.latitud, orden.longitud], { icon });
@@ -613,21 +684,34 @@ function verOrden(id) {
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
           Realizada
         </button>` : ''}
-      ${isTecnico && !o.estadoCampo ? `
-        <button class="btn-action outline" onclick="window.__mapa.marcarVisita('${o.id}')">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-          Visita
-        </button>` : ''}
+      <button class="btn-action outline" onclick="window.__mapa.abrirGoogleMaps(${o.latitud},${o.longitud})">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg>
+        Navegar
+      </button>
       ${!isTecnico ? `
         <button class="btn-action cm" onclick="window.__mapa.asignarIndividual('${o.id}')">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M17 3a2.828 2.828 0 114 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>
           Asignar pareja
         </button>` : ''}
-      <button class="btn-action outline" onclick="window.__mapa.abrirGoogleMaps(${o.latitud},${o.longitud})">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg>
-        Navegar
+    </div>
+
+    ${isTecnico && (!o.estadoCampo || o.estadoCampo === 'visita') ? `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">
+      ${!o.estadoCampo ? `
+      <button class="btn-action outline" style="font-size:12px" onclick="window.__mapa.marcarVisita('${o.id}')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="13" height="13"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        Visita
+      </button>` : '<div></div>'}
+      <button class="btn-action outline" style="font-size:12px;border-color:rgba(249,115,22,.4);color:#fb923c" onclick="window.__mapa.abrirYaCambiado('${o.id}')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="13" height="13"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        Ya cambiado
       </button>
     </div>
+    <button onclick="window.__mapa.abrirPedirAyuda('${o.id}')"
+      style="width:100%;margin-top:8px;height:36px;border-radius:10px;border:1px solid rgba(251,191,36,.3);background:transparent;color:#fbbf24;font-size:12px;font-weight:600;font-family:'Outfit',sans-serif;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="13" height="13"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+      Pedir ayuda
+    </button>` : ''}
   `;
 
   panel.classList.add('open');
@@ -745,6 +829,62 @@ async function confirmarVisita() {
   } finally {
     setLoading('btn-visita-label', 'Registrar visita', false);
   }
+}
+
+// ── Ya estaba cambiado ────────────────────────────
+function abrirYaCambiado(id) {
+  selectedOrden_ = ordenes_.find(x => x.id === id) || selectedOrden_;
+  document.getElementById('ya-cambiado-comentario').value = '';
+  document.getElementById('ya-cambiado-error').style.display = 'none';
+  openSheet('sheet-ya-cambiado');
+}
+
+async function confirmarYaCambiado() {
+  if (!selectedOrden_) return;
+  const comentario = document.getElementById('ya-cambiado-comentario').value.trim();
+  setLoading('btn-ya-cambiado-lbl', 'Guardando…', true);
+  try {
+    await db.collection('cambios_ordenes').doc(selectedOrden_.id).update({
+      estadoCampo:  'ya_cambiado',
+      yaCambiadoPor: session_.displayName,
+      yaCambiadoEn:  firebase.firestore.Timestamp.now(),
+      yaCambiadoComentario: comentario || null,
+    });
+    const o = ordenes_.find(x => x.id === selectedOrden_.id);
+    if (o) o.estadoCampo = 'ya_cambiado';
+    closeSheet('sheet-ya-cambiado');
+    closePanel();
+    plotMarkers();
+    toast('Orden reportada como ya cambiada', 'ok');
+  } catch(err) {
+    document.getElementById('ya-cambiado-error').textContent = `Error: ${err.message}`;
+    document.getElementById('ya-cambiado-error').style.display = 'block';
+  } finally {
+    setLoading('btn-ya-cambiado-lbl', 'Confirmar reporte', false);
+  }
+}
+
+// ── Pedir ayuda por WhatsApp ──────────────────────
+function abrirPedirAyuda(id) {
+  selectedOrden_ = ordenes_.find(x => x.id === id) || selectedOrden_;
+  openSheet('sheet-pedir-ayuda');
+}
+
+function enviarAyudaWhatsApp(motivo) {
+  const o = selectedOrden_;
+  if (!o) return;
+  const msg = `⚠️ Necesito ayuda con una orden\n`
+    + `WO: ${o.wo || '—'}\n`
+    + `NC: ${o.nc || '—'}\n`
+    + `Cliente: ${o.cliente || '—'}\n`
+    + `Dirección: ${o.direccion || '—'}\n`
+    + `Serie medidor: ${o.serieActual || o.serie || '—'}\n`
+    + `Marca: ${o.marca || '—'}\n`
+    + `\nMotivo: ${motivo}`;
+
+  const url = `https://wa.me/50360240176?text=${encodeURIComponent(msg)}`;
+  closeSheet('sheet-pedir-ayuda');
+  window.open(url, '_blank');
 }
 
 function abrirGoogleMaps(lat, lng) {
