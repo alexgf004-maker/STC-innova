@@ -1056,6 +1056,9 @@ function sheetsMapaHTML() {
         </div>
       </div>
     </div>
+
+    <!-- Sheet motivo visita -->
+    <div class="sheet-backdrop" id="sheet-visita">
       <div class="sheet">
         <div class="sheet-handle"></div>
         <div class="sheet-title">Motivo de visita</div>
