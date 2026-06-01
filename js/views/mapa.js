@@ -145,6 +145,7 @@ function renderShell(container) {
       </div>
 
     </div>
+    ${sheetsMapaHTML()}
   `;
 
   // Calcular alturas reales del topbar y navbar
@@ -167,163 +168,6 @@ function renderShell(container) {
     if (navbar) wrapper.style.bottom = navbar.offsetHeight + 'px';
   }
 
-  // Inyectar sheets fuera del mapa-wrapper (necesitan z-index alto)
-  const sheetsHTML = `
-    <!-- Sheet ya estaba cambiado -->
-    <div class="sheet-backdrop" id="sheet-ya-cambiado">
-      <div class="sheet">
-        <div class="sheet-handle"></div>
-        <div class="sheet-title">Ya estaba cambiado</div>
-        <div class="sheet-body">
-          <div style="font-size:13px;color:var(--text-2);margin-bottom:16px;line-height:1.6">
-            Indica que el medidor de esta orden ya fue cambiado anteriormente. El asistente lo revisará y decidirá si eliminarla.
-          </div>
-          <div class="form-field">
-            <div class="form-label">Comentario (opcional)</div>
-            <textarea class="form-input" id="ya-cambiado-comentario" rows="3" placeholder="Ej. El medidor nuevo es de marca X..." style="resize:none"></textarea>
-          </div>
-          <div id="ya-cambiado-error" class="form-error"></div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-            <button class="btn-action outline" onclick="window.__mapaCloseSheet('sheet-ya-cambiado')">Cancelar</button>
-            <button class="btn-primary full" style="background:rgba(249,115,22,.2);border:1px solid rgba(249,115,22,.4);color:#fb923c" id="btn-confirmar-ya-cambiado">
-              <span id="btn-ya-cambiado-lbl">Confirmar</span>
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Sheet pedir ayuda -->
-    <div class="sheet-backdrop" id="sheet-pedir-ayuda">
-      <div class="sheet">
-        <div class="sheet-handle"></div>
-        <div class="sheet-title">Pedir ayuda</div>
-        <div class="sheet-body">
-          <div class="form-label" style="margin-bottom:12px">¿Cuál es el problema?</div>
-          <div class="flex-col gap-8" id="ayuda-opciones">
-            <button class="ayuda-opcion" data-motivo="Punto mal ubicado — la dirección no coincide con el lugar físico">
-              <div style="font-size:13px;font-weight:600;color:var(--text)">Punto mal ubicado</div>
-              <div style="font-size:11px;color:var(--text-4);margin-top:2px">La dirección no coincide con el lugar</div>
-            </button>
-            <button class="ayuda-opcion" data-motivo="Medidor ya fue cambiado — aparece como pendiente pero ya fue reemplazado">
-              <div style="font-size:13px;font-weight:600;color:var(--text)">Medidor ya fue cambiado</div>
-              <div style="font-size:11px;color:var(--text-4);margin-top:2px">Aparece pendiente pero ya fue reemplazado</div>
-            </button>
-            <button class="ayuda-opcion" data-motivo="Otro problema">
-              <div style="font-size:13px;font-weight:600;color:var(--text)">Otro problema</div>
-              <div style="font-size:11px;color:var(--text-4);margin-top:2px">Especifica en el mensaje de WhatsApp</div>
-            </button>
-          </div>
-          <button class="btn-action outline" style="width:100%;margin-top:12px;height:44px" onclick="window.__mapaCloseSheet('sheet-pedir-ayuda')">Cancelar</button>
-        </div>
-      </div>
-    </div>
-      <div class="sheet">
-        <div class="sheet-handle"></div>
-        <div class="sheet-title">Motivo de visita</div>
-        <div class="sheet-body">
-          <div class="form-label" style="margin-bottom:8px">Motivo principal</div>
-          <div class="select-row flex-wrap" id="visita-motivo-row" style="margin-bottom:16px">
-            <div class="select-chip" data-val="Medidor interno">Medidor interno</div>
-            <div class="select-chip" data-val="Medidor sobre techo">Medidor sobre techo</div>
-            <div class="select-chip" data-val="Panal de abejas cerca">Panal de abejas</div>
-            <div class="select-chip" data-val="Cliente ausente">Cliente ausente</div>
-          </div>
-          <div class="form-label" style="margin-bottom:8px">Observación adicional (opcional)</div>
-          <input class="form-input" id="visita-obs" type="text" placeholder="Describe la situación…" style="margin-bottom:16px"/>
-          <div id="visita-error" class="form-error"></div>
-          <button class="btn-primary full" id="btn-confirmar-visita" onclick="window.__mapa.confirmarVisita()">
-            <span id="btn-visita-label">Registrar visita</span>
-          </button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Sheet confirmación realizada -->
-    <div class="sheet-backdrop" id="sheet-realizada">
-      <div class="sheet">
-        <div class="sheet-handle"></div>
-        <div class="sheet-title">¿Ya actualizaste en DELSUR?</div>
-        <div class="sheet-body">
-          <p style="font-size:13px;color:var(--text-3);margin-bottom:20px;line-height:1.6">
-            Confirma si ya ingresaste esta orden en el sistema de DELSUR.
-          </p>
-          <div style="display:flex;flex-direction:column;gap:8px">
-            <button class="btn-action cm" id="btn-si-delsur" onclick="window.__mapa.confirmarRealizada(true)">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-              Sí, ya actualicé en DELSUR
-            </button>
-            <button class="btn-action outline" id="btn-no-delsur" onclick="window.__mapa.confirmarRealizada(false)">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-              No, lo actualizaré después
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Sheet asignación individual -->
-    <div class="sheet-backdrop" id="sheet-asignar-individual">
-      <div class="sheet">
-        <div class="sheet-handle"></div>
-        <div class="sheet-title" id="sheet-indiv-title">Asignar pareja</div>
-        <div class="sheet-body">
-          <div class="form-label" style="margin-bottom:8px">Selecciona la pareja</div>
-          <div class="select-row flex-wrap" id="indiv-pareja-row" style="margin-bottom:16px">
-            <div class="select-chip" data-val="Pareja 1">Pareja 1</div>
-            <div class="select-chip" data-val="Pareja 2">Pareja 2</div>
-            <div class="select-chip" data-val="Pareja 3">Pareja 3</div>
-            <div class="select-chip" data-val="Pareja 4">Pareja 4</div>
-            <div class="select-chip" data-val="null" style="color:var(--text-4)">Sin pareja</div>
-          </div>
-          <div id="indiv-error" class="form-error"></div>
-          <button class="btn-primary full" onclick="window.__mapa.confirmarIndividual()">
-            <span id="btn-indiv-label">Confirmar</span>
-          </button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Sheet zona -->
-    <div class="sheet-backdrop" id="sheet-zona">
-      <div class="sheet">
-        <div class="sheet-handle"></div>
-        <div class="sheet-title">Asignar zona</div>
-        <div class="sheet-body">
-          <div id="zona-preview" style="display:none" class="zona-preview-box">
-            <div class="zona-preview-num" id="zona-count">0</div>
-            <div class="zona-preview-label">órdenes en la zona seleccionada</div>
-          </div>
-          <div class="form-label" style="margin:12px 0 8px">Asignar a</div>
-          <div class="select-row flex-wrap" id="zona-pareja-row" style="margin-bottom:16px">
-            <div class="select-chip" data-val="Pareja 1">Pareja 1</div>
-            <div class="select-chip" data-val="Pareja 2">Pareja 2</div>
-            <div class="select-chip" data-val="Pareja 3">Pareja 3</div>
-            <div class="select-chip" data-val="Pareja 4">Pareja 4</div>
-            <div class="select-chip" data-val="null" style="color:var(--text-4)">Sin pareja</div>
-          </div>
-          <div id="zona-error" class="form-error"></div>
-          <button class="btn-primary full" id="btn-confirmar-zona" onclick="window.__mapa.confirmarZona()">
-            <span id="btn-zona-label">Confirmar asignación</span>
-          </button>
-          <button class="btn-action outline" id="btn-cancelar-zona" onclick="window.__mapa.cancelarZona()" style="margin-top:8px;width:100%;height:44px">
-            Cancelar y borrar zona
-          </button>
-        </div>
-      </div>
-    </div>
-  `;
-
-  // Eliminar sheets anteriores si existen
-  ['sheet-visita','sheet-realizada','sheet-zona','sheet-ya-cambiado','sheet-pedir-ayuda'].forEach(id => {
-    document.getElementById(id)?.remove();
-  });
-
-  // Insertar en body directamente
-  // Solo insertar sheets si no existen ya en el DOM
-  if (!document.getElementById('sheet-visita')) {
-    document.body.insertAdjacentHTML('beforeend', sheetsHTML);
-  }
 
   // Eventos del mapa-wrapper
   document.getElementById('btn-asignar-zona')?.addEventListener('click', activarModoZona);
@@ -1124,11 +968,8 @@ window.__mapaCloseSheet = closeSheet;
 
 // Llamado por el router al navegar fuera del mapa
 export function cleanup() {
-  ['sheet-visita','sheet-realizada','sheet-zona','sheet-ya-cambiado','sheet-pedir-ayuda','sheet-asignar-individual'].forEach(id => {
-    document.getElementById(id)?.classList.remove('open');
-  });
   const btn = document.getElementById('btn-cerrar-poligono');
-  if (btn) btn.style.display = 'none';
+  if (btn) btn.remove();
 }
 
 function setupSelectChips(rowId) {
@@ -1152,4 +993,153 @@ function setLoading(labelId, text, loading) {
   el.innerHTML = loading ? '<div class="spinner"></div>' : text;
   const btn = el.closest('button');
   if (btn) btn.disabled = loading;
+}
+
+// ── HTML de sheets del mapa ──────────────────────
+function sheetsMapaHTML() {
+  return `
+    <!-- Sheet ya estaba cambiado -->
+    <div class="sheet-backdrop" id="sheet-ya-cambiado">
+      <div class="sheet">
+        <div class="sheet-handle"></div>
+        <div class="sheet-title">Ya estaba cambiado</div>
+        <div class="sheet-body">
+          <div style="font-size:13px;color:var(--text-2);margin-bottom:16px;line-height:1.6">
+            Indica que el medidor de esta orden ya fue cambiado anteriormente. El asistente lo revisará y decidirá si eliminarla.
+          </div>
+          <div class="form-field">
+            <div class="form-label">Comentario (opcional)</div>
+            <textarea class="form-input" id="ya-cambiado-comentario" rows="3" placeholder="Ej. El medidor nuevo es de marca X..." style="resize:none"></textarea>
+          </div>
+          <div id="ya-cambiado-error" class="form-error"></div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+            <button class="btn-action outline" onclick="window.__mapaCloseSheet('sheet-ya-cambiado')">Cancelar</button>
+            <button class="btn-primary full" style="background:rgba(249,115,22,.2);border:1px solid rgba(249,115,22,.4);color:#fb923c" id="btn-confirmar-ya-cambiado">
+              <span id="btn-ya-cambiado-lbl">Confirmar</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Sheet pedir ayuda -->
+    <div class="sheet-backdrop" id="sheet-pedir-ayuda">
+      <div class="sheet">
+        <div class="sheet-handle"></div>
+        <div class="sheet-title">Pedir ayuda</div>
+        <div class="sheet-body">
+          <div class="form-label" style="margin-bottom:12px">¿Cuál es el problema?</div>
+          <div class="flex-col gap-8" id="ayuda-opciones">
+            <button class="ayuda-opcion" data-motivo="Punto mal ubicado — la dirección no coincide con el lugar físico">
+              <div style="font-size:13px;font-weight:600;color:var(--text)">Punto mal ubicado</div>
+              <div style="font-size:11px;color:var(--text-4);margin-top:2px">La dirección no coincide con el lugar</div>
+            </button>
+            <button class="ayuda-opcion" data-motivo="Medidor ya fue cambiado — aparece como pendiente pero ya fue reemplazado">
+              <div style="font-size:13px;font-weight:600;color:var(--text)">Medidor ya fue cambiado</div>
+              <div style="font-size:11px;color:var(--text-4);margin-top:2px">Aparece pendiente pero ya fue reemplazado</div>
+            </button>
+            <button class="ayuda-opcion" data-motivo="Otro problema">
+              <div style="font-size:13px;font-weight:600;color:var(--text)">Otro problema</div>
+              <div style="font-size:11px;color:var(--text-4);margin-top:2px">Especifica en el mensaje de WhatsApp</div>
+            </button>
+          </div>
+          <button class="btn-action outline" style="width:100%;margin-top:12px;height:44px" onclick="window.__mapaCloseSheet('sheet-pedir-ayuda')">Cancelar</button>
+        </div>
+      </div>
+    </div>
+      <div class="sheet">
+        <div class="sheet-handle"></div>
+        <div class="sheet-title">Motivo de visita</div>
+        <div class="sheet-body">
+          <div class="form-label" style="margin-bottom:8px">Motivo principal</div>
+          <div class="select-row flex-wrap" id="visita-motivo-row" style="margin-bottom:16px">
+            <div class="select-chip" data-val="Medidor interno">Medidor interno</div>
+            <div class="select-chip" data-val="Medidor sobre techo">Medidor sobre techo</div>
+            <div class="select-chip" data-val="Panal de abejas cerca">Panal de abejas</div>
+            <div class="select-chip" data-val="Cliente ausente">Cliente ausente</div>
+          </div>
+          <div class="form-label" style="margin-bottom:8px">Observación adicional (opcional)</div>
+          <input class="form-input" id="visita-obs" type="text" placeholder="Describe la situación…" style="margin-bottom:16px"/>
+          <div id="visita-error" class="form-error"></div>
+          <button class="btn-primary full" id="btn-confirmar-visita" onclick="window.__mapa.confirmarVisita()">
+            <span id="btn-visita-label">Registrar visita</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Sheet confirmación realizada -->
+    <div class="sheet-backdrop" id="sheet-realizada">
+      <div class="sheet">
+        <div class="sheet-handle"></div>
+        <div class="sheet-title">¿Ya actualizaste en DELSUR?</div>
+        <div class="sheet-body">
+          <p style="font-size:13px;color:var(--text-3);margin-bottom:20px;line-height:1.6">
+            Confirma si ya ingresaste esta orden en el sistema de DELSUR.
+          </p>
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <button class="btn-action cm" id="btn-si-delsur" onclick="window.__mapa.confirmarRealizada(true)">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+              Sí, ya actualicé en DELSUR
+            </button>
+            <button class="btn-action outline" id="btn-no-delsur" onclick="window.__mapa.confirmarRealizada(false)">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+              No, lo actualizaré después
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Sheet asignación individual -->
+    <div class="sheet-backdrop" id="sheet-asignar-individual">
+      <div class="sheet">
+        <div class="sheet-handle"></div>
+        <div class="sheet-title" id="sheet-indiv-title">Asignar pareja</div>
+        <div class="sheet-body">
+          <div class="form-label" style="margin-bottom:8px">Selecciona la pareja</div>
+          <div class="select-row flex-wrap" id="indiv-pareja-row" style="margin-bottom:16px">
+            <div class="select-chip" data-val="Pareja 1">Pareja 1</div>
+            <div class="select-chip" data-val="Pareja 2">Pareja 2</div>
+            <div class="select-chip" data-val="Pareja 3">Pareja 3</div>
+            <div class="select-chip" data-val="Pareja 4">Pareja 4</div>
+            <div class="select-chip" data-val="null" style="color:var(--text-4)">Sin pareja</div>
+          </div>
+          <div id="indiv-error" class="form-error"></div>
+          <button class="btn-primary full" onclick="window.__mapa.confirmarIndividual()">
+            <span id="btn-indiv-label">Confirmar</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Sheet zona -->
+    <div class="sheet-backdrop" id="sheet-zona">
+      <div class="sheet">
+        <div class="sheet-handle"></div>
+        <div class="sheet-title">Asignar zona</div>
+        <div class="sheet-body">
+          <div id="zona-preview" style="display:none" class="zona-preview-box">
+            <div class="zona-preview-num" id="zona-count">0</div>
+            <div class="zona-preview-label">órdenes en la zona seleccionada</div>
+          </div>
+          <div class="form-label" style="margin:12px 0 8px">Asignar a</div>
+          <div class="select-row flex-wrap" id="zona-pareja-row" style="margin-bottom:16px">
+            <div class="select-chip" data-val="Pareja 1">Pareja 1</div>
+            <div class="select-chip" data-val="Pareja 2">Pareja 2</div>
+            <div class="select-chip" data-val="Pareja 3">Pareja 3</div>
+            <div class="select-chip" data-val="Pareja 4">Pareja 4</div>
+            <div class="select-chip" data-val="null" style="color:var(--text-4)">Sin pareja</div>
+          </div>
+          <div id="zona-error" class="form-error"></div>
+          <button class="btn-primary full" id="btn-confirmar-zona" onclick="window.__mapa.confirmarZona()">
+            <span id="btn-zona-label">Confirmar asignación</span>
+          </button>
+          <button class="btn-action outline" id="btn-cancelar-zona" onclick="window.__mapa.cancelarZona()" style="margin-top:8px;width:100%;height:44px">
+            Cancelar y borrar zona
+          </button>
+        </div>
+      </div>
+    </div>
+  `;
 }
