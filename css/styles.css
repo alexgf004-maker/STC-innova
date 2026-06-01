@@ -1630,6 +1630,19 @@ body {
   }
   .sheet-handle { display: none !important; }
 }
+.ayuda-opcion {
+  width: 100%;
+  padding: 14px 16px;
+  background: var(--glass);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  cursor: pointer;
+  text-align: left;
+  font-family: 'Outfit', sans-serif;
+  transition: background .15s;
+  -webkit-tap-highlight-color: transparent;
+}
+.ayuda-opcion:active { background: var(--glass-hov); }
 
 /* ── Menú de acciones (panel cambios) ───────────── */
 .menu-accion-btn {
