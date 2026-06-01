@@ -173,19 +173,22 @@ function renderShell(container) {
     <div class="sheet-backdrop" id="sheet-ya-cambiado">
       <div class="sheet">
         <div class="sheet-handle"></div>
-        <div class="sheet-title">Reportar: Ya estaba cambiado</div>
+        <div class="sheet-title">Ya estaba cambiado</div>
         <div class="sheet-body">
           <div style="font-size:13px;color:var(--text-2);margin-bottom:16px;line-height:1.6">
-            Indica que el medidor de esta orden ya fue cambiado anteriormente. La orden quedará marcada como error para que el asistente la revise.
+            Indica que el medidor de esta orden ya fue cambiado anteriormente. El asistente lo revisará y decidirá si eliminarla.
           </div>
           <div class="form-field">
             <div class="form-label">Comentario (opcional)</div>
             <textarea class="form-input" id="ya-cambiado-comentario" rows="3" placeholder="Ej. El medidor nuevo es de marca X..." style="resize:none"></textarea>
           </div>
           <div id="ya-cambiado-error" class="form-error"></div>
-          <button class="btn-primary full" style="background:rgba(249,115,22,.2);border:1px solid rgba(249,115,22,.4);color:#fb923c" id="btn-confirmar-ya-cambiado">
-            <span id="btn-ya-cambiado-lbl">Confirmar reporte</span>
-          </button>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+            <button class="btn-action outline" onclick="window.__mapaCloseSheet('sheet-ya-cambiado')">Cancelar</button>
+            <button class="btn-primary full" style="background:rgba(249,115,22,.2);border:1px solid rgba(249,115,22,.4);color:#fb923c" id="btn-confirmar-ya-cambiado">
+              <span id="btn-ya-cambiado-lbl">Confirmar</span>
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -194,23 +197,24 @@ function renderShell(container) {
     <div class="sheet-backdrop" id="sheet-pedir-ayuda">
       <div class="sheet">
         <div class="sheet-handle"></div>
-        <div class="sheet-title">⚠️ Pedir ayuda</div>
+        <div class="sheet-title">Pedir ayuda</div>
         <div class="sheet-body">
-          <div class="form-label" style="margin-bottom:10px">¿Cuál es el problema?</div>
+          <div class="form-label" style="margin-bottom:12px">¿Cuál es el problema?</div>
           <div class="flex-col gap-8" id="ayuda-opciones">
-            <button class="ayuda-opcion" data-motivo="📍 Punto mal ubicado — la dirección no coincide con el lugar físico">
-              <div style="font-size:13px;font-weight:600">Punto mal ubicado</div>
-              <div style="font-size:11px;color:var(--text-4)">La dirección no coincide con el lugar</div>
+            <button class="ayuda-opcion" data-motivo="Punto mal ubicado — la dirección no coincide con el lugar físico">
+              <div style="font-size:13px;font-weight:600;color:var(--text)">Punto mal ubicado</div>
+              <div style="font-size:11px;color:var(--text-4);margin-top:2px">La dirección no coincide con el lugar</div>
             </button>
-            <button class="ayuda-opcion" data-motivo="❓ Medidor ya fue cambiado — aparece como pendiente pero ya fue reemplazado">
-              <div style="font-size:13px;font-weight:600">Medidor ya fue cambiado</div>
-              <div style="font-size:11px;color:var(--text-4)">Aparece pendiente pero ya fue reemplazado</div>
+            <button class="ayuda-opcion" data-motivo="Medidor ya fue cambiado — aparece como pendiente pero ya fue reemplazado">
+              <div style="font-size:13px;font-weight:600;color:var(--text)">Medidor ya fue cambiado</div>
+              <div style="font-size:11px;color:var(--text-4);margin-top:2px">Aparece pendiente pero ya fue reemplazado</div>
             </button>
-            <button class="ayuda-opcion" data-motivo="🔧 Otro problema">
-              <div style="font-size:13px;font-weight:600">Otro problema</div>
-              <div style="font-size:11px;color:var(--text-4)">Especifica en el mensaje</div>
+            <button class="ayuda-opcion" data-motivo="Otro problema">
+              <div style="font-size:13px;font-weight:600;color:var(--text)">Otro problema</div>
+              <div style="font-size:11px;color:var(--text-4);margin-top:2px">Especifica en el mensaje de WhatsApp</div>
             </button>
           </div>
+          <button class="btn-action outline" style="width:100%;margin-top:12px;height:44px" onclick="window.__mapaCloseSheet('sheet-pedir-ayuda')">Cancelar</button>
         </div>
       </div>
     </div>
@@ -693,25 +697,18 @@ function verOrden(id) {
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M17 3a2.828 2.828 0 114 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>
           Asignar pareja
         </button>` : ''}
+      ${isTecnico && !o.estadoCampo ? `
+        <button class="icon-btn" title="Registrar visita" onclick="window.__mapa.marcarVisita('${o.id}')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        </button>` : ''}
+      ${isTecnico && (!o.estadoCampo || o.estadoCampo === 'visita') ? `
+        <button class="icon-btn" title="Ya estaba cambiado" style="color:#fb923c;border-color:rgba(249,115,22,.3)" onclick="window.__mapa.abrirYaCambiado('${o.id}')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        </button>
+        <button class="icon-btn" title="Pedir ayuda" style="color:#fbbf24;border-color:rgba(251,191,36,.3)" onclick="window.__mapa.abrirPedirAyuda('${o.id}')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        </button>` : ''}
     </div>
-
-    ${isTecnico && (!o.estadoCampo || o.estadoCampo === 'visita') ? `
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">
-      ${!o.estadoCampo ? `
-      <button class="btn-action outline" style="font-size:12px" onclick="window.__mapa.marcarVisita('${o.id}')">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="13" height="13"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-        Visita
-      </button>` : '<div></div>'}
-      <button class="btn-action outline" style="font-size:12px;border-color:rgba(249,115,22,.4);color:#fb923c" onclick="window.__mapa.abrirYaCambiado('${o.id}')">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="13" height="13"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-        Ya cambiado
-      </button>
-    </div>
-    <button onclick="window.__mapa.abrirPedirAyuda('${o.id}')"
-      style="width:100%;margin-top:8px;height:36px;border-radius:10px;border:1px solid rgba(251,191,36,.3);background:transparent;color:#fbbf24;font-size:12px;font-weight:600;font-family:'Outfit',sans-serif;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="13" height="13"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-      Pedir ayuda
-    </button>` : ''}
   `;
 
   panel.classList.add('open');
@@ -1119,6 +1116,15 @@ async function confirmarZona() {
 
 function openSheet(id)  { document.getElementById(id)?.classList.add('open'); }
 function closeSheet(id) { document.getElementById(id)?.classList.remove('open'); }
+// Exponer para onclick en HTML
+window.__mapaCloseSheet = closeSheet;
+
+// Llamado por el router al navegar fuera del mapa
+export function cleanup() {
+  ['sheet-visita','sheet-realizada','sheet-zona','sheet-ya-cambiado','sheet-pedir-ayuda','sheet-asignar-individual'].forEach(id => closeSheet(id));
+  const btn = document.getElementById('btn-cerrar-poligono');
+  if (btn) btn.style.display = 'none';
+}
 
 function setupSelectChips(rowId) {
   const row = document.getElementById(rowId);
