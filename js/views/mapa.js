@@ -1021,9 +1021,13 @@ function sheetsMapaHTML() {
             <textarea class="form-input" id="ya-cambiado-comentario" rows="3" placeholder="Ej. El medidor nuevo es de marca X..." style="resize:none"></textarea>
           </div>
           <div id="ya-cambiado-error" class="form-error"></div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-            <button class="btn-action outline" onclick="window.__mapaCloseSheet('sheet-ya-cambiado')">Cancelar</button>
-            <button class="btn-primary full" style="background:rgba(249,115,22,.2);border:1px solid rgba(249,115,22,.4);color:#fb923c" id="btn-confirmar-ya-cambiado">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:4px">
+            <button onclick="window.__mapaCloseSheet('sheet-ya-cambiado')"
+              style="height:44px;border-radius:12px;border:1px solid var(--border);background:transparent;color:var(--text-3);font-size:13px;font-weight:600;font-family:'Outfit',sans-serif;cursor:pointer">
+              Cancelar
+            </button>
+            <button id="btn-confirmar-ya-cambiado"
+              style="height:44px;border-radius:12px;border:1px solid rgba(249,115,22,.4);background:rgba(249,115,22,.15);color:#fb923c;font-size:13px;font-weight:600;font-family:'Outfit',sans-serif;cursor:pointer">
               <span id="btn-ya-cambiado-lbl">Confirmar</span>
             </button>
           </div>
