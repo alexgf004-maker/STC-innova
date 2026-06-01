@@ -260,7 +260,7 @@ function renderShell() {
   }
   document.getElementById('btn-confirmar-lecturas')?.addEventListener('click', confirmarLecturas);
 
-  window.__cambios = { verOrden, verOrdenDesdeBuscar, marcarHecha, marcarVisita, actualizadaDelsur, aprobar, rechazar, openCampo, openImport, openImportLecturas, openGestionarLecturas, openBuscar, eliminarOrden, toggleAcordeon, descargarHoy, descargarMensual, toggleMenuAcciones };
+  window.__cambios = { verOrden, verOrdenDesdeBuscar, marcarHecha, marcarVisita, actualizadaDelsur, aprobar, rechazar, revertirYaCambiado, openCampo, openImport, openImportLecturas, openGestionarLecturas, openBuscar, eliminarOrden, toggleAcordeon, descargarHoy, descargarMensual, toggleMenuAcciones };
 }
 
 // ── Cargar datos ──────────────────────────────────
@@ -1026,6 +1026,11 @@ function verOrden(id) {
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
           Rechazar — volver a pendiente
         </button>` : ''}
+        ${o.estadoCampo === 'ya_cambiado' ? `
+        <button class="btn-action outline" onclick="window.__cambios.revertirYaCambiado('${o.id}')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 102.13-9.36L1 10"/></svg>
+          Revertir a pendiente
+        </button>` : ''}
         <button onclick="window.__cambios.eliminarOrden('${o.id}')"
           style="width:100%;height:44px;border-radius:12px;border:1px solid rgba(239,68,68,.3);background:transparent;color:#f87171;font-size:13px;font-weight:600;font-family:'Outfit',sans-serif;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg>
@@ -1127,6 +1132,27 @@ async function aprobar(id) {
   } catch (err) {
     console.error('[cambios] Error aprobando:', err);
     toast('Error al confirmar', 'error');
+  }
+}
+
+async function revertirYaCambiado(id) {
+  if (!confirm('¿Revertir esta orden a pendiente? El técnico podrá ejecutarla nuevamente.')) return;
+  try {
+    await db.collection('cambios_ordenes').doc(id).update({
+      estadoCampo: null,
+      yaCambiadoPor: null,
+      yaCambiadoEn: null,
+      yaCambiadoComentario: null,
+    });
+    const idx = ordenes.findIndex(o => o.id === id);
+    if (idx !== -1) ordenes[idx] = { ...ordenes[idx], estadoCampo: null, yaCambiadoPor: null };
+    invalidateOrdenes();
+    closeSheet('sheet-orden');
+    renderTab();
+    recalcularStats().catch(() => {});
+    toast('Orden revertida a pendiente', 'ok');
+  } catch(err) {
+    toast('Error: ' + err.message, 'error');
   }
 }
 
