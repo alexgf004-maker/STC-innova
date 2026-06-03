@@ -13,7 +13,7 @@ import { toast } from '../ui.js';
 
 const PAREJA_COLORS = {
   'Pareja 1': '#2dd4bf',
-  'Pareja 2': '#60a5fa',
+  'Pareja 2': '#f472b6',
   'Pareja 3': '#a78bfa',
   'Pareja 4': '#fbbf24',
   null:       '#6b7280',
