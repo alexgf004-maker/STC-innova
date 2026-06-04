@@ -279,10 +279,20 @@ function initMap() {
   });
 
   // Google Maps Hybrid tiles
-  L.tileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', {
+  const tileLayer_ = L.tileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', {
     maxZoom: 20,
     attribution: '© Google',
+    errorTileUrl: 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', // tile transparente en error
+    keepBuffer: 4, // mantener más tiles en buffer
   }).addTo(map_);
+
+  // Si falla un tile, no hacer nada — marcadores y GPS siguen visibles
+  tileLayer_.on('tileerror', () => {});
+
+  // Cuando se recupera la señal, recargar tiles sin tocar marcadores
+  window.addEventListener('online', () => {
+    tileLayer_.redraw();
+  });
 
   // Zoom control en posición correcta
   L.control.zoom({ position: 'bottomright' }).addTo(map_);
@@ -333,9 +343,14 @@ function iniciarGeolocalizacion() {
     pos => {
       const { latitude: lat, longitude: lng, accuracy } = pos.coords;
 
+      if (!map_) return; // mapa ya no existe
+
       if (geoMarker_) {
         geoMarker_.setLatLng([lat, lng]);
         geoCircle_.setLatLng([lat, lng]).setRadius(accuracy);
+        // Re-añadir al mapa si se perdió (puede pasar offline)
+        if (!map_.hasLayer(geoMarker_)) geoMarker_.addTo(map_);
+        if (!map_.hasLayer(geoCircle_)) geoCircle_.addTo(map_);
       } else {
         geoMarker_ = L.marker([lat, lng], {
           icon: L.divIcon({
@@ -448,6 +463,11 @@ function plotMarkers() {
     marker.on('click', () => verOrden(orden.id));
     marker.addTo(map_);
     markers_.push(marker);
+  });
+
+  // Si el mapa pierde layers offline, re-añadir marcadores al recuperarse
+  map_.once('layeradd', () => {
+    markers_.forEach(m => { if (!map_.hasLayer(m)) m.addTo(map_); });
   });
 }
 
