@@ -24,6 +24,7 @@ const ESTADO_COLORS = {
   'aprobada':    '#22c55e',
   'visita':      '#111827',
   'ya_cambiado': '#f97316',
+  'urgente':     '#ef4444',
   null:          null,
 };
 
@@ -53,6 +54,7 @@ let drawnItems_ = null;
 let drawControl_ = null;
 let session_, role_, pareja_;
 let ordenes_ = [];
+let urgentesVistas_ = new Set(); // IDs de urgentes ya notificadas esta sesión
 let selectedOrden_ = null;
 
 // ── Entry point ───────────────────────────────────
@@ -88,6 +90,12 @@ function renderShell(container) {
   const isTecnico = role_ === 'tecnico';
 
   container.innerHTML = `
+    <style>
+      @keyframes pulso-urgente {
+        0%   { transform: scale(1);   opacity: .7; }
+        100% { transform: scale(2.5); opacity: 0;  }
+      }
+    </style>
     <div id="mapa-wrapper" style="
       position:fixed;
       top: var(--topbar-h, 62px);
@@ -114,6 +122,11 @@ function renderShell(container) {
         <button class="mapa-btn-icon" id="btn-mi-ubicacion" title="Mi ubicación">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
             <circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/>
+          </svg>
+        </button>
+        <button class="mapa-btn-icon" id="btn-reset-norte" title="Orientar al norte" style="display:none">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" id="brujula-icon">
+            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
           </svg>
         </button>
       </div>
@@ -183,6 +196,19 @@ function renderShell(container) {
     } else {
       toast('Obteniendo ubicación…', 'ok');
     }
+  });
+
+  // Botón brújula — mostrar cuando el mapa esté rotado y resetear al norte
+  document.getElementById('btn-reset-norte')?.addEventListener('click', () => {
+    map_.setBearing(0);
+  });
+
+  map_.on('rotate', () => {
+    const bearing = map_.getBearing();
+    const btn = document.getElementById('btn-reset-norte');
+    const icon = document.getElementById('brujula-icon');
+    if (btn) btn.style.display = Math.abs(bearing) > 1 ? '' : 'none';
+    if (icon) icon.style.transform = `rotate(${-bearing}deg)`;
   });
 
   // Cerrar panel al tocar fuera
@@ -276,6 +302,9 @@ function initMap() {
     zoom,
     zoomControl: false,
     attributionControl: false,
+    rotate: true,
+    touchRotate: true,
+    rotateControl: false, // usaremos botón propio
   });
 
   // Google Maps Hybrid tiles
@@ -308,6 +337,16 @@ function initMap() {
 
   // Dibujar marcadores
   plotMarkers();
+
+  // Notificar órdenes urgentes nuevas (solo técnico, solo una vez por sesión)
+  if (role_ === 'tecnico') {
+    const urgentes = ordenes_.filter(o => o.urgente && !o.estadoCampo && o.pareja === pareja_);
+    const nuevas = urgentes.filter(o => !urgentesVistas_.has(o.id));
+    if (nuevas.length) {
+      nuevas.forEach(o => urgentesVistas_.add(o.id));
+      setTimeout(() => mostrarAlertaUrgente(nuevas), 800);
+    }
+  }
 
   // Ajustar bounds si hay órdenes
   if (ordenes_.length && markers_.length) {
@@ -411,6 +450,7 @@ function plotMarkers() {
       ">${wo}</div>` : '';
 
     const yaCambiado = orden.estadoCampo === 'ya_cambiado';
+    const esUrgente  = orden.urgente && !orden.estadoCambo;
     const icon = L.divIcon({
       className: '',
       html: bloqueada ? `
@@ -442,6 +482,22 @@ function plotMarkers() {
             <line x1="12" y1="16" x2="12.01" y2="16"/>
           </svg>
         </div>
+      ` : esUrgente ? `
+        <div style="position:relative;width:20px;height:20px">
+          <div style="
+            position:absolute;inset:0;
+            background:rgba(239,68,68,.3);
+            border-radius:50%;
+            animation:pulso-urgente 1.5s ease-out infinite;
+          "></div>
+          <div style="
+            position:absolute;inset:2px;
+            background:#ef4444;
+            border:2px solid rgba(255,255,255,.9);
+            border-radius:50%;
+            box-shadow:0 2px 8px rgba(239,68,68,.6);
+          "></div>
+        </div>
       ` : `
         <div style="position:relative">
           <div style="
@@ -455,8 +511,8 @@ function plotMarkers() {
           ${labelHtml}
         </div>
       `,
-      iconSize:   (bloqueada || yaCambiado) ? [22,22] : [size, size],
-      iconAnchor: (bloqueada || yaCambiado) ? [11,11]  : [size/2, size/2],
+      iconSize:   (bloqueada || yaCambiado) ? [22,22] : esUrgente ? [20,20] : [size, size],
+      iconAnchor: (bloqueada || yaCambiado) ? [11,11]  : esUrgente ? [10,10] : [size/2, size/2],
     });
 
     const marker = L.marker([orden.latitud, orden.longitud], { icon });
@@ -702,6 +758,35 @@ async function confirmarVisita() {
 }
 
 // ── Ya estaba cambiado ────────────────────────────
+function mostrarAlertaUrgente(urgentes) {
+  const existing = document.getElementById('alerta-urgente');
+  if (existing) existing.remove();
+
+  const div = document.createElement('div');
+  div.id = 'alerta-urgente';
+  div.style.cssText = `
+    position:fixed; bottom:90px; left:50%; transform:translateX(-50%);
+    background:#1f1f2e; border:1px solid rgba(239,68,68,.5);
+    border-radius:16px; padding:14px 18px; z-index:1000;
+    max-width:320px; width:calc(100% - 40px);
+    box-shadow:0 4px 24px rgba(239,68,68,.25);
+    font-family:'Outfit',sans-serif; cursor:pointer;
+  `;
+  div.innerHTML = `
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+      <div style="width:8px;height:8px;background:#ef4444;border-radius:50%;animation:pulso-urgente 1.5s ease-out infinite;flex-shrink:0"></div>
+      <div style="font-size:13px;font-weight:700;color:#ef4444">${urgentes.length} orden${urgentes.length > 1 ? 'es urgentes' : ' urgente'}</div>
+    </div>
+    ${urgentes.map(o => `<div style="font-size:12px;color:var(--text-2);margin-bottom:2px">· WO ${o.wo || '—'} — ${o.cliente || '—'}</div>`).join('')}
+    <div style="font-size:11px;color:var(--text-4);margin-top:8px">Toca para cerrar</div>
+  `;
+  div.addEventListener('click', () => div.remove());
+  document.body.appendChild(div);
+
+  // Auto-cerrar a los 8 segundos
+  setTimeout(() => div?.remove(), 8000);
+}
+
 function abrirYaCambiado(id) {
   selectedOrden_ = ordenes_.find(x => x.id === id) || selectedOrden_;
   document.getElementById('ya-cambiado-comentario').value = '';
@@ -997,6 +1082,7 @@ export function cleanup() {
   ['sheet-visita','sheet-realizada','sheet-zona','sheet-ya-cambiado','sheet-pedir-ayuda','sheet-asignar-individual'].forEach(id => {
     document.getElementById(id)?.remove();
   });
+  document.getElementById('alerta-urgente')?.remove();
   const btn = document.getElementById('btn-cerrar-poligono');
   if (btn) btn.remove();
 }
