@@ -37,6 +37,7 @@ const PAREJA_COLORS = {
 
 let container_, session_, role_, pareja_;
 let ordenes = [], calendario = [];
+let filtroSinActualizar_ = 'todas';
 let activeTab = 'panel'; // 'panel' | 'ordenes'
 let selectedOrden = null;
 
@@ -260,7 +261,7 @@ function renderShell() {
   }
   document.getElementById('btn-confirmar-lecturas')?.addEventListener('click', confirmarLecturas);
 
-  window.__cambios = { verOrden, verOrdenDesdeBuscar, marcarHecha, marcarVisita, actualizadaDelsur, aprobar, rechazar, revertirYaCambiado, openCampo, openImport, openImportLecturas, openGestionarLecturas, openBuscar, eliminarOrden, toggleAcordeon, descargarHoy, descargarMensual, toggleMenuAcciones };
+  window.__cambios = { verOrden, verOrdenDesdeBuscar, marcarHecha, marcarVisita, actualizadaDelsur, aprobar, aprobarYaCambiado, rechazar, revertirYaCambiado, openCampo, openImport, openImportLecturas, openGestionarLecturas, openBuscar, eliminarOrden, filtrarSinActualizar, buscarSinActualizar, toggleAcordeon, descargarHoy, descargarMensual, toggleMenuAcciones };
 }
 
 // ── Cargar datos ──────────────────────────────────
@@ -513,11 +514,12 @@ function renderPanel() {
   const content = document.getElementById('cambios-content');
 
   // Stats globales
-  const todasHechas   = ordenes.filter(o => o.estadoCampo === 'hecha');
-  const todasVisitas  = ordenes.filter(o => o.estadoCampo === 'visita');
-  const todasAprobadas= ordenes.filter(o => o.estadoCampo === 'aprobada');
-  const pendientes    = ordenes.filter(o => !o.estadoCampo);
-  const total         = ordenes.length;
+  const todasHechas    = ordenes.filter(o => o.estadoCampo === 'hecha');
+  const todasVisitas   = ordenes.filter(o => o.estadoCampo === 'visita');
+  const todasAprobadas = ordenes.filter(o => o.estadoCampo === 'aprobada');
+  const pendientes     = ordenes.filter(o => !o.estadoCampo);
+  const yaCambiadas    = ordenes.filter(o => o.estadoCampo === 'ya_cambiado');
+  const total          = ordenes.length;
   const pct = total ? Math.round((todasAprobadas.length / total) * 100) : 0;
 
   content.innerHTML = `
@@ -541,9 +543,19 @@ function renderPanel() {
         </div>
       </div>
 
+      ${yaCambiadas.length ? `
+      <div style="padding:14px 16px;background:rgba(249,115,22,.1);border:1px solid rgba(249,115,22,.35);border-radius:14px;display:flex;align-items:center;gap:12px" class="anim-up">
+        <div style="width:36px;height:36px;flex-shrink:0;background:rgba(249,115,22,.15);border-radius:10px;display:flex;align-items:center;justify-content:center">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#fb923c" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        </div>
+        <div style="flex:1">
+          <div style="font-size:13px;font-weight:700;color:#fb923c">${yaCambiadas.length} orden${yaCambiadas.length > 1 ? 'es' : ''} reportada${yaCambiadas.length > 1 ? 's' : ''} como ya cambiada${yaCambiadas.length > 1 ? 's' : ''}</div>
+          <div style="font-size:11px;color:var(--text-4);margin-top:2px">Revisar en órdenes — confirmar o revertir a pendiente</div>
+        </div>
+      </div>` : ''}
+
       <!-- Menú de acciones -->
-      <div id="menu-acciones" style="display:none" class="anim-up">
-        <div class="flex-col gap-6" style="background:var(--glass);border:1px solid var(--border);border-radius:var(--radius);padding:8px;margin-bottom:4px">
+      <div id="menu-acciones" style="display:none" class="anim-up">        <div class="flex-col gap-6" style="background:var(--glass);border:1px solid var(--border);border-radius:var(--radius);padding:8px;margin-bottom:4px">
           <button class="menu-accion-btn" onclick="window.__cambios.openImport();window.__cambios.toggleMenuAcciones()">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
             Importar órdenes (Excel DELSUR)
@@ -855,7 +867,30 @@ function renderOrdenes() {
         </div>` : ''}
 
       <!-- Sin actualizar -->
-      ${sinActualizar.length ? renderGrupo('⚠ Sin actualizar en DELSUR', sinActualizar, 'sin-actualizar', 'd1') : ''}
+      ${sinActualizar.length ? `
+      <div class="anim-up d1">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+          <div class="section-label" style="color:#f87171">⚠ Sin actualizar en DELSUR (${sinActualizar.length})</div>
+        </div>
+        <!-- Filtro por fecha -->
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px" id="filtro-sin-actualizar">
+          ${['todas','hoy','ayer','semana'].map(f => `
+            <button onclick="window.__cambios.filtrarSinActualizar('${f}')"
+              class="select-chip${filtroSinActualizar_ === f ? ' active' : ''}"
+              style="font-size:11px;padding:5px 12px">
+              ${{todas:'Todas',hoy:'Hoy',ayer:'Ayer',semana:'Esta semana'}[f]}
+            </button>`).join('')}
+        </div>
+        <!-- Buscador -->
+        <div class="buscar-wrap" style="margin-bottom:10px">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14" style="color:var(--text-4);flex-shrink:0"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input class="buscar-input" id="buscar-sin-actualizar" placeholder="Buscar por WO o cliente…" autocomplete="off"
+            oninput="window.__cambios.buscarSinActualizar(this.value)"/>
+        </div>
+        <div id="lista-sin-actualizar" class="flex-col gap-8">
+          ${renderSinActualizarItems(aplicarFiltroFecha(sinActualizar))}
+        </div>
+      </div>` : ''}
 
       <!-- Visitas -->
       ${visitas.length ? renderGrupo('Visitas registradas', visitas, 'visita', 'd2') : ''}
@@ -1027,6 +1062,10 @@ function verOrden(id) {
           Rechazar — volver a pendiente
         </button>` : ''}
         ${o.estadoCampo === 'ya_cambiado' ? `
+        <button class="btn-action cm" onclick="window.__cambios.aprobarYaCambiado('${o.id}')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+          Confirmado — lo hicimos nosotros
+        </button>
         <button class="btn-action outline" onclick="window.__cambios.revertirYaCambiado('${o.id}')">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 102.13-9.36L1 10"/></svg>
           Revertir a pendiente
@@ -1132,6 +1171,26 @@ async function aprobar(id) {
   } catch (err) {
     console.error('[cambios] Error aprobando:', err);
     toast('Error al confirmar', 'error');
+  }
+}
+
+async function aprobarYaCambiado(id) {
+  if (!confirm('¿Confirmar que esta orden fue hecha por nosotros? Pasará a aprobada y desaparecerá del mapa, pero quedará registrada.')) return;
+  try {
+    await db.collection('cambios_ordenes').doc(id).update({
+      estadoCampo:     'aprobada',
+      aprobadoPor:     session_.displayName,
+      fechaAprobacion: firebase.firestore.Timestamp.now(),
+    });
+    const idx = ordenes.findIndex(o => o.id === id);
+    if (idx !== -1) ordenes[idx] = { ...ordenes[idx], estadoCampo: 'aprobada', aprobadoPor: session_.displayName };
+    invalidateOrdenes();
+    closeSheet('sheet-orden');
+    renderTab();
+    recalcularStats().catch(() => {});
+    toast('Orden confirmada y aprobada', 'ok');
+  } catch(err) {
+    toast('Error: ' + err.message, 'error');
   }
 }
 
@@ -1248,6 +1307,63 @@ async function eliminarOrden(id) {
 function verOrdenDesdeBuscar(id) {
   closeSheet('sheet-buscar');
   setTimeout(() => verOrden(id), 150);
+}
+
+function renderSinActualizarItems(items) {
+  if (!items.length) return '<p style="font-size:12px;color:var(--text-4);padding:12px 0;text-align:center">Sin resultados</p>';
+  return items.map(o => {
+    const fecha = o.fechaHecha?.toDate ? o.fechaHecha.toDate() : null;
+    const fechaStr = fecha ? fecha.toLocaleDateString('es-SV', { day:'numeric', month:'short' }) : '—';
+    return `
+      <div style="padding:12px 14px;background:var(--glass);border:1px solid rgba(248,113,113,.2);border-radius:12px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+          <div style="font-size:13px;font-weight:700">WO ${o.wo || '—'}</div>
+          <div style="font-size:10px;color:var(--text-4)">${fechaStr} · ${o.hechaPor || o.parejaDelDia || '—'}</div>
+        </div>
+        <div style="font-size:11px;color:var(--text-3);margin-bottom:8px">${o.cliente || '—'}</div>
+        <button onclick="window.__cambios.actualizadaDelsur('${o.id}')"
+          style="width:100%;height:36px;border-radius:10px;border:1px solid rgba(251,191,36,.3);background:transparent;color:#fbbf24;font-size:12px;font-weight:600;font-family:'Outfit',sans-serif;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="13" height="13"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>
+          Ya actualicé en DELSUR
+        </button>
+      </div>`;
+  }).join('');
+}
+
+function filtrarSinActualizar(filtro) {
+  filtroSinActualizar_ = filtro;
+  renderTab();
+}
+
+function buscarSinActualizar(q) {
+  const lista_ = role_ === 'tecnico' ? ordenes.filter(o => o.pareja === pareja_) : ordenes;
+  const { sinActualizar } = priorizarOrdenes(lista_);
+  const filtradas = aplicarFiltroFecha(sinActualizar);
+  const term = q.toLowerCase().trim();
+  const resultado = term
+    ? filtradas.filter(o =>
+        (o.wo && String(o.wo).toLowerCase().includes(term)) ||
+        (o.cliente && o.cliente.toLowerCase().includes(term))
+      )
+    : filtradas;
+  const el = document.getElementById('lista-sin-actualizar');
+  if (el) el.innerHTML = renderSinActualizarItems(resultado);
+}
+
+function aplicarFiltroFecha(lista) {
+  if (filtroSinActualizar_ === 'todas') return lista;
+  const hoy = new Date(); hoy.setHours(0,0,0,0);
+  const ayer = new Date(hoy); ayer.setDate(ayer.getDate() - 1);
+  const semana = new Date(hoy); semana.setDate(semana.getDate() - 7);
+  return lista.filter(o => {
+    const f = o.fechaHecha?.toDate ? o.fechaHecha.toDate() : null;
+    if (!f) return filtroSinActualizar_ === 'todas';
+    const fd = new Date(f); fd.setHours(0,0,0,0);
+    if (filtroSinActualizar_ === 'hoy')   return fd.getTime() === hoy.getTime();
+    if (filtroSinActualizar_ === 'ayer')  return fd.getTime() === ayer.getTime();
+    if (filtroSinActualizar_ === 'semana') return fd >= semana;
+    return true;
+  });
 }
 
 function openCampo() { openSheet('sheet-campo'); }
