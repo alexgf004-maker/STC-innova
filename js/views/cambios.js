@@ -214,6 +214,21 @@ function renderShell() {
           </div>
         </div>
       </div>
+    </div>
+
+    <!-- Sheet ya cambiadas -->
+    <div class="sheet-backdrop" id="sheet-ya-cambiadas">
+      <div class="sheet" style="max-height:90vh">
+        <div class="sheet-handle"></div>
+        <div class="sheet-title" style="color:#fb923c">Órdenes ya cambiadas</div>
+        <div class="sheet-body" style="padding-bottom:8px">
+          <div style="font-size:12px;color:var(--text-4);margin-bottom:14px;line-height:1.6">
+            Estas órdenes fueron reportadas por los técnicos como ya cambiadas. Confirma si las hicimos nosotros o reviértelas a pendiente.
+          </div>
+          <div id="ya-cambiadas-lista" style="max-height:65vh;overflow-y:auto" class="flex-col gap-10">
+          </div>
+        </div>
+      </div>
     </div>` : ''}
   `;
 
@@ -229,7 +244,7 @@ function renderShell() {
   });
 
   // Cerrar sheets
-  ['sheet-orden', 'sheet-campo', 'sheet-import', 'sheet-lecturas', 'sheet-import-lecturas', 'sheet-buscar'].forEach(id => {
+  ['sheet-orden', 'sheet-campo', 'sheet-import', 'sheet-lecturas', 'sheet-import-lecturas', 'sheet-buscar', 'sheet-ya-cambiadas'].forEach(id => {
     const el = document.getElementById(id);
     if (!el) return;
     el.addEventListener('click', e => { if (e.target === el) closeSheet(id); });
@@ -261,7 +276,7 @@ function renderShell() {
   }
   document.getElementById('btn-confirmar-lecturas')?.addEventListener('click', confirmarLecturas);
 
-  window.__cambios = { verOrden, verOrdenDesdeBuscar, marcarHecha, marcarVisita, actualizadaDelsur, aprobar, aprobarYaCambiado, rechazar, revertirYaCambiado, openCampo, openImport, openImportLecturas, openGestionarLecturas, openBuscar, eliminarOrden, filtrarSinActualizar, buscarSinActualizar, toggleAcordeon, descargarHoy, descargarMensual, toggleMenuAcciones };
+  window.__cambios = { verOrden, verOrdenDesdeBuscar, marcarHecha, marcarVisita, actualizadaDelsur, aprobar, aprobarYaCambiado, rechazar, revertirYaCambiado, openCampo, openImport, openImportLecturas, openGestionarLecturas, openBuscar, openYaCambiadas, eliminarOrden, filtrarSinActualizar, buscarSinActualizar, toggleAcordeon, descargarHoy, descargarMensual, toggleMenuAcciones };
 }
 
 // ── Cargar datos ──────────────────────────────────
@@ -544,14 +559,15 @@ function renderPanel() {
       </div>
 
       ${yaCambiadas.length ? `
-      <div style="padding:14px 16px;background:rgba(249,115,22,.1);border:1px solid rgba(249,115,22,.35);border-radius:14px;display:flex;align-items:center;gap:12px" class="anim-up">
+      <div onclick="window.__cambios.openYaCambiadas()" style="padding:14px 16px;background:rgba(249,115,22,.1);border:1px solid rgba(249,115,22,.35);border-radius:14px;display:flex;align-items:center;gap:12px;cursor:pointer" class="anim-up">
         <div style="width:36px;height:36px;flex-shrink:0;background:rgba(249,115,22,.15);border-radius:10px;display:flex;align-items:center;justify-content:center">
           <svg viewBox="0 0 24 24" fill="none" stroke="#fb923c" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
         </div>
         <div style="flex:1">
           <div style="font-size:13px;font-weight:700;color:#fb923c">${yaCambiadas.length} orden${yaCambiadas.length > 1 ? 'es' : ''} reportada${yaCambiadas.length > 1 ? 's' : ''} como ya cambiada${yaCambiadas.length > 1 ? 's' : ''}</div>
-          <div style="font-size:11px;color:var(--text-4);margin-top:2px">Revisar en órdenes — confirmar o revertir a pendiente</div>
+          <div style="font-size:11px;color:var(--text-4);margin-top:2px">Toca para revisar y gestionar</div>
         </div>
+        <svg viewBox="0 0 24 24" fill="none" stroke="#fb923c" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><polyline points="9 18 15 12 9 6"/></svg>
       </div>` : ''}
 
       <!-- Menú de acciones -->
@@ -1186,7 +1202,12 @@ async function aprobarYaCambiado(id) {
     if (idx !== -1) ordenes[idx] = { ...ordenes[idx], estadoCampo: 'aprobada', aprobadoPor: session_.displayName };
     invalidateOrdenes();
     closeSheet('sheet-orden');
-    renderTab();
+    // Refrescar lista si el sheet ya-cambiadas está abierto
+    if (document.getElementById('sheet-ya-cambiadas')?.classList.contains('open')) {
+      openYaCambiadas();
+    } else {
+      renderTab();
+    }
     recalcularStats().catch(() => {});
     toast('Orden confirmada y aprobada', 'ok');
   } catch(err) {
@@ -1207,7 +1228,11 @@ async function revertirYaCambiado(id) {
     if (idx !== -1) ordenes[idx] = { ...ordenes[idx], estadoCampo: null, yaCambiadoPor: null };
     invalidateOrdenes();
     closeSheet('sheet-orden');
-    renderTab();
+    if (document.getElementById('sheet-ya-cambiadas')?.classList.contains('open')) {
+      openYaCambiadas();
+    } else {
+      renderTab();
+    }
     recalcularStats().catch(() => {});
     toast('Orden revertida a pendiente', 'ok');
   } catch(err) {
@@ -1244,6 +1269,38 @@ async function updateOrden(id, data, msg) {
 }
 
 // ── Orden en campo ────────────────────────────────
+function openYaCambiadas() {
+  const yaCambiadas = ordenes.filter(o => o.estadoCampo === 'ya_cambiado');
+  const el = document.getElementById('ya-cambiadas-lista');
+  if (!el) return;
+  el.innerHTML = yaCambiadas.length ? yaCambiadas.map(o => {
+    const fecha = o.yaCambiadoEn?.toDate ? o.yaCambiadoEn.toDate() : null;
+    const fechaStr = fecha ? fecha.toLocaleDateString('es-SV', { day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' }) : '—';
+    return `
+      <div style="padding:14px;background:var(--glass);border:1px solid rgba(249,115,22,.25);border-radius:14px" class="flex-col gap-8">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start">
+          <div>
+            <div style="font-size:13px;font-weight:700">WO ${o.wo || '—'}</div>
+            <div style="font-size:11px;color:var(--text-3)">${o.cliente || '—'}</div>
+          </div>
+          <div style="font-size:10px;color:var(--text-4);text-align:right">${fechaStr}<br>${o.yaCambiadoPor || '—'}</div>
+        </div>
+        ${o.yaCambiadoComentario ? `<div style="font-size:12px;color:var(--text-3);padding:8px 10px;background:rgba(255,255,255,.04);border-radius:8px">${o.yaCambiadoComentario}</div>` : ''}
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <button onclick="window.__cambios.aprobarYaCambiado('${o.id}')"
+            style="height:40px;border-radius:10px;border:1px solid rgba(34,197,94,.3);background:transparent;color:#22c55e;font-size:12px;font-weight:600;font-family:'Outfit',sans-serif;cursor:pointer">
+            Lo hicimos nosotros
+          </button>
+          <button onclick="window.__cambios.revertirYaCambiado('${o.id}')"
+            style="height:40px;border-radius:10px;border:1px solid var(--border);background:transparent;color:var(--text-3);font-size:12px;font-weight:600;font-family:'Outfit',sans-serif;cursor:pointer">
+            Revertir
+          </button>
+        </div>
+      </div>`;
+  }).join('') : '<p style="text-align:center;font-size:12px;color:var(--text-4);padding:24px">Sin órdenes pendientes de revisar</p>';
+  openSheet('sheet-ya-cambiadas');
+}
+
 function openBuscar() {
   openSheet('sheet-buscar');
   setTimeout(() => document.getElementById('buscar-orden-input')?.focus(), 200);
@@ -1321,11 +1378,12 @@ function renderSinActualizarItems(items) {
           <div style="font-size:10px;color:var(--text-4)">${fechaStr} · ${o.hechaPor || o.parejaDelDia || '—'}</div>
         </div>
         <div style="font-size:11px;color:var(--text-3);margin-bottom:8px">${o.cliente || '—'}</div>
+        ${role_ === 'tecnico' ? `
         <button onclick="window.__cambios.actualizadaDelsur('${o.id}')"
           style="width:100%;height:36px;border-radius:10px;border:1px solid rgba(251,191,36,.3);background:transparent;color:#fbbf24;font-size:12px;font-weight:600;font-family:'Outfit',sans-serif;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="13" height="13"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>
           Ya actualicé en DELSUR
-        </button>
+        </button>` : ''}
       </div>`;
   }).join('');
 }
