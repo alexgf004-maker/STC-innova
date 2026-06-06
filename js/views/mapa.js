@@ -124,6 +124,11 @@ function renderShell(container) {
             <circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/>
           </svg>
         </button>
+        <button class="mapa-btn-icon" id="btn-reset-norte" title="Volver al norte" style="display:none">
+          <svg id="brujula-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
+            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+          </svg>
+        </button>
       </div>
 
       <!-- Leyenda -->
@@ -192,6 +197,20 @@ function renderShell(container) {
       toast('Obteniendo ubicación…', 'ok');
     }
   });
+
+  // Brújula — solo si el plugin de rotación cargó
+  if (typeof map_.getBearing === 'function') {
+    document.getElementById('btn-reset-norte')?.addEventListener('click', () => {
+      map_.setBearing(0);
+    });
+    map_.on('rotate', () => {
+      const bearing = map_.getBearing();
+      const btn  = document.getElementById('btn-reset-norte');
+      const icon = document.getElementById('brujula-icon');
+      if (btn)  btn.style.display  = Math.abs(bearing) > 1 ? '' : 'none';
+      if (icon) icon.style.transform = `rotate(${-bearing}deg)`;
+    });
+  }
 
   // Cerrar panel al tocar fuera
   document.getElementById('mapa-panel')?.addEventListener('click', e => {
@@ -279,11 +298,17 @@ function initMap() {
   const center = [13.7942, -88.8965];
   const zoom   = ordenes_.length ? 13 : 8;
 
+  // Opciones de rotación solo si el plugin está disponible
+  const rotateOpts = (typeof L.Map.mergeOptions === 'function' || L.map.toString().includes('rotate'))
+    ? { rotate: true, touchRotate: true, rotateControl: false }
+    : {};
+
   map_ = L.map('leaflet-map', {
     center,
     zoom,
     zoomControl: false,
     attributionControl: false,
+    ...rotateOpts,
   });
 
   // Google Maps Hybrid tiles
