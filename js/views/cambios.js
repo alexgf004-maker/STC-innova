@@ -930,11 +930,15 @@ function renderOrdenes() {
           <div class="section-title">${isTecnico ? (pareja_ || 'Mis órdenes') : 'Todas las órdenes'}</div>
           <div class="section-sub">${lista.length} órdenes · ${hechas.length + sinActualizar.length} realizadas</div>
         </div>
-        <button class="icon-btn cm" onclick="window.__cambios.openCampo()" title="Orden en campo">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="15" height="15">
-            <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
-          </svg>
-        </button>
+        ${isTecnico ? `
+        <button onclick="window.__cambios.openCampo()"
+          style="display:flex;align-items:center;gap:6px;height:36px;padding:0 14px;border-radius:10px;border:1px solid rgba(45,212,191,.35);background:rgba(45,212,191,.1);color:var(--cm-light);font-size:12px;font-weight:600;font-family:'Outfit',sans-serif;cursor:pointer">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          Generar orden
+        </button>` : `
+        <button class="icon-btn" onclick="window.__cambios.openBuscar()" title="Buscar orden">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        </button>`}
       </div>
 
       ${!lista.length ? `
