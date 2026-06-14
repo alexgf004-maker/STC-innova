@@ -199,6 +199,54 @@ function renderShell() {
       </div>
     </div>
 
+    <!-- Sheet nueva orden urgente -->
+    <div class="sheet-backdrop" id="sheet-urgente">
+      <div class="sheet" style="max-height:90vh">
+        <div class="sheet-handle"></div>
+        <div class="sheet-title" style="color:#ef4444">Nueva orden urgente</div>
+        <div class="sheet-body">
+          <div style="font-size:12px;color:var(--text-4);margin-bottom:14px;line-height:1.6">
+            Si la WO ya existe en el mapa se marcará como urgente. Si es nueva se creará directamente.
+          </div>
+          <div class="form-field">
+            <div class="form-label">WO <span style="color:#ef4444">*</span></div>
+            <input class="form-input" id="urg-wo" type="text" placeholder="802059502" autocomplete="off"/>
+          </div>
+          <div class="form-field">
+            <div class="form-label">NC</div>
+            <input class="form-input" id="urg-nc" type="text" placeholder="210769501" autocomplete="off"/>
+          </div>
+          <div class="form-field">
+            <div class="form-label">Cliente</div>
+            <input class="form-input" id="urg-cliente" type="text" autocomplete="off"/>
+          </div>
+          <div class="form-field">
+            <div class="form-label">Dirección</div>
+            <input class="form-input" id="urg-direccion" type="text" autocomplete="off"/>
+          </div>
+          <div class="form-field">
+            <div class="form-label">Pareja</div>
+            <div class="select-row" id="urg-pareja-row">
+              ${['Pareja 1','Pareja 2','Pareja 3','Pareja 4'].map(p =>
+                `<div class="select-chip" data-val="${p}">${p}</div>`
+              ).join('')}
+            </div>
+          </div>
+          <div class="form-field">
+            <div class="form-label">Coordenadas (opcional)</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+              <input class="form-input" id="urg-lat" type="number" step="any" placeholder="Latitud"/>
+              <input class="form-input" id="urg-lng" type="number" step="any" placeholder="Longitud"/>
+            </div>
+          </div>
+          <div id="urg-error" class="form-error"></div>
+          <button class="btn-primary full" id="btn-confirmar-urgente" style="background:rgba(239,68,68,.2);border:1px solid rgba(239,68,68,.4);color:#f87171">
+            <span id="btn-urg-lbl">Crear orden urgente</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
     <!-- Sheet buscador de órdenes -->
     <div class="sheet-backdrop" id="sheet-buscar">
       <div class="sheet" style="max-height:90vh">
@@ -244,7 +292,7 @@ function renderShell() {
   });
 
   // Cerrar sheets
-  ['sheet-orden', 'sheet-campo', 'sheet-import', 'sheet-lecturas', 'sheet-import-lecturas', 'sheet-buscar', 'sheet-ya-cambiadas'].forEach(id => {
+  ['sheet-orden', 'sheet-campo', 'sheet-import', 'sheet-lecturas', 'sheet-import-lecturas', 'sheet-buscar', 'sheet-ya-cambiadas', 'sheet-urgente'].forEach(id => {
     const el = document.getElementById(id);
     if (!el) return;
     el.addEventListener('click', e => { if (e.target === el) closeSheet(id); });
@@ -276,7 +324,16 @@ function renderShell() {
   }
   document.getElementById('btn-confirmar-lecturas')?.addEventListener('click', confirmarLecturas);
 
-  window.__cambios = { verOrden, verOrdenDesdeBuscar, marcarHecha, marcarVisita, actualizadaDelsur, aprobar, aprobarYaCambiado, rechazar, revertirYaCambiado, openCampo, openImport, openImportLecturas, openGestionarLecturas, openBuscar, openYaCambiadas, eliminarOrden, filtrarSinActualizar, buscarSinActualizar, toggleAcordeon, descargarHoy, descargarMensual, toggleMenuAcciones };
+  // Urgente — chips de pareja y botón
+  document.getElementById('urg-pareja-row')?.addEventListener('click', e => {
+    const chip = e.target.closest('.select-chip');
+    if (!chip) return;
+    document.querySelectorAll('#urg-pareja-row .select-chip').forEach(c => c.classList.remove('active'));
+    chip.classList.add('active');
+  });
+  document.getElementById('btn-confirmar-urgente')?.addEventListener('click', confirmarNuevaUrgente);
+
+  window.__cambios = { verOrden, verOrdenDesdeBuscar, marcarHecha, marcarVisita, actualizadaDelsur, aprobar, aprobarYaCambiado, rechazar, revertirYaCambiado, openCampo, openImport, openImportLecturas, openGestionarLecturas, openBuscar, openYaCambiadas, openNuevaUrgente, marcarUrgente, eliminarOrden, filtrarSinActualizar, buscarSinActualizar, toggleAcordeon, descargarHoy, descargarMensual, toggleMenuAcciones };
 }
 
 // ── Cargar datos ──────────────────────────────────
@@ -575,6 +632,10 @@ function renderPanel() {
           <button class="menu-accion-btn" onclick="window.__cambios.openImport();window.__cambios.toggleMenuAcciones()">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
             Importar órdenes (Excel DELSUR)
+          </button>
+          <button class="menu-accion-btn" onclick="window.__cambios.openNuevaUrgente();window.__cambios.toggleMenuAcciones()" style="color:#f87171">
+            <svg viewBox="0 0 24 24" fill="none" stroke="#f87171" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+            Nueva orden urgente
           </button>
           <button class="menu-accion-btn" onclick="window.__cambios.openImportLecturas();window.__cambios.toggleMenuAcciones()">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
@@ -1068,8 +1129,16 @@ function verOrden(id) {
       <!-- Acciones admin/asistente -->
       ${!isTecnico ? `
       <div class="flex-col gap-8">
+        ${!o.estadoCampo && !o.urgente ? `
+        <button class="btn-action outline" style="border-color:rgba(239,68,68,.3);color:#f87171" onclick="window.__cambios.marcarUrgente('${o.id}', true)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          Marcar como urgente
+        </button>` : ''}
+        ${!o.estadoCampo && o.urgente ? `
+        <button class="btn-action outline" style="opacity:.6" onclick="window.__cambios.marcarUrgente('${o.id}', false)">
+          Quitar urgencia
+        </button>` : ''}
         ${o.estadoCampo === 'hecha' ? `
-        <button class="btn-action cm" onclick="window.__cambios.aprobar('${o.id}')">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
           Confirmar realizada
         </button>
@@ -1422,6 +1491,86 @@ function aplicarFiltroFecha(lista) {
     if (filtroSinActualizar_ === 'semana') return fd >= semana;
     return true;
   });
+}
+
+// ── Órdenes urgentes ──────────────────────────────
+function openNuevaUrgente() {
+  ['urg-wo','urg-nc','urg-cliente','urg-direccion','urg-lat','urg-lng'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  });
+  document.querySelectorAll('#urg-pareja-row .select-chip').forEach(c => c.classList.remove('active'));
+  document.getElementById('urg-error').style.display = 'none';
+  openSheet('sheet-urgente');
+}
+
+async function confirmarNuevaUrgente() {
+  const wo       = document.getElementById('urg-wo').value.trim();
+  const nc       = document.getElementById('urg-nc').value.trim();
+  const cliente  = document.getElementById('urg-cliente').value.trim();
+  const dir      = document.getElementById('urg-direccion').value.trim();
+  const pareja   = document.querySelector('#urg-pareja-row .select-chip.active')?.dataset.val || null;
+  const lat      = parseFloat(document.getElementById('urg-lat').value) || null;
+  const lng      = parseFloat(document.getElementById('urg-lng').value) || null;
+  const errEl    = document.getElementById('urg-error');
+  errEl.style.display = 'none';
+
+  if (!wo) { errEl.textContent = 'El número de WO es obligatorio.'; errEl.style.display = 'block'; return; }
+
+  setLoading('btn-urg-lbl', 'Verificando…', true);
+  try {
+    // Verificar si la WO ya existe
+    const snap = await db.collection('cambios_ordenes').where('wo', '==', wo).limit(1).get();
+
+    if (!snap.empty) {
+      // Ya existe — solo marcar urgente
+      const docId = snap.docs[0].id;
+      await db.collection('cambios_ordenes').doc(docId).update({ urgente: true });
+      const idx = ordenes.findIndex(o => o.id === docId);
+      if (idx !== -1) ordenes[idx].urgente = true;
+      invalidateOrdenes();
+      closeSheet('sheet-urgente');
+      renderTab();
+      toast(`WO ${wo} ya existía — marcada como urgente`, 'ok');
+    } else {
+      // Nueva orden
+      const nueva = {
+        wo, nc: nc || null, cliente: cliente || null,
+        direccion: dir || null, pareja: pareja || null,
+        latitud: lat, longitud: lng,
+        urgente: true, estadoCampo: null,
+        actualizadaDelsur: false,
+        creadaEn: firebase.firestore.Timestamp.now(),
+        creadaPor: session_.displayName,
+      };
+      const ref = await db.collection('cambios_ordenes').add(nueva);
+      ordenes.push({ id: ref.id, ...nueva });
+      invalidateOrdenes();
+      closeSheet('sheet-urgente');
+      renderTab();
+      recalcularStats().catch(() => {});
+      toast(`Orden urgente WO ${wo} creada`, 'ok');
+    }
+  } catch(err) {
+    errEl.textContent = `Error: ${err.message}`;
+    errEl.style.display = 'block';
+  } finally {
+    setLoading('btn-urg-lbl', 'Crear orden urgente', false);
+  }
+}
+
+async function marcarUrgente(id, urgente = true) {
+  try {
+    await db.collection('cambios_ordenes').doc(id).update({ urgente });
+    const idx = ordenes.findIndex(o => o.id === id);
+    if (idx !== -1) ordenes[idx].urgente = urgente;
+    invalidateOrdenes();
+    closeSheet('sheet-orden');
+    renderTab();
+    toast(urgente ? 'Orden marcada como urgente' : 'Urgencia removida', 'ok');
+  } catch(err) {
+    toast('Error: ' + err.message, 'error');
+  }
 }
 
 function openCampo() { openSheet('sheet-campo'); }
