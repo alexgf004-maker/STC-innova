@@ -247,7 +247,7 @@ function renderShell(container) {
   document.getElementById('sheet-zona')?.addEventListener('click', e => {
     if (e.target === document.getElementById('sheet-zona')) cancelarZona();
   });
-  ['sheet-visita', 'sheet-realizada', 'sheet-asignar-individual'].forEach(id => {
+  ['sheet-visita', 'sheet-realizada', 'sheet-asignar-individual', 'sheet-campo-mapa', 'sheet-ya-cambiado', 'sheet-pedir-ayuda'].forEach(id => {
     document.getElementById(id)?.addEventListener('click', e => {
       if (e.target === document.getElementById(id)) closeSheet(id);
     });
