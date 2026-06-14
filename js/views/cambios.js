@@ -514,57 +514,25 @@ function renderResumenTecnico() {
       ${sinActualizar.length ? `
       <div class="otc-alert-card warn anim-up d2">
         <div class="otc-alert-header">⚠ ${sinActualizar.length} sin actualizar en DELSUR</div>
-        ${sinActualizar.map(o => `
-          <div class="orden-visita-panel" onclick="window.__cambios.verOrden('${o.id}')" style="margin-top:6px">
-            <div class="status-dot warn pulse"></div>
-            <div>
-              <div style="font-size:12px;font-weight:700">WO ${o.wo || '—'}</div>
-              <div style="font-size:10px;color:var(--text-3)">${o.cliente || '—'}</div>
-            </div>
-          </div>`).join('')}
+        ${sinActualizar.map(o => '<div class="orden-visita-panel" onclick="window.__cambios.verOrden(\'' + o.id + '\')" style="margin-top:6px"><div class="status-dot warn pulse"></div><div><div style="font-size:12px;font-weight:700">WO ' + (o.wo || '—') + '</div><div style="font-size:10px;color:var(--text-3)">' + (o.cliente || '—') + '</div></div></div>').join('')}
       </div>` : ''}
 
       ${hechasHoy.length ? `
       <div class="section-label anim-up d3">Realizadas hoy</div>
       <div class="flex-col gap-6 anim-up d3">
-        ${hechasHoy.map(o => `
-          <div class="orden-visita-panel" onclick="window.__cambios.verOrden('${o.id}')" style="cursor:pointer">
-            <div class="status-dot" style="background:${o.actualizadaDelsur ? '#22c55e' : '#f59e0b'}"></div>
-            <div style="flex:1;min-width:0">
-              <div style="font-size:12px;font-weight:700">WO ${o.wo || '—'}</div>
-              <div style="font-size:10px;color:var(--text-3)">${o.cliente || '—'} · ${o.direccion || ''}</div>
-            </div>
-            <div style="font-size:10px;font-weight:600;color:${o.actualizadaDelsur ? '#22c55e' : '#f59e0b'};flex-shrink:0">
-              ${o.actualizadaDelsur ? '✓ Actualizada' : 'Sin actualizar'}
-            </div>
-          </div>`).join('')}
+        ${hechasHoy.map(o => '<div class="orden-visita-panel" onclick="window.__cambios.verOrden(\'' + o.id + '\')" style="cursor:pointer"><div class="status-dot" style="background:' + (o.actualizadaDelsur ? '#22c55e' : '#f59e0b') + '"></div><div style="flex:1;min-width:0"><div style="font-size:12px;font-weight:700">WO ' + (o.wo || '—') + '</div><div style="font-size:10px;color:var(--text-3)">' + (o.cliente || '—') + ' · ' + (o.direccion || '') + '</div></div><div style="font-size:10px;font-weight:600;color:' + (o.actualizadaDelsur ? '#22c55e' : '#f59e0b') + ';flex-shrink:0">' + (o.actualizadaDelsur ? '✓ Actualizada' : 'Sin actualizar') + '</div></div>').join('')}
       </div>` : ''}
 
       ${visitasHoy.length ? `
       <div class="section-label anim-up d3">Visitas hoy</div>
       <div class="flex-col gap-6 anim-up d3">
-        ${visitasHoy.map(o => `
-          <div class="orden-visita-panel" onclick="window.__cambios.verOrden('${o.id}')" style="cursor:pointer">
-            <div class="status-dot" style="background:#6b7280"></div>
-            <div style="flex:1;min-width:0">
-              <div style="font-size:12px;font-weight:700">WO ${o.wo || '—'}</div>
-              <div style="font-size:10px;color:var(--text-3)">${o.cliente || '—'} · ${o.motivoVisita || ''}</div>
-            </div>
-            <div style="font-size:10px;font-weight:600;color:#6b7280;flex-shrink:0">Visita</div>
-          </div>`).join('')}
+        ${visitasHoy.map(o => '<div class="orden-visita-panel" onclick="window.__cambios.verOrden(\'' + o.id + '\')" style="cursor:pointer"><div class="status-dot" style="background:#6b7280"></div><div style="flex:1;min-width:0"><div style="font-size:12px;font-weight:700">WO ' + (o.wo || '—') + '</div><div style="font-size:10px;color:var(--text-3)">' + (o.cliente || '—') + ' · ' + (o.motivoVisita || '') + '</div></div><div style="font-size:10px;font-weight:600;color:#6b7280;flex-shrink:0">Visita</div></div>').join('')}
       </div>` : ''}
 
       ${bloqueadas.length ? `
       <div class="otc-alert-card warn-soft anim-up d3">
         <div class="otc-alert-header">🔒 ${bloqueadas.length} bloqueadas por lectura</div>
-        ${bloqueadas.map(o => `
-          <div class="orden-visita-panel" style="margin-top:6px">
-            <div class="status-dot muted"></div>
-            <div>
-              <div style="font-size:12px;font-weight:700">WO ${o.wo || '—'}</div>
-              <div style="font-size:10px;color:var(--text-4)">${o.unidadLectura || '—'}</div>
-            </div>
-          </div>`).join('')}
+        ${bloqueadas.map(o => '<div class="orden-visita-panel" style="margin-top:6px"><div class="status-dot muted"></div><div><div style="font-size:12px;font-weight:700">WO ' + (o.wo || '—') + '</div><div style="font-size:10px;color:var(--text-4)">' + (o.unidadLectura || '—') + '</div></div></div>').join('')}
       </div>` : ''}
 
       ${!total ? `
@@ -1535,9 +1503,16 @@ function verOrdenDesdeBuscar(id) {
 
 function renderSinActualizarItems(items) {
   if (!items.length) return '<p style="font-size:12px;color:var(--text-4);padding:12px 0;text-align:center">Sin resultados</p>';
+  const esTecnico = role_ === 'tecnico';
   return items.map(o => {
     const fecha = o.fechaHecha?.toDate ? o.fechaHecha.toDate() : null;
     const fechaStr = fecha ? fecha.toLocaleDateString('es-SV', { day:'numeric', month:'short' }) : '—';
+    const btnActualizar = esTecnico
+      ? '<button onclick="window.__cambios.actualizadaDelsur(\'' + o.id + '\')"'
+        + ' style="width:100%;height:36px;border-radius:10px;border:1px solid rgba(251,191,36,.3);background:transparent;color:#fbbf24;font-size:12px;font-weight:600;font-family:\'Outfit\',sans-serif;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px">'
+        + '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="13" height="13"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>'
+        + ' Ya actualicé en DELSUR</button>'
+      : '';
     return `
       <div style="padding:12px 14px;background:var(--glass);border:1px solid rgba(248,113,113,.2);border-radius:12px">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
@@ -1545,12 +1520,7 @@ function renderSinActualizarItems(items) {
           <div style="font-size:10px;color:var(--text-4)">${fechaStr} · ${o.hechaPor || o.parejaDelDia || '—'}</div>
         </div>
         <div style="font-size:11px;color:var(--text-3);margin-bottom:8px">${o.cliente || '—'}</div>
-        ${role_ === 'tecnico' ? `
-        <button onclick="window.__cambios.actualizadaDelsur('${o.id}')"
-          style="width:100%;height:36px;border-radius:10px;border:1px solid rgba(251,191,36,.3);background:transparent;color:#fbbf24;font-size:12px;font-weight:600;font-family:'Outfit',sans-serif;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="13" height="13"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>
-          Ya actualicé en DELSUR
-        </button>` : ''}
+        ${btnActualizar}
       </div>`;
   }).join('');
 }
