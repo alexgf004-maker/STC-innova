@@ -187,11 +187,14 @@ function renderShell(container) {
   `;
 
   // Eliminar sheets anteriores si quedaron del body
-  ['sheet-visita','sheet-realizada','sheet-zona','sheet-ya-cambiado','sheet-pedir-ayuda','sheet-asignar-individual'].forEach(id => {
+  ['sheet-visita','sheet-realizada','sheet-zona','sheet-ya-cambiado','sheet-pedir-ayuda','sheet-asignar-individual','sheet-campo-mapa'].forEach(id => {
     document.getElementById(id)?.remove();
   });
   // Insertar sheets en body (position:fixed necesita estar fuera de content-area)
   document.body.insertAdjacentHTML('beforeend', sheetsMapaHTML());
+
+  // Listener generar orden
+  document.getElementById('btn-guardar-campo-mapa')?.addEventListener('click', guardarOrdenCampoMapa);
 
   // Calcular alturas reales del topbar y navbar
   const topbar = document.querySelector('.topbar');
@@ -848,9 +851,47 @@ function enviarAyudaWhatsApp(motivo) {
 }
 
 function abrirGenerarOrden() {
-  // Usa el sheet de campo que vive en cambios.js
-  if (window.__cambios?.openCampo) {
-    window.__cambios.openCampo();
+  document.getElementById('mapa-campo-wo').value  = '';
+  document.getElementById('mapa-campo-nc').value  = '';
+  document.getElementById('mapa-campo-obs').value = '';
+  document.getElementById('mapa-campo-error').style.display = 'none';
+  openSheet('sheet-campo-mapa');
+}
+
+async function guardarOrdenCampoMapa() {
+  const wo   = document.getElementById('mapa-campo-wo').value.trim();
+  const nc   = document.getElementById('mapa-campo-nc').value.trim();
+  const obs  = document.getElementById('mapa-campo-obs').value.trim();
+  const errEl = document.getElementById('mapa-campo-error');
+  errEl.style.display = 'none';
+
+  if (!wo) {
+    errEl.textContent = 'El número WO es obligatorio.';
+    errEl.style.display = 'block';
+    return;
+  }
+
+  setLoading('btn-campo-mapa-lbl', 'Registrando…', true);
+  try {
+    const data = {
+      wo, nc: nc || null, observacion: obs || null,
+      pareja: pareja_,
+      estadoCampo: 'hecha',
+      actualizadaDelsur: false,
+      generadaEnCampo: true,
+      generadaPor: session_.displayName,
+      fechaHecha: firebase.firestore.Timestamp.now(),
+      hechaPor: session_.displayName,
+    };
+    await db.collection('cambios_ordenes').add(data);
+    closeSheet('sheet-campo-mapa');
+    toast('Orden registrada', 'ok');
+    window.dispatchEvent(new CustomEvent('cambios:updated'));
+  } catch(err) {
+    errEl.textContent = 'Error al registrar. Intenta de nuevo.';
+    errEl.style.display = 'block';
+  } finally {
+    setLoading('btn-campo-mapa-lbl', 'Registrar orden', false);
   }
 }
 
@@ -1091,7 +1132,7 @@ window.__mapaCloseSheet = closeSheet;
 
 // Llamado por el router al navegar fuera del mapa
 export function cleanup() {
-  ['sheet-visita','sheet-realizada','sheet-zona','sheet-ya-cambiado','sheet-pedir-ayuda','sheet-asignar-individual'].forEach(id => {
+  ['sheet-visita','sheet-realizada','sheet-zona','sheet-ya-cambiado','sheet-pedir-ayuda','sheet-asignar-individual','sheet-campo-mapa'].forEach(id => {
     document.getElementById(id)?.remove();
   });
   document.getElementById('alerta-urgente')?.remove();
@@ -1125,6 +1166,32 @@ function setLoading(labelId, text, loading) {
 // ── HTML de sheets del mapa ──────────────────────
 function sheetsMapaHTML() {
   return `
+    <!-- Sheet generar orden en campo -->
+    <div class="sheet-backdrop" id="sheet-campo-mapa">
+      <div class="sheet">
+        <div class="sheet-handle"></div>
+        <div class="sheet-title">Generar orden</div>
+        <div class="sheet-body">
+          <div class="form-field">
+            <div class="form-label">WO (Work Order) *</div>
+            <input class="form-input" id="mapa-campo-wo" type="text" placeholder="Ej: 12345678" autocomplete="off"/>
+          </div>
+          <div class="form-field">
+            <div class="form-label">NC (opcional)</div>
+            <input class="form-input" id="mapa-campo-nc" type="text" placeholder="Número de cliente" autocomplete="off"/>
+          </div>
+          <div class="form-field">
+            <div class="form-label">Observación</div>
+            <input class="form-input" id="mapa-campo-obs" type="text" placeholder="Breve descripción" autocomplete="off"/>
+          </div>
+          <div id="mapa-campo-error" class="form-error"></div>
+          <button class="btn-primary full" id="btn-guardar-campo-mapa">
+            <span id="btn-campo-mapa-lbl">Registrar orden</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
     <!-- Sheet ya estaba cambiado -->
     <div class="sheet-backdrop" id="sheet-ya-cambiado">
       <div class="sheet">
