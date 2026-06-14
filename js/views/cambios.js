@@ -247,6 +247,20 @@ function renderShell() {
       </div>
     </div>
 
+    <!-- Sheet mal ubicadas -->
+    <div class="sheet-backdrop" id="sheet-mal-ubicadas">
+      <div class="sheet" style="max-height:90vh">
+        <div class="sheet-handle"></div>
+        <div class="sheet-title" style="color:#8b5cf6">Órdenes mal ubicadas</div>
+        <div class="sheet-body" style="padding-bottom:8px">
+          <div style="font-size:12px;color:var(--text-4);margin-bottom:14px;line-height:1.6">
+            Reportadas por los técnicos. Investiga la ubicación correcta e ingresa las coordenadas.
+          </div>
+          <div id="mal-ubicadas-lista" style="max-height:65vh;overflow-y:auto" class="flex-col gap-10"></div>
+        </div>
+      </div>
+    </div>
+
     <!-- Sheet buscador de órdenes -->
     <div class="sheet-backdrop" id="sheet-buscar">
       <div class="sheet" style="max-height:90vh">
@@ -292,7 +306,7 @@ function renderShell() {
   });
 
   // Cerrar sheets
-  ['sheet-orden', 'sheet-campo', 'sheet-import', 'sheet-lecturas', 'sheet-import-lecturas', 'sheet-buscar', 'sheet-ya-cambiadas', 'sheet-urgente'].forEach(id => {
+  ['sheet-orden', 'sheet-campo', 'sheet-import', 'sheet-lecturas', 'sheet-import-lecturas', 'sheet-buscar', 'sheet-ya-cambiadas', 'sheet-urgente', 'sheet-mal-ubicadas'].forEach(id => {
     const el = document.getElementById(id);
     if (!el) return;
     el.addEventListener('click', e => { if (e.target === el) closeSheet(id); });
@@ -333,7 +347,7 @@ function renderShell() {
   });
   document.getElementById('btn-confirmar-urgente')?.addEventListener('click', confirmarNuevaUrgente);
 
-  window.__cambios = { verOrden, verOrdenDesdeBuscar, marcarHecha, marcarVisita, actualizadaDelsur, aprobar, aprobarYaCambiado, rechazar, revertirYaCambiado, openCampo, openImport, openImportLecturas, openGestionarLecturas, openBuscar, openYaCambiadas, openNuevaUrgente, marcarUrgente, eliminarOrden, filtrarSinActualizar, buscarSinActualizar, toggleAcordeon, descargarHoy, descargarMensual, toggleMenuAcciones };
+  window.__cambios = { verOrden, verOrdenDesdeBuscar, marcarHecha, marcarVisita, actualizadaDelsur, aprobar, aprobarYaCambiado, rechazar, revertirYaCambiado, openCampo, openImport, openImportLecturas, openGestionarLecturas, openBuscar, openYaCambiadas, openMalUbicadas, corregirCoordenadas, revertirMalUbicado, openNuevaUrgente, marcarUrgente, eliminarOrden, filtrarSinActualizar, buscarSinActualizar, toggleAcordeon, descargarHoy, descargarMensual, toggleMenuAcciones };
 }
 
 // ── Cargar datos ──────────────────────────────────
@@ -591,6 +605,7 @@ function renderPanel() {
   const todasAprobadas = ordenes.filter(o => o.estadoCampo === 'aprobada');
   const pendientes     = ordenes.filter(o => !o.estadoCampo);
   const yaCambiadas    = ordenes.filter(o => o.estadoCampo === 'ya_cambiado');
+  const malUbicadas    = ordenes.filter(o => o.estadoCampo === 'mal_ubicado');
   const total          = ordenes.length;
   const pct = total ? Math.round((todasAprobadas.length / total) * 100) : 0;
 
@@ -625,6 +640,16 @@ function renderPanel() {
           <div style="font-size:11px;color:var(--text-4);margin-top:2px">Toca para revisar y gestionar</div>
         </div>
         <svg viewBox="0 0 24 24" fill="none" stroke="#fb923c" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><polyline points="9 18 15 12 9 6"/></svg>
+      </div>` : ''}
+
+      ${malUbicadas.length ? `
+      <div onclick="window.__cambios.openMalUbicadas()" style="padding:14px 16px;background:rgba(139,92,246,.1);border:1px solid rgba(139,92,246,.35);border-radius:14px;display:flex;align-items:center;gap:12px;cursor:pointer" class="anim-up">
+        <div style="width:36px;height:36px;flex-shrink:0;background:rgba(139,92,246,.15);border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:800;color:#8b5cf6">?</div>
+        <div style="flex:1">
+          <div style="font-size:13px;font-weight:700;color:#8b5cf6">${malUbicadas.length} orden${malUbicadas.length > 1 ? 'es' : ''} mal ubicada${malUbicadas.length > 1 ? 's' : ''}</div>
+          <div style="font-size:11px;color:var(--text-4);margin-top:2px">Toca para investigar y corregir coordenadas</div>
+        </div>
+        <svg viewBox="0 0 24 24" fill="none" stroke="#8b5cf6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><polyline points="9 18 15 12 9 6"/></svg>
       </div>` : ''}
 
       <!-- Menú de acciones -->
@@ -1374,6 +1399,74 @@ function openYaCambiadas() {
   openSheet('sheet-ya-cambiadas');
 }
 
+function openMalUbicadas() {
+  const malUbicadas = ordenes.filter(o => o.estadoCampo === 'mal_ubicado');
+  const el = document.getElementById('mal-ubicadas-lista');
+  if (!el) return;
+  el.innerHTML = malUbicadas.length ? malUbicadas.map(o => {
+    const fecha = o.malUbicadoEn?.toDate ? o.malUbicadoEn.toDate() : null;
+    const fechaStr = fecha ? fecha.toLocaleDateString('es-SV', { day:'numeric', month:'short' }) : '—';
+    return `
+      <div style="padding:14px;background:var(--glass);border:1px solid rgba(139,92,246,.25);border-radius:14px" class="flex-col gap-8">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start">
+          <div>
+            <div style="font-size:13px;font-weight:700">WO ${o.wo || '—'}</div>
+            <div style="font-size:11px;color:var(--text-3)">${o.cliente || '—'}</div>
+            <div style="font-size:11px;color:var(--text-4)">${o.direccion || '—'}</div>
+          </div>
+          <div style="font-size:10px;color:var(--text-4);text-align:right">${fechaStr}<br>${o.malUbicadoPor || '—'}</div>
+        </div>
+        <div style="font-size:11px;color:var(--text-4)">Coordenadas actuales: ${o.latitud || '—'}, ${o.longitud || '—'}</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+          <input class="form-input" id="lat-${o.id}" type="number" step="any" placeholder="Nueva latitud" value="${o.latitud || ''}" style="font-size:12px;padding:8px 10px"/>
+          <input class="form-input" id="lng-${o.id}" type="number" step="any" placeholder="Nueva longitud" value="${o.longitud || ''}" style="font-size:12px;padding:8px 10px"/>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <button onclick="window.__cambios.corregirCoordenadas('${o.id}')"
+            style="height:38px;border-radius:10px;border:1px solid rgba(139,92,246,.4);background:rgba(139,92,246,.1);color:#a78bfa;font-size:12px;font-weight:600;font-family:'Outfit',sans-serif;cursor:pointer">
+            Guardar coordenadas
+          </button>
+          <button onclick="window.__cambios.revertirMalUbicado('${o.id}')"
+            style="height:38px;border-radius:10px;border:1px solid var(--border);background:transparent;color:var(--text-3);font-size:12px;font-weight:600;font-family:'Outfit',sans-serif;cursor:pointer">
+            Revertir a pendiente
+          </button>
+        </div>
+      </div>`;
+  }).join('') : '<p style="text-align:center;font-size:12px;color:var(--text-4);padding:24px">Sin órdenes mal ubicadas</p>';
+  openSheet('sheet-mal-ubicadas');
+}
+
+async function corregirCoordenadas(id) {
+  const lat = parseFloat(document.getElementById(`lat-${id}`)?.value);
+  const lng = parseFloat(document.getElementById(`lng-${id}`)?.value);
+  if (isNaN(lat) || isNaN(lng)) { toast('Ingresa coordenadas válidas', 'error'); return; }
+  try {
+    await db.collection('cambios_ordenes').doc(id).update({
+      latitud: lat, longitud: lng,
+      estadoCampo: null,
+      malUbicadoPor: null, malUbicadoEn: null,
+    });
+    const idx = ordenes.findIndex(o => o.id === id);
+    if (idx !== -1) ordenes[idx] = { ...ordenes[idx], latitud: lat, longitud: lng, estadoCampo: null };
+    invalidateOrdenes();
+    openMalUbicadas(); // refrescar lista
+    renderTab();
+    toast('Coordenadas actualizadas', 'ok');
+  } catch(err) { toast('Error: ' + err.message, 'error'); }
+}
+
+async function revertirMalUbicado(id) {
+  try {
+    await db.collection('cambios_ordenes').doc(id).update({
+      estadoCampo: null, malUbicadoPor: null, malUbicadoEn: null,
+    });
+    const idx = ordenes.findIndex(o => o.id === id);
+    if (idx !== -1) ordenes[idx] = { ...ordenes[idx], estadoCampo: null };
+    invalidateOrdenes();
+    openMalUbicadas();
+    renderTab();
+    toast('Orden revertida a pendiente', 'ok');
+  } catch(err) { toast('Error: ' + err.message, 'error'); }
 function openBuscar() {
   openSheet('sheet-buscar');
   setTimeout(() => document.getElementById('buscar-orden-input')?.focus(), 200);
