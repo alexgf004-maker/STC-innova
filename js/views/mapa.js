@@ -198,21 +198,6 @@ function renderShell(container) {
       toast('Obteniendo ubicación…', 'ok');
     }
   });
-
-  // Brújula — solo para técnicos
-  if (conRotacion) {
-    document.getElementById('btn-reset-norte')?.addEventListener('click', () => {
-      map_.setBearing(0);
-    });
-    map_.on('rotate', () => {
-      const bearing = map_.getBearing();
-      const btn = document.getElementById('btn-reset-norte');
-      const svg = document.getElementById('brujula-svg');
-      if (btn) btn.style.display = Math.abs(bearing) > 1 ? '' : 'none';
-      if (svg) svg.style.transform = `rotate(${-bearing}deg)`;
-    });
-  }
-
   // Cerrar panel al tocar fuera
   document.getElementById('mapa-panel')?.addEventListener('click', e => {
     if (e.target === document.getElementById('mapa-panel')) closePanel();
@@ -334,6 +319,20 @@ function initMap() {
 
   // Redibujar etiquetas al cambiar zoom
   map_.on('zoomend', () => plotMarkers());
+
+  // Brújula — solo para técnicos
+  if (conRotacion) {
+    document.getElementById('btn-reset-norte')?.addEventListener('click', () => {
+      map_.setBearing(0);
+    });
+    map_.on('rotate', () => {
+      const bearing = map_.getBearing();
+      const btn = document.getElementById('btn-reset-norte');
+      const svg = document.getElementById('brujula-svg');
+      if (btn) btn.style.display = Math.abs(bearing) > 1 ? '' : 'none';
+      if (svg) svg.style.transform = `rotate(${-bearing}deg)`;
+    });
+  }
 
   // Solo admin/asistente tiene el botón de zona — se activa con btn-asignar-zona
   // (no hay listener de click aquí, se maneja en activarModoZona)
