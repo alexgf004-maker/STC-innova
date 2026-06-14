@@ -20,12 +20,13 @@ const PAREJA_COLORS = {
 };
 
 const ESTADO_COLORS = {
-  'hecha':       '#22c55e',
-  'aprobada':    '#22c55e',
-  'visita':      '#111827',
-  'ya_cambiado': '#f97316',
-  'urgente':     '#ef4444',
-  null:          null,
+  'hecha':        '#22c55e',
+  'aprobada':     '#22c55e',
+  'visita':       '#111827',
+  'ya_cambiado':  '#f97316',
+  'urgente':      '#ef4444',
+  'mal_ubicado':  '#8b5cf6',
+  null:           null,
 };
 
 let map_ = null;
@@ -172,8 +173,20 @@ function renderShell(container) {
           <span>Realizada</span>
         </div>
         <div class="leyenda-item">
-          <div class="leyenda-dot" style="background:#f59e0b"></div>
+          <div class="leyenda-dot" style="background:#111827;border:1.5px solid #4b5563"></div>
           <span>Visita</span>
+        </div>
+        <div class="leyenda-item">
+          <div class="leyenda-dot" style="background:#f97316;border-radius:4px"></div>
+          <span>Ya cambiado</span>
+        </div>
+        <div class="leyenda-item">
+          <div class="leyenda-dot" style="background:#ef4444"></div>
+          <span>Urgente</span>
+        </div>
+        <div class="leyenda-item">
+          <div class="leyenda-dot" style="background:#8b5cf6;border-radius:4px"></div>
+          <span>Mal ubicado</span>
         </div>
       </div>
 
@@ -479,8 +492,9 @@ function plotMarkers() {
         letter-spacing:.02em;
       ">${wo}</div>` : '';
 
-    const yaCambiado = orden.estadoCampo === 'ya_cambiado';
-    const esUrgente  = orden.urgente && !orden.estadoCampo;
+    const yaCambiado  = orden.estadoCampo === 'ya_cambiado';
+    const esMalUbicado = orden.estadoCampo === 'mal_ubicado';
+    const esUrgente   = orden.urgente && !orden.estadoCampo && !esMalUbicado;
     const icon = L.divIcon({
       className: '',
       html: bloqueada ? `
@@ -512,6 +526,16 @@ function plotMarkers() {
             <line x1="12" y1="16" x2="12.01" y2="16"/>
           </svg>
         </div>
+      ` : esMalUbicado ? `
+        <div style="
+          width:22px;height:22px;
+          background:rgba(139,92,246,.15);
+          border:2px solid #8b5cf6;
+          border-radius:6px;
+          display:flex;align-items:center;justify-content:center;
+          box-shadow:0 2px 6px rgba(0,0,0,.5);
+          font-size:13px;font-weight:800;color:#8b5cf6;line-height:1;
+        ">?</div>
       ` : esUrgente ? `
         <div style="position:relative;width:20px;height:20px">
           <div style="position:absolute;inset:0;background:rgba(239,68,68,.3);border-radius:50%;animation:pulso-urgente 1.5s ease-out infinite"></div>
@@ -530,8 +554,8 @@ function plotMarkers() {
           ${labelHtml}
         </div>
       `,
-      iconSize:   (bloqueada || yaCambiado) ? [22,22] : esUrgente ? [20,20] : [size, size],
-      iconAnchor: (bloqueada || yaCambiado) ? [11,11]  : esUrgente ? [10,10] : [size/2, size/2],
+      iconSize:   (bloqueada || yaCambiado || esMalUbicado) ? [22,22] : esUrgente ? [20,20] : [size, size],
+      iconAnchor: (bloqueada || yaCambiado || esMalUbicado) ? [11,11]  : esUrgente ? [10,10] : [size/2, size/2],
     });
 
     const marker = L.marker([orden.latitud, orden.longitud], { icon });
@@ -844,6 +868,19 @@ function enviarAyudaWhatsApp(motivo) {
     + `Serie medidor: ${o.serieActual || o.serie || '—'}\n`
     + `Marca: ${o.marca || '—'}\n`
     + `\nMotivo: ${motivo}`;
+
+  // Si el motivo es punto mal ubicado, marcar en Firestore
+  if (motivo.toLowerCase().includes('mal ubicado')) {
+    db.collection('cambios_ordenes').doc(o.id).update({
+      estadoCampo: 'mal_ubicado',
+      malUbicadoPor: session_.displayName,
+      malUbicadoEn:  firebase.firestore.Timestamp.now(),
+    }).then(() => {
+      const orden = ordenes_.find(x => x.id === o.id);
+      if (orden) orden.estadoCampo = 'mal_ubicado';
+      plotMarkers();
+    }).catch(() => {});
+  }
 
   const url = `https://wa.me/50371185821?text=${encodeURIComponent(msg)}`;
   closeSheet('sheet-pedir-ayuda');
