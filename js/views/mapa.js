@@ -132,6 +132,31 @@ function renderShell(container) {
         </button>` : ''}
       </div>
 
+      ${isTecnico ? `
+      <!-- Botón flotante generar orden -->
+      <button id="btn-generar-orden-mapa" onclick="window.__mapa.abrirGenerarOrden()"
+        style="
+          position:absolute;
+          bottom:24px;left:50%;transform:translateX(-50%);
+          z-index:800;
+          display:flex;align-items:center;gap:8px;
+          height:44px;padding:0 20px;
+          border-radius:22px;
+          border:1px solid rgba(45,212,191,.4);
+          background:rgba(13,31,53,.92);
+          color:var(--cm-light);
+          font-size:13px;font-weight:600;
+          font-family:'Outfit',sans-serif;
+          cursor:pointer;
+          box-shadow:0 4px 16px rgba(0,0,0,.4);
+          backdrop-filter:blur(8px);
+        ">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="15" height="15">
+          <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+        </svg>
+        Generar orden
+      </button>` : ''}
+
       <!-- Leyenda -->
       <div class="mapa-leyenda" id="mapa-leyenda">
         ${isTecnico ? '' : Object.entries(PAREJA_COLORS)
@@ -235,7 +260,7 @@ function renderShell(container) {
     });
   });
 
-  window.__mapa = { verOrden, marcarHecha, marcarVisita, abrirGoogleMaps, confirmarRealizada, confirmarVisita, asignarIndividual, confirmarIndividual, confirmarZona, cancelarZona, abrirYaCambiado, abrirPedirAyuda };
+  window.__mapa = { verOrden, marcarHecha, marcarVisita, abrirGoogleMaps, confirmarRealizada, confirmarVisita, asignarIndividual, confirmarIndividual, confirmarZona, cancelarZona, abrirYaCambiado, abrirPedirAyuda, abrirGenerarOrden };
 
   // onSnapshot ya maneja actualizaciones en tiempo real
   // Este listener es fallback para cambios desde cambios.js
@@ -820,6 +845,13 @@ function enviarAyudaWhatsApp(motivo) {
   const url = `https://wa.me/50371185821?text=${encodeURIComponent(msg)}`;
   closeSheet('sheet-pedir-ayuda');
   window.open(url, '_blank');
+}
+
+function abrirGenerarOrden() {
+  // Usa el sheet de campo que vive en cambios.js
+  if (window.__cambios?.openCampo) {
+    window.__cambios.openCampo();
+  }
 }
 
 function abrirGoogleMaps(lat, lng) {
