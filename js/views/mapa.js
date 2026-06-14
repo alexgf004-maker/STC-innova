@@ -124,11 +124,12 @@ function renderShell(container) {
             <circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/>
           </svg>
         </button>
+        ${role_ === 'tecnico' ? `
         <button class="mapa-btn-icon" id="btn-reset-norte" title="Volver al norte" style="display:none">
           <svg id="brujula-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
             <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
           </svg>
-        </button>
+        </button>` : ''}
       </div>
 
       <!-- Leyenda -->
@@ -198,8 +199,8 @@ function renderShell(container) {
     }
   });
 
-  // Brújula — solo si el plugin cargó
-  if (pluginRotate) {
+  // Brújula — solo para técnicos
+  if (conRotacion) {
     document.getElementById('btn-reset-norte')?.addEventListener('click', () => {
       map_.setBearing(0);
     });
@@ -298,16 +299,15 @@ function initMap() {
   const center = [13.7942, -88.8965];
   const zoom   = ordenes_.length ? 13 : 8;
 
-  // Habilitar rotación si el plugin cargó correctamente
-  const pluginRotate = typeof L.Map.mergeOptions === 'function' &&
-    typeof L.Map.prototype.setBearing === 'function';
+  // Rotación solo para técnicos
+  const conRotacion = role_ === 'tecnico';
 
   map_ = L.map('leaflet-map', {
     center,
     zoom,
     zoomControl: false,
     attributionControl: false,
-    ...(pluginRotate ? { rotate: true, touchRotate: true, rotateControl: false } : {}),
+    ...(conRotacion ? { rotate: true, touchRotate: true, rotateControl: false } : {}),
   });
 
   // Google Maps Hybrid tiles
