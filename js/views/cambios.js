@@ -227,9 +227,10 @@ function renderShell() {
           <div class="form-field">
             <div class="form-label">Pareja</div>
             <div class="select-row" id="urg-pareja-row">
-              ${['Pareja 1','Pareja 2','Pareja 3','Pareja 4'].map(p =>
-                `<div class="select-chip" data-val="${p}">${p}</div>`
-              ).join('')}
+              <div class="select-chip" data-val="Pareja 1">Pareja 1</div>
+              <div class="select-chip" data-val="Pareja 2">Pareja 2</div>
+              <div class="select-chip" data-val="Pareja 3">Pareja 3</div>
+              <div class="select-chip" data-val="Pareja 4">Pareja 4</div>
             </div>
           </div>
           <div class="form-field">
