@@ -871,15 +871,24 @@ function enviarAyudaWhatsApp(motivo) {
 
   // Si el motivo es punto mal ubicado, marcar en Firestore
   if (motivo.toLowerCase().includes('mal ubicado')) {
+    // Actualizar local primero para feedback inmediato
+    const orden = ordenes_.find(x => x.id === o.id);
+    if (orden) orden.estadoCampo = 'mal_ubicado';
+    plotMarkers();
+
     db.collection('cambios_ordenes').doc(o.id).update({
       estadoCampo: 'mal_ubicado',
       malUbicadoPor: session_.displayName,
       malUbicadoEn:  firebase.firestore.Timestamp.now(),
     }).then(() => {
-      const orden = ordenes_.find(x => x.id === o.id);
-      if (orden) orden.estadoCampo = 'mal_ubicado';
+      toast('Punto marcado como mal ubicado', 'ok');
+    }).catch(err => {
+      console.error('[mapa] Error mal_ubicado:', err);
+      toast('Error al marcar: ' + err.message, 'error');
+      // Revertir local si falla
+      if (orden) orden.estadoCampo = null;
       plotMarkers();
-    }).catch(() => {});
+    });
   }
 
   const url = `https://wa.me/50371185821?text=${encodeURIComponent(msg)}`;
