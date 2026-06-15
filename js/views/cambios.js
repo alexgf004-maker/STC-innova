@@ -1436,6 +1436,8 @@ async function revertirMalUbicado(id) {
     renderTab();
     toast('Orden revertida a pendiente', 'ok');
   } catch(err) { toast('Error: ' + err.message, 'error'); }
+}
+
 function openBuscar() {
   openSheet('sheet-buscar');
   setTimeout(() => document.getElementById('buscar-orden-input')?.focus(), 200);
