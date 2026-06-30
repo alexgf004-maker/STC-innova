@@ -51,6 +51,10 @@ function isBlocked_(orden) {
   });
 }
 let markers_ = [];
+let markersContiguos_ = [];   // marcadores temporales de contiguos
+let contiguosData_ = null;     // caché del JSON de contiguos
+let contiguosIndex_ = null;    // índice NC -> posición
+let contiguosLoading_ = false;
 let drawnItems_ = null;
 let drawControl_ = null;
 let session_, role_, pareja_;
@@ -66,7 +70,7 @@ export async function init(container, session) {
 
   // Cancelar listener anterior si el módulo se reinicia
   if (unsubscribe_) { unsubscribe_(); unsubscribe_ = null; }
-  if (map_) { map_.remove(); map_ = null; markers_ = []; }
+  if (map_) { map_.remove(); map_ = null; markers_ = []; markersContiguos_ = []; }
 
   renderShell(container);
 
@@ -200,7 +204,7 @@ function renderShell(container) {
   `;
 
   // Eliminar sheets anteriores si quedaron del body
-  ['sheet-visita','sheet-realizada','sheet-zona','sheet-ya-cambiado','sheet-pedir-ayuda','sheet-asignar-individual','sheet-campo-mapa'].forEach(id => {
+  ['sheet-visita','sheet-realizada','sheet-zona','sheet-ya-cambiado','sheet-pedir-ayuda','sheet-asignar-individual','sheet-campo-mapa','sheet-contiguos'].forEach(id => {
     document.getElementById(id)?.remove();
   });
   // Insertar sheets en body (position:fixed necesita estar fuera de content-area)
@@ -260,7 +264,7 @@ function renderShell(container) {
   document.getElementById('sheet-zona')?.addEventListener('click', e => {
     if (e.target === document.getElementById('sheet-zona')) cancelarZona();
   });
-  ['sheet-visita', 'sheet-realizada', 'sheet-asignar-individual', 'sheet-campo-mapa', 'sheet-ya-cambiado', 'sheet-pedir-ayuda'].forEach(id => {
+  ['sheet-visita', 'sheet-realizada', 'sheet-asignar-individual', 'sheet-campo-mapa', 'sheet-ya-cambiado', 'sheet-pedir-ayuda', 'sheet-contiguos'].forEach(id => {
     document.getElementById(id)?.addEventListener('click', e => {
       if (e.target === document.getElementById(id)) closeSheet(id);
     });
@@ -276,7 +280,7 @@ function renderShell(container) {
     });
   });
 
-  window.__mapa = { verOrden, marcarHecha, marcarVisita, abrirGoogleMaps, confirmarRealizada, confirmarVisita, asignarIndividual, confirmarIndividual, confirmarZona, cancelarZona, abrirYaCambiado, abrirPedirAyuda, abrirGenerarOrden };
+  window.__mapa = { verOrden, marcarHecha, marcarVisita, abrirGoogleMaps, confirmarRealizada, confirmarVisita, asignarIndividual, confirmarIndividual, confirmarZona, cancelarZona, abrirYaCambiado, abrirPedirAyuda, abrirGenerarOrden, buscarContiguos, limpiarContiguos };
 
   // onSnapshot ya maneja actualizaciones en tiempo real
   // Este listener es fallback para cambios desde cambios.js
@@ -911,6 +915,142 @@ function enviarAyudaWhatsApp(motivo) {
   window.open(url, '_blank');
 }
 
+// ── Buscar contiguos ──────────────────────────────
+async function cargarContiguosData() {
+  if (contiguosData_) return true;            // ya cargado
+  if (contiguosLoading_) {                    // ya está cargando, esperar
+    let intentos = 0;
+    while (contiguosLoading_ && intentos < 100) {
+      await new Promise(r => setTimeout(r, 100));
+      intentos++;
+    }
+    return !!contiguosData_;
+  }
+  contiguosLoading_ = true;
+  try {
+    const resp = await fetch('contiguos.json');
+    if (!resp.ok) throw new Error('No se pudo cargar la base');
+    contiguosData_ = await resp.json();
+    // Construir índice NC -> posición
+    contiguosIndex_ = {};
+    for (let i = 0; i < contiguosData_.length; i++) {
+      contiguosIndex_[contiguosData_[i][0]] = i;
+    }
+    return true;
+  } catch(err) {
+    console.error('[contiguos] Error:', err);
+    contiguosData_ = null;
+    return false;
+  } finally {
+    contiguosLoading_ = false;
+  }
+}
+
+async function buscarContiguos() {
+  const o = selectedOrden_;
+  if (!o) return;
+  const nc = String(o.nc || '').trim();
+  if (!nc) {
+    toast('Esta orden no tiene NC', 'error');
+    return;
+  }
+
+  closeSheet('sheet-pedir-ayuda');
+  toast('Cargando base de contiguos…', 'ok');
+
+  const ok = await cargarContiguosData();
+  if (!ok) {
+    toast('No se pudo cargar la base de contiguos', 'error');
+    return;
+  }
+
+  const pos = contiguosIndex_[nc];
+  if (pos === undefined) {
+    toast('NC no encontrado en la base de lectura', 'error');
+    return;
+  }
+
+  // Obtener 2 antes y 2 después
+  const contiguos = [];
+  for (let offset = -2; offset <= 2; offset++) {
+    const i = pos + offset;
+    if (i < 0 || i >= contiguosData_.length) continue;
+    const r = contiguosData_[i];
+    contiguos.push({
+      nc: r[0], nombre: r[1], direccion: r[2],
+      marca: r[3], aparato: r[4], lat: r[5], lng: r[6],
+      offset,
+    });
+  }
+
+  mostrarContiguos(contiguos);
+}
+
+function mostrarContiguos(contiguos) {
+  // Limpiar marcadores temporales previos
+  limpiarMarcadoresContiguos();
+
+  const cont = document.getElementById('contiguos-resultado');
+  if (!cont) return;
+
+  cont.innerHTML = contiguos.map(c => {
+    const esCentro = c.offset === 0;
+    const label = c.offset === 0 ? '● NC buscado'
+      : c.offset < 0 ? '▲ ' + Math.abs(c.offset) + (Math.abs(c.offset) === 1 ? ' antes' : ' antes')
+      : '▼ ' + c.offset + (c.offset === 1 ? ' después' : ' después');
+    const borde = esCentro ? 'rgba(45,212,191,.4)' : 'rgba(255,255,255,.08)';
+    const bg = esCentro ? 'rgba(45,212,191,.1)' : 'var(--glass)';
+    const colorLabel = esCentro ? 'var(--cm-light)' : 'var(--text-4)';
+    return '<div style="padding:12px 14px;border-radius:12px;background:' + bg + ';border:1px solid ' + borde + '">'
+      + '<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:' + colorLabel + ';margin-bottom:4px">' + label + '</div>'
+      + '<div style="font-size:13px;font-weight:700">NC ' + c.nc + '</div>'
+      + '<div style="font-size:12px;color:var(--text-3);margin-top:2px">' + (c.nombre || '—') + '</div>'
+      + '<div style="font-size:11px;color:var(--text-4);margin-top:2px;line-height:1.4">' + (c.direccion || '—') + '</div>'
+      + '<div style="font-size:11px;color:var(--text-4);margin-top:4px">Medidor: ' + (c.aparato || '—') + ' · ' + (c.marca || '—') + '</div>'
+      + '</div>';
+  }).join('');
+
+  // Plotear marcadores temporales en el mapa
+  const latlngs = [];
+  contiguos.forEach(c => {
+    if (!c.lat || !c.lng) return;
+    const esCentro = c.offset === 0;
+    const color = esCentro ? '#2dd4bf' : '#fbbf24';
+    const icon = L.divIcon({
+      className: '',
+      html: '<div style="position:relative;display:flex;flex-direction:column;align-items:center">'
+        + '<div style="width:' + (esCentro ? 22 : 18) + 'px;height:' + (esCentro ? 22 : 18) + 'px;background:' + color + ';border:2px solid white;border-radius:50%;box-shadow:0 2px 6px rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;color:#0a1628">' + (esCentro ? '●' : (c.offset < 0 ? '↑' : '↓')) + '</div>'
+        + '<div style="margin-top:2px;background:rgba(10,22,40,.85);padding:1px 6px;border-radius:6px;font-size:10px;font-weight:700;color:white;white-space:nowrap">NC ' + c.nc + '</div>'
+        + '</div>',
+      iconSize: [60, 40],
+      iconAnchor: [30, 20],
+    });
+    const m = L.marker([c.lat, c.lng], { icon, zIndexOffset: 1000 }).addTo(map_);
+    markersContiguos_.push(m);
+    latlngs.push([c.lat, c.lng]);
+  });
+
+  // Centrar el mapa en los contiguos
+  if (latlngs.length) {
+    try {
+      const bounds = L.latLngBounds(latlngs);
+      if (bounds.isValid()) map_.fitBounds(bounds.pad(0.3));
+    } catch(e) {}
+  }
+
+  openSheet('sheet-contiguos');
+}
+
+function limpiarMarcadoresContiguos() {
+  markersContiguos_.forEach(m => { try { map_.removeLayer(m); } catch(e){} });
+  markersContiguos_ = [];
+}
+
+function limpiarContiguos() {
+  limpiarMarcadoresContiguos();
+  closeSheet('sheet-contiguos');
+}
+
 function abrirGenerarOrden() {
   document.getElementById('mapa-campo-wo').value  = '';
   document.getElementById('mapa-campo-nc').value  = '';
@@ -1193,7 +1333,7 @@ window.__mapaCloseSheet = closeSheet;
 
 // Llamado por el router al navegar fuera del mapa
 export function cleanup() {
-  ['sheet-visita','sheet-realizada','sheet-zona','sheet-ya-cambiado','sheet-pedir-ayuda','sheet-asignar-individual','sheet-campo-mapa'].forEach(id => {
+  ['sheet-visita','sheet-realizada','sheet-zona','sheet-ya-cambiado','sheet-pedir-ayuda','sheet-asignar-individual','sheet-campo-mapa','sheet-contiguos'].forEach(id => {
     document.getElementById(id)?.remove();
   });
   document.getElementById('alerta-urgente')?.remove();
@@ -1302,7 +1442,23 @@ function sheetsMapaHTML() {
               <div style="font-size:11px;color:var(--text-4);margin-top:2px">Especifica en el mensaje de WhatsApp</div>
             </button>
           </div>
-          <button class="btn-action outline" style="width:100%;margin-top:12px;height:44px" onclick="window.__mapaCloseSheet('sheet-pedir-ayuda')">Cancelar</button>
+          <button class="btn-action" style="width:100%;margin-top:12px;height:44px;background:rgba(45,212,191,.12);border:1px solid rgba(45,212,191,.35);color:var(--cm-light)" onclick="window.__mapa.buscarContiguos()">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            Buscar contiguos
+          </button>
+          <button class="btn-action outline" style="width:100%;margin-top:8px;height:44px" onclick="window.__mapaCloseSheet('sheet-pedir-ayuda')">Cancelar</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Sheet resultado contiguos -->
+    <div class="sheet-backdrop" id="sheet-contiguos">
+      <div class="sheet" style="max-height:88vh">
+        <div class="sheet-handle"></div>
+        <div class="sheet-title">Medidores contiguos</div>
+        <div class="sheet-body" style="padding-bottom:8px">
+          <div id="contiguos-resultado" style="max-height:62vh;overflow-y:auto" class="flex-col gap-8"></div>
+          <button class="btn-action outline" style="width:100%;margin-top:12px;height:44px" onclick="window.__mapa.limpiarContiguos()">Cerrar y limpiar mapa</button>
         </div>
       </div>
     </div>
