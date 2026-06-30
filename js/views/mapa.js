@@ -990,27 +990,7 @@ function mostrarContiguos(contiguos) {
   // Limpiar marcadores temporales previos
   limpiarMarcadoresContiguos();
 
-  const cont = document.getElementById('contiguos-resultado');
-  if (!cont) return;
-
-  cont.innerHTML = contiguos.map(c => {
-    const esCentro = c.offset === 0;
-    const label = c.offset === 0 ? '● NC buscado'
-      : c.offset < 0 ? '▲ ' + Math.abs(c.offset) + (Math.abs(c.offset) === 1 ? ' antes' : ' antes')
-      : '▼ ' + c.offset + (c.offset === 1 ? ' después' : ' después');
-    const borde = esCentro ? 'rgba(45,212,191,.4)' : 'rgba(255,255,255,.08)';
-    const bg = esCentro ? 'rgba(45,212,191,.1)' : 'var(--glass)';
-    const colorLabel = esCentro ? 'var(--cm-light)' : 'var(--text-4)';
-    return '<div style="padding:12px 14px;border-radius:12px;background:' + bg + ';border:1px solid ' + borde + '">'
-      + '<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:' + colorLabel + ';margin-bottom:4px">' + label + '</div>'
-      + '<div style="font-size:13px;font-weight:700">NC ' + c.nc + '</div>'
-      + '<div style="font-size:12px;color:var(--text-3);margin-top:2px">' + (c.nombre || '—') + '</div>'
-      + '<div style="font-size:11px;color:var(--text-4);margin-top:2px;line-height:1.4">' + (c.direccion || '—') + '</div>'
-      + '<div style="font-size:11px;color:var(--text-4);margin-top:4px">Medidor: ' + (c.aparato || '—') + ' · ' + (c.marca || '—') + '</div>'
-      + '</div>';
-  }).join('');
-
-  // Plotear marcadores temporales en el mapa
+  // Plotear marcadores temporales tocables en el mapa
   const latlngs = [];
   contiguos.forEach(c => {
     if (!c.lat || !c.lng) return;
@@ -1019,26 +999,85 @@ function mostrarContiguos(contiguos) {
     const icon = L.divIcon({
       className: '',
       html: '<div style="position:relative;display:flex;flex-direction:column;align-items:center">'
-        + '<div style="width:' + (esCentro ? 22 : 18) + 'px;height:' + (esCentro ? 22 : 18) + 'px;background:' + color + ';border:2px solid white;border-radius:50%;box-shadow:0 2px 6px rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;color:#0a1628">' + (esCentro ? '●' : (c.offset < 0 ? '↑' : '↓')) + '</div>'
+        + '<div style="width:' + (esCentro ? 24 : 20) + 'px;height:' + (esCentro ? 24 : 20) + 'px;background:' + color + ';border:2px solid white;border-radius:50%;box-shadow:0 2px 6px rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;color:#0a1628">' + (esCentro ? '●' : (c.offset < 0 ? '↑' : '↓')) + '</div>'
         + '<div style="margin-top:2px;background:rgba(10,22,40,.85);padding:1px 6px;border-radius:6px;font-size:10px;font-weight:700;color:white;white-space:nowrap">NC ' + c.nc + '</div>'
         + '</div>',
-      iconSize: [60, 40],
-      iconAnchor: [30, 20],
+      iconSize: [60, 44],
+      iconAnchor: [30, 22],
     });
     const m = L.marker([c.lat, c.lng], { icon, zIndexOffset: 1000 }).addTo(map_);
+    m.on('click', () => verContiguo(c));
     markersContiguos_.push(m);
     latlngs.push([c.lat, c.lng]);
   });
 
-  // Centrar el mapa en los contiguos
-  if (latlngs.length) {
-    try {
-      const bounds = L.latLngBounds(latlngs);
-      if (bounds.isValid()) map_.fitBounds(bounds.pad(0.3));
-    } catch(e) {}
+  if (!latlngs.length) {
+    toast('Los contiguos no tienen coordenadas', 'error');
+    return;
   }
 
-  openSheet('sheet-contiguos');
+  // Centrar el mapa en los contiguos
+  try {
+    const bounds = L.latLngBounds(latlngs);
+    if (bounds.isValid()) map_.fitBounds(bounds.pad(0.3));
+  } catch(e) {}
+
+  // Mostrar botón flotante X para limpiar
+  mostrarBotonLimpiarContiguos();
+
+  // Abrir info del punto central automáticamente
+  const centro = contiguos.find(c => c.offset === 0);
+  if (centro) verContiguo(centro);
+
+  toast('Contiguos en el mapa — toca cada punto para ver info', 'ok');
+}
+
+function verContiguo(c) {
+  selectedOrden_ = null; // no es una orden real
+  const panel   = document.getElementById('mapa-panel');
+  const content = document.getElementById('mapa-panel-content');
+  if (!panel || !content) return;
+
+  const esCentro = c.offset === 0;
+  const etiqueta = esCentro ? 'NC buscado'
+    : c.offset < 0 ? Math.abs(c.offset) + ' antes en la ruta'
+    : c.offset + ' después en la ruta';
+  const colorEtiqueta = esCentro ? 'var(--cm-light)' : '#fbbf24';
+
+  content.innerHTML = `
+    <div class="panel-orden-header">
+      <div style="flex:1;min-width:0">
+        <div class="panel-orden-wo">NC ${c.nc}</div>
+        <div class="panel-orden-cliente">${c.nombre || '—'}</div>
+        <div class="panel-orden-dir">${c.direccion || ''}</div>
+      </div>
+      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0">
+        <div class="pareja-chip" style="color:${colorEtiqueta};border-color:${colorEtiqueta}33;background:${colorEtiqueta}15">${etiqueta}</div>
+      </div>
+    </div>
+    <div class="panel-detail-grid">
+      ${c.aparato ? `<div class="panel-detail-item"><div class="panel-detail-key">Medidor</div><div class="panel-detail-val" style="font-family:monospace;font-weight:700;color:var(--cm-light)">${c.aparato}</div></div>` : ''}
+      ${c.marca ? `<div class="panel-detail-item"><div class="panel-detail-key">Marca</div><div class="panel-detail-val">${c.marca}</div></div>` : ''}
+    </div>
+    <div class="panel-orden-actions">
+      <button class="btn-action outline" onclick="window.__mapa.abrirGoogleMaps(${c.lat},${c.lng})">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg>
+        Navegar
+      </button>
+    </div>
+  `;
+  panel.classList.add('open');
+}
+
+function mostrarBotonLimpiarContiguos() {
+  if (document.getElementById('btn-limpiar-contiguos')) return;
+  const btn = document.createElement('button');
+  btn.id = 'btn-limpiar-contiguos';
+  btn.style.cssText = 'position:absolute;top:74px;right:12px;z-index:850;width:40px;height:40px;border-radius:50%;border:1px solid rgba(239,68,68,.4);background:rgba(13,31,53,.92);color:#f87171;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 10px rgba(0,0,0,.4);backdrop-filter:blur(8px)';
+  btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+  btn.onclick = limpiarContiguos;
+  const wrapper = document.getElementById('mapa-wrapper');
+  if (wrapper) wrapper.appendChild(btn);
 }
 
 function limpiarMarcadoresContiguos() {
@@ -1048,7 +1087,8 @@ function limpiarMarcadoresContiguos() {
 
 function limpiarContiguos() {
   limpiarMarcadoresContiguos();
-  closeSheet('sheet-contiguos');
+  document.getElementById('btn-limpiar-contiguos')?.remove();
+  closePanel();
 }
 
 function abrirGenerarOrden() {
@@ -1337,6 +1377,8 @@ export function cleanup() {
     document.getElementById(id)?.remove();
   });
   document.getElementById('alerta-urgente')?.remove();
+  document.getElementById('btn-limpiar-contiguos')?.remove();
+  markersContiguos_ = [];
   const btn = document.getElementById('btn-cerrar-poligono');
   if (btn) btn.remove();
 }
