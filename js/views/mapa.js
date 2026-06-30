@@ -299,7 +299,15 @@ function suscribirOrdenes() {
   unsubscribe_ = query.onSnapshot(snap => {
     ordenes_ = snap.docs
       .map(d => ({ id: d.id, ...d.data() }))
-      .filter(o => o.latitud && o.longitud);
+      .filter(o => {
+        const lat = parseFloat(o.latitud);
+        const lng = parseFloat(o.longitud);
+        // Validar coordenadas dentro del rango de El Salvador/Centroamérica
+        return !isNaN(lat) && !isNaN(lng)
+          && lat !== 0 && lng !== 0
+          && lat > 12 && lat < 16
+          && lng > -92 && lng < -87;
+      });
 
     plotMarkers();
     updateStatChip();
@@ -391,10 +399,17 @@ function initMap() {
     }
   }
 
-  // Ajustar bounds si hay órdenes
-  if (ordenes_.length && markers_.length) {
-    const group = L.featureGroup(markers_);
-    map_.fitBounds(group.getBounds().pad(0.1));
+  // Ajustar bounds si hay órdenes con coordenadas válidas
+  if (markers_.length > 0) {
+    try {
+      const group = L.featureGroup(markers_);
+      const bounds = group.getBounds();
+      if (bounds.isValid()) {
+        map_.fitBounds(bounds.pad(0.1));
+      }
+    } catch(e) {
+      console.warn('[mapa] fitBounds error:', e);
+    }
   }
 
   // Actualizar stat chip
