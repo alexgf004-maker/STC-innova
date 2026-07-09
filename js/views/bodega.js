@@ -77,6 +77,8 @@ const esValido = i => safeStr(i.name,'')!=='' && safeStr(i.unit,'')!=='';
 
 // ── Estado del módulo ─────────────────────────────
 let container_, session_, role_, area_, destino_, uid_;
+let campanaTecnico_ = null;  // campaña elegida por técnico sin área asignada
+let tecnicos_ = [];          // lista de técnicos de la app para despacho
 let allItems_    = [];
 let salidas_     = [];
 let solicitudes_ = [];
@@ -146,7 +148,7 @@ function renderShell() {
     });
   });
 
-  window.__bodega = { setCampana, abrirDespacho, abrirNuevoItem, abrirEntrada, aprobarSolicitud, rechazarSolicitud, verSeriales };
+  window.__bodega = { setCampana, elegirCampanaTecnico, cambiarCampanaTecnico, abrirDespacho, abrirNuevoItem, abrirEntrada, aprobarSolicitud, rechazarSolicitud, verSeriales };
 }
 
 // ── Cargar datos ──────────────────────────────────
@@ -163,6 +165,13 @@ async function loadData() {
     solicitudes_ = solicSnap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(b.fecha?.seconds||0)-(a.fecha?.seconds||0));
     consumos_    = consumosSnap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(b.fecha?.seconds||0)-(a.fecha?.seconds||0));
     renderTab();
+    // Cargar técnicos por separado — si falla no rompe la bodega
+    try {
+      const usersSnap = await db.collection('users').where('role','==','tecnico').get();
+      tecnicos_ = usersSnap.docs.map(d=>({id:d.id,...d.data()})).filter(u=>u.active!==false).sort((a,b)=>safeStr(a.displayName).localeCompare(safeStr(b.displayName)));
+    } catch(e) {
+      console.warn('[bodega] No se pudieron cargar técnicos:',e);
+    }
   } catch(err) {
     console.error('[bodega] Error:',err);
     document.getElementById('bod-content').innerHTML=`<div class="dev-module"><div class="dev-title">Error al cargar</div><p>${err.message}</p></div>`;
@@ -441,13 +450,44 @@ function abrirRegistrarConsumo() {
 // ── Solicitar material ────────────────────────────
 function renderFormSolicitar() {
   const content  = document.getElementById('bod-content');
-  const misItems = getItems(area_);
+
+  // Campaña efectiva: la asignada, o la que el técnico elija si no tiene área
+  const campanaEfectiva = area_ || campanaTecnico_;
+
+  // Si el técnico no tiene área asignada y no ha elegido campaña, mostrar selector
+  if (!campanaEfectiva) {
+    content.innerHTML = `
+      <div class="flex-col gap-12">
+        <div class="panel-header anim-up"><div class="section-title">Solicitar material</div></div>
+        <div class="anim-up d1" style="padding:8px 0">
+          <div class="section-label" style="margin-bottom:12px">¿Para qué campaña necesitas material?</div>
+          <div class="flex-col gap-8">
+            ${Object.entries(CAMPANA_COLORS).map(([key, c]) => `
+              <div onclick="window.__bodega.elegirCampanaTecnico('${key}')" style="
+                padding:18px 16px;border-radius:14px;cursor:pointer;
+                background:${c.bg};border:1px solid ${c.border};
+                display:flex;align-items:center;justify-content:space-between;
+              ">
+                <span style="font-size:15px;font-weight:700;color:${c.color}">${c.label}</span>
+                <svg viewBox="0 0 24 24" fill="none" stroke="${c.color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><polyline points="9 18 15 12 9 6"/></svg>
+              </div>`).join('')}
+          </div>
+        </div>
+      </div>`;
+    return;
+  }
+
+  const misItems = getItems(campanaEfectiva);
   let sel=[], busq='';
 
   function render() {
+    const cc = CAMPANA_COLORS[campanaEfectiva] || CAMPANA_COLORS['CAMBIOS'];
     content.innerHTML=`
       <div class="flex-col gap-12">
-        <div class="panel-header anim-up"><div class="section-title">Solicitar material</div></div>
+        <div class="panel-header anim-up">
+          <div class="section-title">Solicitar material</div>
+          ${!area_ ? `<div onclick="window.__bodega.cambiarCampanaTecnico()" style="cursor:pointer;font-size:11px;font-weight:700;padding:5px 12px;border-radius:20px;color:${cc.color};background:${cc.bg};border:1px solid ${cc.border}">${cc.label} ▾</div>` : ''}
+        </div>
         ${sel.length?`
         <div class="anim-up d1">
           <div class="section-label" style="margin-bottom:8px">Tu pedido · ${sel.length} material${sel.length>1?'es':''}</div>
@@ -517,7 +557,7 @@ function renderFormSolicitar() {
     try {
       const data={
         usuarioUid:uid_,usuarioNombre:session_.displayName,usuarioOperativo:destino_,
-        area:area_,materiales:sel.map(s=>({itemId:s.itemId,nombre:s.name,unit:s.unit,cantidad:s.cantidad})),
+        area:campanaEfectiva,materiales:sel.map(s=>({itemId:s.itemId,nombre:s.name,unit:s.unit,cantidad:s.cantidad})),
         estado:'pendiente',fecha:firebase.firestore.Timestamp.now(),notas:'',
       };
       const ref=await db.collection('solicitudes_material').add(data);
@@ -597,6 +637,16 @@ function setCampana(area) {
   if (wrap) wrap.innerHTML = campanaToggleHTML();
   // Re-renderizar la vista activa
   renderTab();
+}
+
+function elegirCampanaTecnico(area) {
+  campanaTecnico_ = area;
+  renderFormSolicitar();
+}
+
+function cambiarCampanaTecnico() {
+  campanaTecnico_ = null;
+  renderFormSolicitar();
 }
 
 function renderItemCard(item) {
@@ -942,7 +992,7 @@ function abrirDevolucion(salida) {
 // FORMULARIO DESPACHO — 2 pasos
 // ══════════════════════════════════════════════════
 function abrirDespacho(solicitud=null) {
-  const hdr={responsable:RESPONSABLES.includes(solicitud?.usuarioNombre)?solicitud.usuarioNombre:'',contratista:'INNOVA',instalador:'',placa:'',placaOtro:'',fechaSol:new Date().toISOString().split('T')[0],fechaEnt:new Date().toISOString().split('T')[0]};
+  const hdr={responsable:solicitud?.usuarioNombre||'',contratista:'INNOVA',instalador:'',placa:'',placaOtro:'',fechaSol:new Date().toISOString().split('T')[0],fechaEnt:new Date().toISOString().split('T')[0]};
   let sel=[];
   if(solicitud?.materiales?.length){
     sel=solicitud.materiales.map(m=>{
@@ -964,10 +1014,11 @@ function abrirDespacho(solicitud=null) {
       </div>
       <div class="flex-col gap-12">
         <div class="form-field">
-          <div class="form-label">Usuario responsable *</div>
-          <div class="select-row flex-wrap" id="hdr-resp">
-            ${RESPONSABLES.map(r=>`<div class="select-chip ${hdr.responsable===r?'active':''}" data-val="${r}">${r}</div>`).join('')}
-          </div>
+          <div class="form-label">Técnico que recibe *</div>
+          <select class="form-input" id="hdr-resp">
+            <option value="">Selecciona un técnico…</option>
+            ${tecnicos_.map(t=>`<option value="${safeStr(t.displayName)}" ${hdr.responsable===safeStr(t.displayName)?'selected':''}>${safeStr(t.displayName)}</option>`).join('')}
+          </select>
         </div>
         <div class="form-field">
           <div class="form-label">Empresa contratista *</div>
@@ -996,17 +1047,17 @@ function abrirDespacho(solicitud=null) {
       </div>
     </div>`;
 
-    setupChipsDyn(ov,'hdr-resp'); setupChipsDyn(ov,'hdr-cont');
+    setupChipsDyn(ov,'hdr-cont');
     ov.querySelector('#btn-cerrar-despacho')?.addEventListener('click', () => { ov.remove(); renderTab(); });
     ov.querySelector('#hdr-placa')?.querySelectorAll('.select-chip').forEach(c=>{
       c.addEventListener('click',()=>{ov.querySelectorAll('#hdr-placa .select-chip').forEach(x=>x.classList.remove('active'));c.classList.add('active');ov.querySelector('#hdr-placa-otro').style.display=c.dataset.val==='__otro__'?'':'none';});
     });
     ov.querySelector('#btn-s1').addEventListener('click',()=>{
-      const resp=ov.querySelector('#hdr-resp .select-chip.active')?.dataset.val;
+      const resp=ov.querySelector('#hdr-resp')?.value;
       const cont=ov.querySelector('#hdr-cont .select-chip.active')?.dataset.val;
       const errEl=ov.querySelector('#s1-err');
       errEl.style.display='none';
-      if(!resp||!cont){errEl.textContent='Responsable y contratista son obligatorios.';errEl.style.display='block';return;}
+      if(!resp||!cont){errEl.textContent='Técnico que recibe y contratista son obligatorios.';errEl.style.display='block';return;}
       hdr.responsable=resp;hdr.contratista=cont;
       hdr.instalador=ov.querySelector('#hdr-inst').value.trim();
       hdr.placa=ov.querySelector('#hdr-placa .select-chip.active')?.dataset.val||'';
@@ -1219,7 +1270,7 @@ function showMemo(salida) {
         <div style="font-size:10px;color:var(--text-4);margin-top:2px">OTC - GERENCIA COMERCIAL · DESPACHO/CARGA DE MATERIALES</div>
       </div>
       <div class="flex-col gap-6" style="margin-bottom:16px">
-        ${[['USUARIO RESPONSABLE',memo.USUARIO_RESPONSABLE],['EMPRESA CONTRATISTA',memo.EMPRESA_CONTRATISTA],['INSTALADOR RESPONSABLE',memo.INSTALADOR_RESPONSABLE],['ENTREGADO POR',memo.ENTREGADO_POR],['PLACA DE VEHICULO',memo.PLACA_VEHICULO],['FECHA SOLICITUD',memo.FECHA_SOLICITUD],['FECHA ENTREGA',memo.FECHA_ENTREGA]].map(([k,v])=>`
+        ${[['TÉCNICO QUE RECIBE',memo.USUARIO_RESPONSABLE],['EMPRESA CONTRATISTA',memo.EMPRESA_CONTRATISTA],['INSTALADOR RESPONSABLE',memo.INSTALADOR_RESPONSABLE],['ENTREGADO POR',memo.ENTREGADO_POR],['PLACA DE VEHICULO',memo.PLACA_VEHICULO],['FECHA SOLICITUD',memo.FECHA_SOLICITUD],['FECHA ENTREGA',memo.FECHA_ENTREGA]].map(([k,v])=>`
           <div style="display:flex;gap:8px;font-size:11px">
             <div style="font-size:9px;font-weight:700;text-transform:uppercase;color:var(--text-4);min-width:120px;padding-top:2px">${k}:</div>
             <div style="font-weight:600;border-bottom:1px solid var(--border-md);flex:1;padding-bottom:2px">${v||'—'}</div>
@@ -1285,7 +1336,7 @@ function imprimirDespacho(memo) {
   }).join('');
 
   const p1=`<table style="width:196.9mm;border-collapse:collapse;margin-bottom:1.5mm;"><colgroup><col style="width:98mm"><col style="width:98.9mm"></colgroup>
-    <tr><td rowspan="2" style="vertical-align:top;padding-right:2mm;border:none;"><div class="empresa">DISTRUIBUIDORA DE ELECTRICIDAD DELSUR S.A. DE C.V.</div><div class="sub">OTC - GERENCIA COMERCIAL</div><div class="sub">DESPACHO/ CARGA DE MATERIALES</div></td><td style="border:none;padding-bottom:1.5mm;"><span class="lbl">USUARIO RESPONSABLE:</span><span class="linea">${v.USUARIO_RESPONSABLE}</span></td></tr>
+    <tr><td rowspan="2" style="vertical-align:top;padding-right:2mm;border:none;"><div class="empresa">DISTRUIBUIDORA DE ELECTRICIDAD DELSUR S.A. DE C.V.</div><div class="sub">OTC - GERENCIA COMERCIAL</div><div class="sub">DESPACHO/ CARGA DE MATERIALES</div></td><td style="border:none;padding-bottom:1.5mm;"><span class="lbl">TÉCNICO QUE RECIBE:</span><span class="linea">${v.USUARIO_RESPONSABLE}</span></td></tr>
     <tr><td style="border:none;padding-bottom:1.5mm;"><span class="lbl">INSTALADOR RESPONSABLE:</span><span class="linea">${v.INSTALADOR_RESPONSABLE}</span></td></tr>
     <tr><td style="border:none;padding-top:2mm;padding-bottom:1.5mm;"><span class="lbl">EMPRESA CONTRATISTA:</span><span class="linea">${v.EMPRESA_CONTRATISTA}</span></td><td style="border:none;padding-top:2mm;padding-bottom:1.5mm;"><span class="lbl">FIRMA DE RECIBIDO:</span><span class="linea">&nbsp;</span></td></tr>
     <tr><td style="border:none;padding-bottom:1.5mm;"><span class="lbl">ENTREGADO POR:</span><span class="linea">${v.ENTREGADO_POR}</span></td><td style="border:none;padding-bottom:1.5mm;"><span class="lbl">PLACA DE VEHICULO:</span><span class="linea">${v.PLACA_VEHICULO}</span></td></tr>
