@@ -91,7 +91,7 @@ async function cargarDatosTecnico(session, area, destino) {
         <div class="companero-chip self">${destino}</div>
         ${companeros.length
           ? companeros.map(c => `<div class="companero-chip">${c}</div>`).join('')
-          : '<div class="companero-chip muted">Sin compañero asignado</div>'}
+          : '<div class="companero-chip muted">Sin compañero asignado hoy</div>'}
       `;
     }
   } catch(err) {
