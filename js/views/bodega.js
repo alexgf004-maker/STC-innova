@@ -1015,20 +1015,16 @@ function abrirDespacho(solicitud=null) {
       <div class="flex-col gap-12">
         <div class="form-field">
           <div class="form-label">Técnico que recibe *</div>
-          <select class="form-input" id="hdr-resp">
-            <option value="">Selecciona un técnico…</option>
-            ${tecnicos_.map(t=>`<option value="${safeStr(t.displayName)}" ${hdr.responsable===safeStr(t.displayName)?'selected':''}>${safeStr(t.displayName)}</option>`).join('')}
-          </select>
+          <div style="position:relative">
+            <input class="form-input" id="hdr-resp" value="${hdr.responsable}" placeholder="Escribe para buscar…" autocomplete="off"/>
+            <div id="hdr-resp-lista" style="display:none;position:absolute;top:100%;left:0;right:0;z-index:20;margin-top:4px;background:var(--bg-2,#1a2332);border:1px solid var(--border);border-radius:12px;max-height:200px;overflow-y:auto;box-shadow:0 8px 24px rgba(0,0,0,.4)"></div>
+          </div>
         </div>
         <div class="form-field">
           <div class="form-label">Empresa contratista *</div>
           <div class="select-row" id="hdr-cont">
             ${CONTRATISTAS.map(c=>`<div class="select-chip ${hdr.contratista===c?'active':''}" data-val="${c}">${c}</div>`).join('')}
           </div>
-        </div>
-        <div class="form-field">
-          <div class="form-label">Instalador responsable</div>
-          <input class="form-input" id="hdr-inst" value="${hdr.instalador}" placeholder="Nombre del instalador"/>
         </div>
         <div class="form-field">
           <div class="form-label">Placa del vehículo</div>
@@ -1049,17 +1045,35 @@ function abrirDespacho(solicitud=null) {
 
     setupChipsDyn(ov,'hdr-cont');
     ov.querySelector('#btn-cerrar-despacho')?.addEventListener('click', () => { ov.remove(); renderTab(); });
+
+    // Autocompletado de técnico que recibe
+    const respInput = ov.querySelector('#hdr-resp');
+    const respLista = ov.querySelector('#hdr-resp-lista');
+    function renderListaTecnicos(filtro) {
+      const q = safeStr(filtro,'').toLowerCase().trim();
+      const matches = tecnicos_.filter(t => safeStr(t.displayName).toLowerCase().includes(q));
+      if (!matches.length) { respLista.style.display='none'; return; }
+      respLista.innerHTML = matches.map(t=>`<div class="hdr-resp-opt" data-nombre="${safeStr(t.displayName)}" style="padding:11px 14px;font-size:13px;cursor:pointer;border-bottom:1px solid var(--border)">${safeStr(t.displayName)}</div>`).join('');
+      respLista.style.display='block';
+      respLista.querySelectorAll('.hdr-resp-opt').forEach(opt=>{
+        opt.addEventListener('click',()=>{ respInput.value=opt.dataset.nombre; respLista.style.display='none'; });
+      });
+    }
+    respInput?.addEventListener('focus',()=>renderListaTecnicos(respInput.value));
+    respInput?.addEventListener('input',()=>renderListaTecnicos(respInput.value));
+    document.addEventListener('click',(e)=>{ if(respInput && !respInput.contains(e.target) && !respLista.contains(e.target)) respLista.style.display='none'; });
+
     ov.querySelector('#hdr-placa')?.querySelectorAll('.select-chip').forEach(c=>{
       c.addEventListener('click',()=>{ov.querySelectorAll('#hdr-placa .select-chip').forEach(x=>x.classList.remove('active'));c.classList.add('active');ov.querySelector('#hdr-placa-otro').style.display=c.dataset.val==='__otro__'?'':'none';});
     });
     ov.querySelector('#btn-s1').addEventListener('click',()=>{
-      const resp=ov.querySelector('#hdr-resp')?.value;
+      const resp=ov.querySelector('#hdr-resp')?.value.trim();
       const cont=ov.querySelector('#hdr-cont .select-chip.active')?.dataset.val;
       const errEl=ov.querySelector('#s1-err');
       errEl.style.display='none';
       if(!resp||!cont){errEl.textContent='Técnico que recibe y contratista son obligatorios.';errEl.style.display='block';return;}
       hdr.responsable=resp;hdr.contratista=cont;
-      hdr.instalador=ov.querySelector('#hdr-inst').value.trim();
+      hdr.instalador='';
       hdr.placa=ov.querySelector('#hdr-placa .select-chip.active')?.dataset.val||'';
       hdr.placaOtro=ov.querySelector('#hdr-placa-otro').value.trim();
       hdr.fechaSol=ov.querySelector('#hdr-fsol').value;
@@ -1270,7 +1284,7 @@ function showMemo(salida) {
         <div style="font-size:10px;color:var(--text-4);margin-top:2px">OTC - GERENCIA COMERCIAL · DESPACHO/CARGA DE MATERIALES</div>
       </div>
       <div class="flex-col gap-6" style="margin-bottom:16px">
-        ${[['TÉCNICO QUE RECIBE',memo.USUARIO_RESPONSABLE],['EMPRESA CONTRATISTA',memo.EMPRESA_CONTRATISTA],['INSTALADOR RESPONSABLE',memo.INSTALADOR_RESPONSABLE],['ENTREGADO POR',memo.ENTREGADO_POR],['PLACA DE VEHICULO',memo.PLACA_VEHICULO],['FECHA SOLICITUD',memo.FECHA_SOLICITUD],['FECHA ENTREGA',memo.FECHA_ENTREGA]].map(([k,v])=>`
+        ${[['TÉCNICO QUE RECIBE',memo.USUARIO_RESPONSABLE],['EMPRESA CONTRATISTA',memo.EMPRESA_CONTRATISTA],['ENTREGADO POR',memo.ENTREGADO_POR],['PLACA DE VEHICULO',memo.PLACA_VEHICULO],['FECHA SOLICITUD',memo.FECHA_SOLICITUD],['FECHA ENTREGA',memo.FECHA_ENTREGA]].map(([k,v])=>`
           <div style="display:flex;gap:8px;font-size:11px">
             <div style="font-size:9px;font-weight:700;text-transform:uppercase;color:var(--text-4);min-width:120px;padding-top:2px">${k}:</div>
             <div style="font-weight:600;border-bottom:1px solid var(--border-md);flex:1;padding-bottom:2px">${v||'—'}</div>
@@ -1336,8 +1350,7 @@ function imprimirDespacho(memo) {
   }).join('');
 
   const p1=`<table style="width:196.9mm;border-collapse:collapse;margin-bottom:1.5mm;"><colgroup><col style="width:98mm"><col style="width:98.9mm"></colgroup>
-    <tr><td rowspan="2" style="vertical-align:top;padding-right:2mm;border:none;"><div class="empresa">DISTRUIBUIDORA DE ELECTRICIDAD DELSUR S.A. DE C.V.</div><div class="sub">OTC - GERENCIA COMERCIAL</div><div class="sub">DESPACHO/ CARGA DE MATERIALES</div></td><td style="border:none;padding-bottom:1.5mm;"><span class="lbl">TÉCNICO QUE RECIBE:</span><span class="linea">${v.USUARIO_RESPONSABLE}</span></td></tr>
-    <tr><td style="border:none;padding-bottom:1.5mm;"><span class="lbl">INSTALADOR RESPONSABLE:</span><span class="linea">${v.INSTALADOR_RESPONSABLE}</span></td></tr>
+    <tr><td style="vertical-align:top;padding-right:2mm;border:none;"><div class="empresa">DISTRUIBUIDORA DE ELECTRICIDAD DELSUR S.A. DE C.V.</div><div class="sub">OTC - GERENCIA COMERCIAL</div><div class="sub">DESPACHO/ CARGA DE MATERIALES</div></td><td style="border:none;padding-bottom:1.5mm;"><span class="lbl">TÉCNICO QUE RECIBE:</span><span class="linea">${v.USUARIO_RESPONSABLE}</span></td></tr>
     <tr><td style="border:none;padding-top:2mm;padding-bottom:1.5mm;"><span class="lbl">EMPRESA CONTRATISTA:</span><span class="linea">${v.EMPRESA_CONTRATISTA}</span></td><td style="border:none;padding-top:2mm;padding-bottom:1.5mm;"><span class="lbl">FIRMA DE RECIBIDO:</span><span class="linea">&nbsp;</span></td></tr>
     <tr><td style="border:none;padding-bottom:1.5mm;"><span class="lbl">ENTREGADO POR:</span><span class="linea">${v.ENTREGADO_POR}</span></td><td style="border:none;padding-bottom:1.5mm;"><span class="lbl">PLACA DE VEHICULO:</span><span class="linea">${v.PLACA_VEHICULO}</span></td></tr>
     <tr><td style="border:none;padding-bottom:1.5mm;"><span class="lbl">FIRMA DE ENTREGADO:</span><span class="linea">&nbsp;</span></td><td style="border:none;padding-bottom:1.5mm;"><span class="lbl">FECHA ENTREGA DE MATERIAL:</span><span class="linea">${v.FECHA_ENTREGA}</span></td></tr>
