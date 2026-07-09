@@ -104,7 +104,7 @@ function renderShell() {
   const isTecnico = role_==='tecnico';
   const tabs = isTecnico
     ? [{id:'material',label:'Mi material'},{id:'consumo',label:'Consumo'},{id:'solicitar',label:'Solicitar'},{id:'mis-solic',label:'Pedidos'}]
-    : [{id:'inventario',label:'Inventario'},{id:'historial',label:'Historial'},{id:'usuarios',label:'Usuarios'},{id:'solicitudes',label:'Solicitudes'}];
+    : [{id:'inventario',label:'Inventario'},{id:'historial',label:'Historial'},{id:'solicitudes',label:'Solicitudes'}];
 
   container_.innerHTML = `
     <div class="cambios-tabs">
@@ -123,7 +123,7 @@ function renderShell() {
     });
   });
 
-  window.__bodega = { toggleArea, abrirDespacho, abrirNuevoItem, abrirEntrada, aprobarSolicitud, rechazarSolicitud, verSeriales };
+  window.__bodega = { toggleArea, toggleAreaHist, toggleAreaSolic, abrirDespacho, abrirNuevoItem, abrirEntrada, aprobarSolicitud, rechazarSolicitud, verSeriales };
 }
 
 // ── Cargar datos ──────────────────────────────────
@@ -179,7 +179,6 @@ function renderTab() {
     case 'mis-solic':   renderMisSolicitudes();break;
     case 'inventario':  renderInventario();    break;
     case 'historial':   renderHistorial();     break;
-    case 'usuarios':    renderStockUsuarios(); break;
     case 'solicitudes': renderSolicitudes();   break;
   }
 }
@@ -573,6 +572,8 @@ function renderInventario() {
 }
 
 function toggleArea(area) { areaFiltro_=area; localStorage.setItem('bod_area',area); renderInventario(); }
+function toggleAreaHist(area) { areaFiltro_=area; localStorage.setItem('bod_area',area); renderHistorial(); }
+function toggleAreaSolic(area) { areaFiltro_=area; localStorage.setItem('bod_area',area); renderSolicitudes(); }
 
 function renderItemCard(item) {
   const bajo=item.stock>0&&item.stock<=item.minStock;
@@ -603,7 +604,9 @@ function renderItemCard(item) {
 // ── Historial (salidas + devoluciones) ────────────
 function renderHistorial() {
   const content = document.getElementById('bod-content');
-  const sorted  = [...salidas_].sort((a,b)=>(b.fecha?.seconds||0)-(a.fecha?.seconds||0));
+  const sorted  = [...salidas_]
+    .filter(s => (s.area || 'CAMBIOS') === areaFiltro_)
+    .sort((a,b)=>(b.fecha?.seconds||0)-(a.fecha?.seconds||0));
 
   content.innerHTML=`
     <div class="flex-col gap-12">
@@ -613,13 +616,18 @@ function renderHistorial() {
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
         </button>
       </div>
+      <div class="bod-toggle anim-up d1">
+        <div class="bod-toggle-btn ${areaFiltro_==='CAMBIOS'?'active':''}" onclick="window.__bodega.toggleAreaHist('CAMBIOS')">CAMBIOS</div>
+        <div class="bod-toggle-btn ${areaFiltro_==='AMI'?'active':''}" onclick="window.__bodega.toggleAreaHist('AMI')">AMI</div>
+        <div class="bod-toggle-btn ${areaFiltro_==='Caracterizacion'?'active':''}" onclick="window.__bodega.toggleAreaHist('Caracterizacion')">Caracterización</div>
+      </div>
       ${!sorted.length?`<div class="dev-module anim-up d1"><div class="dev-title">Sin salidas</div></div>`:`
       <div class="flex-col gap-8 anim-up d1">
         ${sorted.map(s=>`
           <div class="bod-solic-card">
             <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:8px">
               <div>
-                <div style="font-size:13px;font-weight:700">${safeStr(s.usuarioResponsable||s.tecnicoNombre)}</div>
+                <div style="font-size:13px;font-weight:700">${safeStr(s.tecnicoNombre||s.usuarioResponsable)}</div>
                 <div style="font-size:10px;color:var(--text-4)">${fmtDate(s.fecha)} · ${safeStr(s.empresaContratista,'—')} · ${safeStr(s.placaVehiculo,'—')}</div>
               </div>
               <div style="display:flex;gap:6px">
@@ -698,8 +706,9 @@ function renderStockUsuarios() {
 // ── Solicitudes admin ─────────────────────────────
 function renderSolicitudes() {
   const content    = document.getElementById('bod-content');
-  const pendientes = solicitudes_.filter(s=>s.estado==='pendiente');
-  const resto      = solicitudes_.filter(s=>s.estado!=='pendiente');
+  const solicCampana = solicitudes_.filter(s => (s.area || 'CAMBIOS') === areaFiltro_);
+  const pendientes = solicCampana.filter(s=>s.estado==='pendiente');
+  const resto      = solicCampana.filter(s=>s.estado!=='pendiente');
   const BADGE={pendiente:{color:'#fbbf24',bg:'rgba(245,158,11,.06)',border:'rgba(245,158,11,.2)',label:'Pendiente'},aprobado:{color:'#22c55e',bg:'rgba(34,197,94,.06)',border:'rgba(34,197,94,.2)',label:'Aprobada'},rechazado:{color:'#ef4444',bg:'rgba(239,68,68,.06)',border:'rgba(239,68,68,.2)',label:'Rechazada'}};
 
   function cardSolicitud(s, actions) {
@@ -708,7 +717,7 @@ function renderSolicitudes() {
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:8px">
         <div>
           <div style="font-size:13px;font-weight:700">${safeStr(s.usuarioNombre)}</div>
-          <div style="font-size:10px;color:var(--text-4)">${fmtDate(s.fecha)} · Área ${safeStr(s.area)}</div>
+          <div style="font-size:10px;color:var(--text-4)">${fmtDate(s.fecha)} · ${safeStr(s.area)}</div>
         </div>
         <div class="bod-badge" style="color:${b.color};border-color:${b.color}33;background:${b.color}11">${b.label}</div>
       </div>
@@ -728,9 +737,14 @@ function renderSolicitudes() {
   content.innerHTML=`
     <div class="flex-col gap-12">
       <div class="panel-header anim-up"><div><div class="section-title">Solicitudes</div><div class="section-sub">${pendientes.length} pendientes · ${resto.length} respondidas</div></div></div>
+      <div class="bod-toggle anim-up d1">
+        <div class="bod-toggle-btn ${areaFiltro_==='CAMBIOS'?'active':''}" onclick="window.__bodega.toggleAreaSolic('CAMBIOS')">CAMBIOS</div>
+        <div class="bod-toggle-btn ${areaFiltro_==='AMI'?'active':''}" onclick="window.__bodega.toggleAreaSolic('AMI')">AMI</div>
+        <div class="bod-toggle-btn ${areaFiltro_==='Caracterizacion'?'active':''}" onclick="window.__bodega.toggleAreaSolic('Caracterizacion')">Caracterización</div>
+      </div>
       ${pendientes.length?`<div class="section-label anim-up d1">Pendientes</div><div class="flex-col gap-8 anim-up d1">${pendientes.map(s=>cardSolicitud(s,true)).join('')}</div>`:''}
       ${resto.length?`<div class="section-label anim-up d2">Respondidas</div><div class="flex-col gap-8 anim-up d2">${resto.map(s=>cardSolicitud(s,false)).join('')}</div>`:''}
-      ${!solicitudes_.length?`<div class="dev-module anim-up d1"><div class="dev-title">Sin solicitudes</div></div>`:''}
+      ${!solicCampana.length?`<div class="dev-module anim-up d1"><div class="dev-title">Sin solicitudes</div></div>`:''}
     </div>`;
 }
 
