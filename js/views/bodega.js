@@ -99,6 +99,28 @@ export async function init(container, session) {
   await loadData();
 }
 
+// ── Colores por campaña ───────────────────────────
+const CAMPANA_COLORS = {
+  'CAMBIOS':         { color:'#2dd4bf', bg:'rgba(45,212,191,.12)', border:'rgba(45,212,191,.4)', label:'CAMBIOS' },
+  'AMI':             { color:'#fbbf24', bg:'rgba(251,191,36,.12)', border:'rgba(251,191,36,.4)', label:'AMI' },
+  'Caracterizacion': { color:'#a78bfa', bg:'rgba(167,139,250,.12)', border:'rgba(167,139,250,.4)', label:'Caracterización' },
+};
+
+function campanaToggleHTML() {
+  return `<div class="bod-campana-toggle" style="display:flex;gap:6px;margin-bottom:12px">
+    ${Object.entries(CAMPANA_COLORS).map(([key, c]) => {
+      const activo = areaFiltro_ === key;
+      return `<div onclick="window.__bodega.setCampana('${key}')" style="
+        flex:1;text-align:center;padding:10px 8px;border-radius:12px;cursor:pointer;
+        font-size:12px;font-weight:700;transition:all .2s;
+        color:${activo ? c.color : 'var(--text-4)'};
+        background:${activo ? c.bg : 'rgba(255,255,255,.03)'};
+        border:1px solid ${activo ? c.border : 'rgba(255,255,255,.06)'};
+      ">${c.label}</div>`;
+    }).join('')}
+  </div>`;
+}
+
 // ── Shell ─────────────────────────────────────────
 function renderShell() {
   const isTecnico = role_==='tecnico';
@@ -107,6 +129,7 @@ function renderShell() {
     : [{id:'inventario',label:'Inventario'},{id:'historial',label:'Historial'},{id:'solicitudes',label:'Solicitudes'}];
 
   container_.innerHTML = `
+    ${!isTecnico ? `<div id="bod-campana-wrap" style="padding-top:4px">${campanaToggleHTML()}</div>` : ''}
     <div class="cambios-tabs">
       ${tabs.map(t=>`<div class="cambios-tab bod ${t.id===activeTab_?'active':''}" data-tab="${t.id}">${t.label}</div>`).join('')}
     </div>
@@ -123,7 +146,7 @@ function renderShell() {
     });
   });
 
-  window.__bodega = { toggleArea, toggleAreaHist, toggleAreaSolic, abrirDespacho, abrirNuevoItem, abrirEntrada, aprobarSolicitud, rechazarSolicitud, verSeriales };
+  window.__bodega = { setCampana, abrirDespacho, abrirNuevoItem, abrirEntrada, aprobarSolicitud, rechazarSolicitud, verSeriales };
 }
 
 // ── Cargar datos ──────────────────────────────────
@@ -557,11 +580,6 @@ function renderInventario() {
           </button>
         </div>
       </div>
-      <div class="bod-toggle anim-up d1">
-        <div class="bod-toggle-btn ${areaFiltro_==='CAMBIOS'?'active':''}" onclick="window.__bodega.toggleArea('CAMBIOS')">CAMBIOS</div>
-        <div class="bod-toggle-btn ${areaFiltro_==='AMI'?'active':''}" onclick="window.__bodega.toggleArea('AMI')">AMI</div>
-        <div class="bod-toggle-btn ${areaFiltro_==='Caracterizacion'?'active':''}" onclick="window.__bodega.toggleArea('Caracterizacion')">Caracterización</div>
-      </div>
       ${agotados?`<div class="otc-alert-card crit anim-up d2"><div class="otc-alert-header">🔴 ${agotados} item${agotados>1?'s':''} agotado${agotados>1?'s':''}</div></div>`:''}
       ${bajos?`<div class="otc-alert-card warn anim-up d2"><div class="otc-alert-header">⚠ ${bajos} item${bajos>1?'s':''} bajo stock mínimo</div></div>`:''}
       <div class="flex-col gap-8 anim-up d2">
@@ -571,9 +589,15 @@ function renderInventario() {
     </div>`;
 }
 
-function toggleArea(area) { areaFiltro_=area; localStorage.setItem('bod_area',area); renderInventario(); }
-function toggleAreaHist(area) { areaFiltro_=area; localStorage.setItem('bod_area',area); renderHistorial(); }
-function toggleAreaSolic(area) { areaFiltro_=area; localStorage.setItem('bod_area',area); renderSolicitudes(); }
+function setCampana(area) {
+  areaFiltro_ = area;
+  localStorage.setItem('bod_area', area);
+  // Actualizar el toggle visual
+  const wrap = document.getElementById('bod-campana-wrap');
+  if (wrap) wrap.innerHTML = campanaToggleHTML();
+  // Re-renderizar la vista activa
+  renderTab();
+}
 
 function renderItemCard(item) {
   const bajo=item.stock>0&&item.stock<=item.minStock;
@@ -615,11 +639,6 @@ function renderHistorial() {
         <button class="icon-btn bod" onclick="window.__bodega.abrirDespacho()" title="Nueva salida">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
         </button>
-      </div>
-      <div class="bod-toggle anim-up d1">
-        <div class="bod-toggle-btn ${areaFiltro_==='CAMBIOS'?'active':''}" onclick="window.__bodega.toggleAreaHist('CAMBIOS')">CAMBIOS</div>
-        <div class="bod-toggle-btn ${areaFiltro_==='AMI'?'active':''}" onclick="window.__bodega.toggleAreaHist('AMI')">AMI</div>
-        <div class="bod-toggle-btn ${areaFiltro_==='Caracterizacion'?'active':''}" onclick="window.__bodega.toggleAreaHist('Caracterizacion')">Caracterización</div>
       </div>
       ${!sorted.length?`<div class="dev-module anim-up d1"><div class="dev-title">Sin salidas</div></div>`:`
       <div class="flex-col gap-8 anim-up d1">
@@ -737,11 +756,6 @@ function renderSolicitudes() {
   content.innerHTML=`
     <div class="flex-col gap-12">
       <div class="panel-header anim-up"><div><div class="section-title">Solicitudes</div><div class="section-sub">${pendientes.length} pendientes · ${resto.length} respondidas</div></div></div>
-      <div class="bod-toggle anim-up d1">
-        <div class="bod-toggle-btn ${areaFiltro_==='CAMBIOS'?'active':''}" onclick="window.__bodega.toggleAreaSolic('CAMBIOS')">CAMBIOS</div>
-        <div class="bod-toggle-btn ${areaFiltro_==='AMI'?'active':''}" onclick="window.__bodega.toggleAreaSolic('AMI')">AMI</div>
-        <div class="bod-toggle-btn ${areaFiltro_==='Caracterizacion'?'active':''}" onclick="window.__bodega.toggleAreaSolic('Caracterizacion')">Caracterización</div>
-      </div>
       ${pendientes.length?`<div class="section-label anim-up d1">Pendientes</div><div class="flex-col gap-8 anim-up d1">${pendientes.map(s=>cardSolicitud(s,true)).join('')}</div>`:''}
       ${resto.length?`<div class="section-label anim-up d2">Respondidas</div><div class="flex-col gap-8 anim-up d2">${resto.map(s=>cardSolicitud(s,false)).join('')}</div>`:''}
       ${!solicCampana.length?`<div class="dev-module anim-up d1"><div class="dev-title">Sin solicitudes</div></div>`:''}
