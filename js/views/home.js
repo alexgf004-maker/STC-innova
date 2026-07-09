@@ -281,7 +281,7 @@ function renderHomeTecnico(container, session, area, destino) {
               <line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
             </svg>
           </div>
-          <div class="qc-title" style="color:#f87171">Reconexiones.</div>
+          <div class="qc-title" style="color:#f87171">Reconexiones</div>
           <div class="qc-sub">Órdenes urgentes</div>
         </div>` : ''}
       </div>
