@@ -70,7 +70,7 @@ function normalizeItem(raw) {
     stock:          safeNum(raw.stock),
     minStock:       safeNum(raw.minStock || raw.stockMinimo || 5),
     requiereSerial: raw.requiereSerial===true,
-    area:           raw.area || 'OTC',
+    area:           raw.area || 'CAMBIOS',
   };
 }
 const esValido = i => safeStr(i.name,'')!=='' && safeStr(i.unit,'')!=='';
@@ -82,7 +82,7 @@ let salidas_     = [];
 let solicitudes_ = [];
 let consumos_    = [];
 let activeTab_   = 'inventario';
-let areaFiltro_  = 'OTC';
+let areaFiltro_  = 'CAMBIOS';
 
 // ── Entry point ───────────────────────────────────
 export async function init(container, session) {
@@ -93,7 +93,7 @@ export async function init(container, session) {
   destino_   = session.asignacionActual?.destino || null;
   uid_       = session.uid;
   activeTab_ = role_==='tecnico' ? 'material' : 'inventario';
-  areaFiltro_= area_ || localStorage.getItem('bod_area') || 'OTC';
+  areaFiltro_= area_ || localStorage.getItem('bod_area') || 'CAMBIOS';
 
   renderShell();
   await loadData();
@@ -402,7 +402,7 @@ function abrirRegistrarConsumo() {
         return{itemId:id,nombre:e?e.item.name:'—',unit:e?e.item.unit:'',sapCode:e?e.item.sapCode:'',cantidad:v.cantidad,serial:v.serial||''};
       });
       await db.collection('kardex').doc('movimientos').collection('consumos').add({
-        wo,tipoTrabajo:tipo,area:area_||'OTC',usuarioOperativo:destino_||session_.displayName,
+        wo,tipoTrabajo:tipo,area:area_||'CAMBIOS',usuarioOperativo:destino_||session_.displayName,
         registradoPor:uid_,registradoPorNombre:session_.displayName,
         items:consumoItems,fecha:firebase.firestore.Timestamp.now(),
       });
@@ -559,8 +559,9 @@ function renderInventario() {
         </div>
       </div>
       <div class="bod-toggle anim-up d1">
-        <div class="bod-toggle-btn ${areaFiltro_==='OTC'?'active':''}" onclick="window.__bodega.toggleArea('OTC')">OTC</div>
         <div class="bod-toggle-btn ${areaFiltro_==='CAMBIOS'?'active':''}" onclick="window.__bodega.toggleArea('CAMBIOS')">CAMBIOS</div>
+        <div class="bod-toggle-btn ${areaFiltro_==='AMI'?'active':''}" onclick="window.__bodega.toggleArea('AMI')">AMI</div>
+        <div class="bod-toggle-btn ${areaFiltro_==='Caracterizacion'?'active':''}" onclick="window.__bodega.toggleArea('Caracterizacion')">Caracterización</div>
       </div>
       ${agotados?`<div class="otc-alert-card crit anim-up d2"><div class="otc-alert-header">🔴 ${agotados} item${agotados>1?'s':''} agotado${agotados>1?'s':''}</div></div>`:''}
       ${bajos?`<div class="otc-alert-card warn anim-up d2"><div class="otc-alert-header">⚠ ${bajos} item${bajos>1?'s':''} bajo stock mínimo</div></div>`:''}
@@ -1314,7 +1315,7 @@ function abrirNuevoItem(itemId=null) {
       <div class="form-field">
         <div class="form-label">Área *</div>
         <div class="select-row" id="ni-area-row">
-          ${['OTC','CAMBIOS'].map(a=>`<div class="select-chip ${(item?.area||areaFiltro_)===a?'active':''}" data-val="${a}">${a}</div>`).join('')}
+          ${['CAMBIOS','AMI','Caracterizacion'].map(a=>`<div class="select-chip ${(item?.area||areaFiltro_)===a?'active':''}" data-val="${a}">${a==='Caracterizacion'?'Caracterización':a}</div>`).join('')}
         </div>
       </div>
       <div class="form-field"><div class="form-label">Stock mínimo</div><input class="form-input" id="ni-minstock" type="number" min="0" value="${item?.minStock??5}"/></div>
