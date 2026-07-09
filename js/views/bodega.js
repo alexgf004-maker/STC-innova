@@ -94,7 +94,7 @@ export async function init(container, session) {
   area_      = session.asignacionActual?.area || null;
   destino_   = session.asignacionActual?.destino || null;
   uid_       = session.uid;
-  activeTab_ = role_==='tecnico' ? 'material' : 'inventario';
+  activeTab_ = role_==='tecnico' ? (area_ ? 'material' : 'solicitar') : 'inventario';
   areaFiltro_= area_ || localStorage.getItem('bod_area') || 'CAMBIOS';
 
   renderShell();
@@ -127,7 +127,9 @@ function campanaToggleHTML() {
 function renderShell() {
   const isTecnico = role_==='tecnico';
   const tabs = isTecnico
-    ? [{id:'material',label:'Mi material'},{id:'consumo',label:'Consumo'},{id:'solicitar',label:'Solicitar'},{id:'mis-solic',label:'Pedidos'}]
+    ? (area_
+        ? [{id:'material',label:'Mi material'},{id:'consumo',label:'Consumo'},{id:'solicitar',label:'Solicitar'},{id:'mis-solic',label:'Pedidos'}]
+        : [{id:'solicitar',label:'Solicitar'},{id:'material',label:'Mi material'},{id:'mis-solic',label:'Pedidos'}])
     : [{id:'inventario',label:'Inventario'},{id:'historial',label:'Historial'},{id:'solicitudes',label:'Solicitudes'}];
 
   container_.innerHTML = `
@@ -148,7 +150,7 @@ function renderShell() {
     });
   });
 
-  window.__bodega = { setCampana, elegirCampanaTecnico, cambiarCampanaTecnico, abrirDespacho, abrirNuevoItem, abrirEntrada, aprobarSolicitud, rechazarSolicitud, verSeriales };
+  window.__bodega = { setCampana, elegirCampanaTecnico, cambiarCampanaTecnico, abrirDespacho, abrirNuevoItem, abrirEntrada, abrirImportar, aprobarSolicitud, rechazarSolicitud, verSeriales };
 }
 
 // ── Cargar datos ──────────────────────────────────
@@ -228,6 +230,33 @@ function renderMiMaterial() {
     .filter(e=>e.cant>0&&e.item)
     .sort((a,b)=>safeStr(a.item.name).localeCompare(safeStr(b.item.name)));
 
+  // Agrupar por campaña (area del item)
+  const porCampana = {};
+  misItems.forEach(e=>{
+    const camp = e.item.area || 'CAMBIOS';
+    if(!porCampana[camp]) porCampana[camp]=[];
+    porCampana[camp].push(e);
+  });
+  const campanasOrden = ['CAMBIOS','AMI','Caracterizacion'].filter(c=>porCampana[c]?.length);
+
+  function itemCard(e) {
+    const bajo=e.cant>0&&e.cant<=e.item.minStock;
+    return `<div class="bod-item-card" style="background:${bajo?'rgba(245,158,11,.06)':'var(--glass)'};border-color:${bajo?'rgba(245,158,11,.25)':'var(--border)'}">
+      <div style="flex:1;min-width:0">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:3px">
+          <div style="font-size:13px;font-weight:700">${tc(e.item.name)}</div>
+          ${bajo?'<div class="bod-badge warn">Poco</div>':''}
+          ${e.item.requiereSerial?`<div class="bod-badge" style="color:var(--bod-light);border-color:var(--bod-border);background:var(--bod-glass)" onclick="window.__bodega.verSeriales('${e.item.id}')">Serial</div>`:''}
+        </div>
+        <div style="font-size:10px;color:var(--text-4)">${e.item.sapCode?`SAP: ${e.item.sapCode}`:''}${e.item.axCode?` · AX: ${e.item.axCode}`:''}</div>
+      </div>
+      <div style="text-align:right;flex-shrink:0">
+        <div style="font-size:22px;font-weight:800;color:${bajo?'#fbbf24':'#22c55e'}">${e.cant}</div>
+        <div style="font-size:10px;color:var(--text-4)">${safeStr(e.item.unit,'')}</div>
+      </div>
+    </div>`;
+  }
+
   content.innerHTML=`
     <div class="flex-col gap-12">
       <div class="panel-header anim-up">
@@ -235,28 +264,15 @@ function renderMiMaterial() {
           <div class="section-title">Mi material</div>
           <div class="section-sub">${usuario} · ${misItems.length} items asignados</div>
         </div>
-        <button class="icon-btn bod" onclick="window.__bodega.abrirDespacho()" style="display:none"></button>
       </div>
-      ${!misItems.length?`<div class="dev-module anim-up d1"><div class="dev-title">Sin material asignado</div><p>No tienes material despachado. Solicita a bodega.</p></div>`:`
-      <div class="flex-col gap-8 anim-up d1">
-        ${misItems.map(e=>{
-          const bajo=e.cant>0&&e.cant<=e.item.minStock;
-          return `<div class="bod-item-card" style="background:${bajo?'rgba(245,158,11,.06)':'var(--glass)'};border-color:${bajo?'rgba(245,158,11,.25)':'var(--border)'}">
-            <div style="flex:1;min-width:0">
-              <div style="display:flex;align-items:center;gap:8px;margin-bottom:3px">
-                <div style="font-size:13px;font-weight:700">${tc(e.item.name)}</div>
-                ${bajo?'<div class="bod-badge warn">Poco</div>':''}
-                ${e.item.requiereSerial?`<div class="bod-badge" style="color:var(--bod-light);border-color:var(--bod-border);background:var(--bod-glass)" onclick="window.__bodega.verSeriales('${e.item.id}')">Serial</div>`:''}
-              </div>
-              <div style="font-size:10px;color:var(--text-4)">${e.item.sapCode?`SAP: ${e.item.sapCode}`:''}${e.item.axCode?` · AX: ${e.item.axCode}`:''}</div>
-            </div>
-            <div style="text-align:right;flex-shrink:0">
-              <div style="font-size:22px;font-weight:800;color:${bajo?'#fbbf24':'#22c55e'}">${e.cant}</div>
-              <div style="font-size:10px;color:var(--text-4)">${safeStr(e.item.unit,'')}</div>
-            </div>
+      ${!misItems.length?`<div class="dev-module anim-up d1"><div class="dev-title">Sin material asignado</div><p>No tienes material despachado. Solicita a bodega.</p></div>`:
+        campanasOrden.map((camp,idx)=>{
+          const cc = CAMPANA_COLORS[camp] || CAMPANA_COLORS['CAMBIOS'];
+          return `<div class="anim-up d${Math.min(idx+1,3)}">
+            <div class="section-label" style="color:${cc.color};margin-bottom:8px">${cc.label}</div>
+            <div class="flex-col gap-8">${porCampana[camp].map(itemCard).join('')}</div>
           </div>`;
         }).join('')}
-      </div>`}
     </div>`;
 }
 
@@ -612,6 +628,9 @@ function renderInventario() {
       <div class="panel-header anim-up">
         <div><div class="section-title">Inventario</div><div class="section-sub">${items.length} items · ${agotados} agotados · ${bajos} bajo mínimo</div></div>
         <div style="display:flex;gap:8px">
+          <button class="icon-btn bod" onclick="window.__bodega.abrirImportar()" title="Importar Excel">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          </button>
           <button class="icon-btn bod" onclick="window.__bodega.abrirDespacho()" title="Nueva salida">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
           </button>
@@ -1390,6 +1409,132 @@ function imprimirDespacho(memo) {
   const iDoc=ifr.contentDocument||ifr.contentWindow.document;
   iDoc.open();iDoc.write(html);iDoc.close();
   setTimeout(()=>{try{ifr.contentWindow.print();}catch(e){const w=window.open('','_blank');if(w){w.document.write(html);w.document.close();}}},500);
+}
+
+// ── Importar items desde Excel ────────────────────
+function abrirImportar() {
+  const sheet=document.createElement('div');
+  sheet.className='sheet-backdrop open';
+  sheet.innerHTML=`<div class="sheet"><div class="sheet-handle"></div>
+    <div class="sheet-title">Importar items (Excel)</div>
+    <div class="sheet-body">
+      <div class="form-field">
+        <div class="form-label">Campaña destino *</div>
+        <div class="select-row flex-wrap" id="imp-campana">
+          <div class="select-chip active" data-val="CAMBIOS">CAMBIOS</div>
+          <div class="select-chip" data-val="AMI">AMI</div>
+          <div class="select-chip" data-val="Caracterizacion">Caracterización</div>
+        </div>
+      </div>
+      <div style="font-size:11px;color:var(--text-4);line-height:1.6;margin-bottom:14px">
+        El Excel debe tener columnas: <b>Nombre</b>, <b>Unidad</b>, <b>SAP</b>, <b>AX</b>, <b>Stock</b>, <b>Minimo</b>.<br>
+        Si un código SAP o AX ya existe, se <b>suma</b> el stock. Si no, se crea el item.
+      </div>
+      <input type="file" id="imp-file" accept=".xlsx,.xls" style="display:none"/>
+      <button class="btn-primary full bod" id="imp-btn-file">Seleccionar archivo Excel</button>
+      <div id="imp-preview" style="margin-top:14px"></div>
+      <div id="imp-error" class="form-error"></div>
+    </div>
+  </div>`;
+  document.body.appendChild(sheet);
+  sheet.addEventListener('click',e=>{if(e.target===sheet){sheet.remove();renderInventario();}});
+  setupChipsDyn(sheet,'imp-campana');
+
+  let parsedRows=[];
+  const fileInput=sheet.querySelector('#imp-file');
+  sheet.querySelector('#imp-btn-file').addEventListener('click',()=>fileInput.click());
+
+  fileInput.addEventListener('change',async(e)=>{
+    const file=e.target.files[0];
+    if(!file) return;
+    const errEl=sheet.querySelector('#imp-error');
+    errEl.style.display='none';
+    try {
+      const data=await file.arrayBuffer();
+      const wb=XLSX.read(data,{type:'array'});
+      const ws=wb.Sheets[wb.SheetNames[0]];
+      const rows=XLSX.utils.sheet_to_json(ws,{defval:''});
+      if(!rows.length){errEl.textContent='El archivo está vacío.';errEl.style.display='block';return;}
+
+      // Normalizar columnas (tolera variaciones de nombre)
+      parsedRows=rows.map(r=>{
+        const get=(...keys)=>{for(const k of Object.keys(r)){const kn=k.toLowerCase().trim();if(keys.some(x=>kn===x||kn.includes(x)))return r[k];}return '';};
+        return {
+          name:   String(get('nombre','descripcion','descripción','material')).trim(),
+          unit:   String(get('unidad','unit','um')).trim()||'unidades',
+          sapCode:String(get('sap','reserva')).trim(),
+          axCode: String(get('ax','stock code','codigo ax','código ax')).trim(),
+          stock:  safeNum(get('stock','cantidad','existencia')),
+          minStock:safeNum(get('minimo','mínimo','min','stock minimo')),
+        };
+      }).filter(r=>r.name);
+
+      if(!parsedRows.length){errEl.textContent='No se encontraron filas válidas (falta columna Nombre).';errEl.style.display='block';return;}
+
+      sheet.querySelector('#imp-preview').innerHTML=`
+        <div style="padding:12px;background:var(--bod-glass);border:1px solid var(--bod-border);border-radius:12px;margin-bottom:12px">
+          <div style="font-size:13px;font-weight:700;color:var(--bod-light);margin-bottom:4px">${parsedRows.length} items detectados</div>
+          <div style="font-size:11px;color:var(--text-4)">Revisa y confirma la importación</div>
+        </div>
+        <button class="btn-primary full bod" id="imp-confirmar"><span id="imp-lbl">Importar ${parsedRows.length} items</span></button>`;
+
+      sheet.querySelector('#imp-confirmar').addEventListener('click',()=>ejecutarImport(sheet,parsedRows));
+    } catch(err){
+      errEl.textContent='Error al leer el Excel: '+err.message;
+      errEl.style.display='block';
+    }
+  });
+}
+
+async function ejecutarImport(sheet, rows) {
+  const campana=sheet.querySelector('#imp-campana .select-chip.active')?.dataset.val||'CAMBIOS';
+  const errEl=sheet.querySelector('#imp-error');
+  errEl.style.display='none';
+  setLoading('imp-lbl','Importando…',true);
+
+  try {
+    const col=db.collection('kardex').doc('inventario').collection('items');
+    let creados=0, actualizados=0;
+
+    for(const r of rows){
+      // Buscar existente por SAP o AX en la misma campaña
+      const existente=allItems_.find(i=>
+        i.area===campana &&
+        ((r.sapCode && i.sapCode===r.sapCode) || (r.axCode && i.axCode===r.axCode))
+      );
+
+      if(existente){
+        const nuevoStock=safeNum(existente.stock)+safeNum(r.stock);
+        await col.doc(existente.id).update({
+          stock:nuevoStock,
+          name:r.name||existente.name,
+          unit:r.unit||existente.unit,
+          minStock:r.minStock||existente.minStock,
+        });
+        existente.stock=nuevoStock;
+        actualizados++;
+      } else {
+        const nuevo={
+          name:r.name, unit:r.unit,
+          sapCode:r.sapCode, axCode:r.axCode,
+          stock:safeNum(r.stock), minStock:safeNum(r.minStock)||5,
+          requiereSerial:false, area:campana,
+        };
+        const ref=await col.add(nuevo);
+        allItems_.push(normalizeItem({id:ref.id,...nuevo}));
+        creados++;
+      }
+    }
+
+    toast(`Importados: ${creados} nuevos, ${actualizados} actualizados`,'ok');
+    sheet.remove();
+    areaFiltro_=campana;
+    renderInventario();
+  } catch(err){
+    errEl.textContent='Error al importar: '+err.message;
+    errEl.style.display='block';
+    setLoading('imp-lbl','Reintentar',false);
+  }
 }
 
 // ── Nuevo/Editar item ─────────────────────────────
