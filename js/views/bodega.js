@@ -135,8 +135,8 @@ function renderShell() {
   const isTecnico = role_==='tecnico';
   const tabs = isTecnico
     ? (area_
-        ? [{id:'material',label:'Mi material'},{id:'consumo',label:'Consumo'},{id:'solicitar',label:'Solicitar'},{id:'mis-solic',label:'Pedidos'}]
-        : [{id:'solicitar',label:'Solicitar'},{id:'material',label:'Mi material'},{id:'mis-solic',label:'Pedidos'}])
+        ? [{id:'material',label:'Mi material'},{id:'recibido',label:'Recibido'},{id:'solicitar',label:'Solicitar'},{id:'mis-solic',label:'Pedidos'}]
+        : [{id:'solicitar',label:'Solicitar'},{id:'material',label:'Mi material'},{id:'recibido',label:'Recibido'},{id:'mis-solic',label:'Pedidos'}])
     : [{id:'inventario',label:'Inventario'},{id:'historial',label:'Historial'},{id:'solicitudes',label:'Solicitudes'}];
 
   container_.innerHTML = `
@@ -220,6 +220,7 @@ function renderTab() {
   switch(activeTab_) {
     case 'material':    renderMiMaterial();    break;
     case 'consumo':     renderConsumo();        break;
+    case 'recibido':    renderRecibido();       break;
     case 'solicitar':   renderFormSolicitar(); break;
     case 'mis-solic':   renderMisSolicitudes();break;
     case 'inventario':  renderInventario();    break;
@@ -284,6 +285,58 @@ function renderMiMaterial() {
             <div class="flex-col gap-8">${porCampana[camp].map(itemCard).join('')}</div>
           </div>`;
         }).join('')}
+    </div>`;
+}
+
+// ── Recibido (historial de entradas al técnico) ───
+function renderRecibido() {
+  const content = document.getElementById('bod-content');
+  const usuario = destino_ || session_.displayName;
+  // Despachos donde este técnico es quien recibió
+  const misEntradas = salidas_
+    .filter(s => (s.usuarioResponsable || s.tecnicoNombre) === usuario)
+    .sort((a,b)=>(b.fecha?.seconds||0)-(a.fecha?.seconds||0));
+
+  content.innerHTML=`
+    <div class="flex-col gap-12">
+      <div class="panel-header anim-up">
+        <div>
+          <div class="section-title">Material recibido</div>
+          <div class="section-sub">${usuario} · ${misEntradas.length} entregas</div>
+        </div>
+      </div>
+      ${!misEntradas.length?`<div class="dev-module anim-up d1"><div class="dev-title">Sin entregas</div><p>Aquí aparecerá el material que bodega te despache.</p></div>`:`
+      <div class="flex-col gap-8 anim-up d1">
+        ${misEntradas.map(s=>{
+          const camp = s.area || 'CAMBIOS';
+          const cc = CAMPANA_COLORS[camp] || CAMPANA_COLORS['CAMBIOS'];
+          const totalItems = (s.items||[]).reduce((a,i)=>a+safeNum(i.cantidad),0);
+          return `<div class="bod-solic-card">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:8px">
+              <div>
+                <div style="font-size:12px;font-weight:700">${fmtDate(s.fecha)}</div>
+                <div style="font-size:10px;color:var(--text-4)">${totalItems} items · entregó ${safeStr(s.registradoPorNombre||s.entregadoPor,'—')}</div>
+              </div>
+              <div class="bod-badge" style="color:${cc.color};border-color:${cc.color}33;background:${cc.color}11">${cc.label}</div>
+            </div>
+            <div class="flex-col gap-3">
+              ${(s.items||[]).map(m=>{
+                const seriales = m.modoSerial==='rango' && m.serialInicio
+                  ? `<div style="font-size:10px;color:var(--text-4);margin-top:2px;font-family:monospace">Serie ${m.serialInicio} a ${m.serialFin}</div>`
+                  : (m.seriales&&m.seriales.length)
+                    ? `<div style="font-size:10px;color:var(--text-4);margin-top:2px;font-family:monospace">${m.seriales.slice(0,4).join(', ')}${m.seriales.length>4?` +${m.seriales.length-4}`:''}</div>`
+                    : '';
+                return `<div style="padding:6px 0;border-top:1px solid var(--border)">
+                  <div style="display:flex;justify-content:space-between;font-size:12px">
+                    <span style="color:var(--text-2)">${tc(m.nombre||m.name||'—')}</span>
+                    <span style="font-weight:700">${m.cantidad} ${safeStr(m.unit,'')}</span>
+                  </div>${seriales}
+                </div>`;
+              }).join('')}
+            </div>
+          </div>`;
+        }).join('')}
+      </div>`}
     </div>`;
 }
 
@@ -1607,8 +1660,30 @@ function abrirNuevoItem(itemId=null) {
 }
 
 // ── Entrada de material ───────────────────────────
+// Expande seriales según modo (individual o rango). Devuelve array de seriales.
+function expandirSeriales(modo, textoIndividual, inicio, fin) {
+  if (modo === 'rango') {
+    const ini = String(inicio||'').trim();
+    const f   = String(fin||'').trim();
+    if (!ini || !f) return [];
+    const nI = parseInt(ini.replace(/\D/g,''),10);
+    const nF = parseInt(f.replace(/\D/g,''),10);
+    if (isNaN(nI) || isNaN(nF) || nF < nI) return [];
+    const prefix = ini.replace(/\d+$/,'');
+    const digits = String(nF).length;
+    const lista = [];
+    for (let n=nI; n<=nF; n++) lista.push(prefix+String(n).padStart(digits,'0'));
+    return lista;
+  }
+  // individual: uno por línea
+  return String(textoIndividual||'').trim()
+    ? String(textoIndividual).trim().split('\n').map(s=>s.trim()).filter(Boolean)
+    : [];
+}
+
 function abrirEntrada(itemId) {
   const item=allItems_.find(i=>i.id===itemId);
+  const esSerial = !!item?.requiereSerial;
   const sheet=document.createElement('div');
   sheet.className='sheet-backdrop open';
   sheet.innerHTML=`<div class="sheet"><div class="sheet-handle"></div>
@@ -1618,13 +1693,31 @@ function abrirEntrada(itemId) {
         <div style="font-size:14px;font-weight:700">${tc(item?.name||'—')}</div>
         <div style="font-size:11px;color:var(--text-4);margin-top:3px">Stock actual: ${item?.stock||0} ${safeStr(item?.unit,'')}</div>
       </div>
-      <div class="form-field"><div class="form-label">Cantidad *</div><input class="form-input" id="ent-cant" type="number" min="1" placeholder="0"/></div>
-      <div class="form-field"><div class="form-label">Motivo / Referencia</div><input class="form-input" id="ent-ref" type="text" placeholder="Ej. Compra, Reposición…"/></div>
-      ${item?.requiereSerial?`
+      ${esSerial?`
       <div class="form-field">
-        <div class="form-label">Seriales (uno por línea)</div>
-        <textarea class="form-input" id="ent-sers" rows="4" placeholder="12345001&#10;12345002&#10;..." style="font-family:monospace;font-size:11px;resize:none"></textarea>
-      </div>`:''}
+        <div class="form-label">Modo de ingreso de seriales</div>
+        <div class="select-row" id="ent-modo">
+          <div class="select-chip active" data-val="individual">Individual</div>
+          <div class="select-chip" data-val="rango">Rango</div>
+        </div>
+      </div>
+      <div id="ent-serial-individual">
+        <div class="form-field">
+          <div class="form-label">Seriales (uno por línea) *</div>
+          <textarea class="form-input" id="ent-sers" rows="5" placeholder="12345001&#10;12345002&#10;..." style="font-family:monospace;font-size:11px;resize:none"></textarea>
+        </div>
+      </div>
+      <div id="ent-serial-rango" style="display:none">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          <div class="form-field"><div class="form-label">Serial inicial *</div><input class="form-input" id="ent-sri" type="text" placeholder="12345001" style="font-family:monospace"/></div>
+          <div class="form-field"><div class="form-label">Serial final *</div><input class="form-input" id="ent-srf" type="text" placeholder="12345050" style="font-family:monospace"/></div>
+        </div>
+        <div id="ent-rango-info" style="font-size:11px;color:var(--bod-light);margin-top:-6px;margin-bottom:12px"></div>
+      </div>
+      `:`
+      <div class="form-field"><div class="form-label">Cantidad *</div><input class="form-input" id="ent-cant" type="number" min="1" placeholder="0"/></div>
+      `}
+      <div class="form-field"><div class="form-label">Motivo / Referencia</div><input class="form-input" id="ent-ref" type="text" placeholder="Ej. Compra, Reposición…"/></div>
       <div id="ent-error" class="form-error"></div>
       <button class="btn-primary full bod" id="btn-ent"><span id="btn-ent-lbl">Registrar entrada</span></button>
     </div>
@@ -1632,29 +1725,68 @@ function abrirEntrada(itemId) {
   document.body.appendChild(sheet);
   sheet.addEventListener('click',e=>{if(e.target===sheet){sheet.remove();renderInventario();}});
 
+  // Toggle de modo serial
+  if (esSerial) {
+    const indBox = sheet.querySelector('#ent-serial-individual');
+    const ranBox = sheet.querySelector('#ent-serial-rango');
+    const infoEl = sheet.querySelector('#ent-rango-info');
+    sheet.querySelectorAll('#ent-modo .select-chip').forEach(chip=>{
+      chip.addEventListener('click',()=>{
+        sheet.querySelectorAll('#ent-modo .select-chip').forEach(c=>c.classList.remove('active'));
+        chip.classList.add('active');
+        const modo=chip.dataset.val;
+        indBox.style.display = modo==='individual'?'':'none';
+        ranBox.style.display = modo==='rango'?'':'none';
+      });
+    });
+    // Info en vivo del rango
+    const actualizarInfo=()=>{
+      const lista=expandirSeriales('rango',null,sheet.querySelector('#ent-sri').value,sheet.querySelector('#ent-srf').value);
+      infoEl.textContent = lista.length ? `Se generarán ${lista.length} seriales` : 'Revisa el rango (inicial y final)';
+    };
+    sheet.querySelector('#ent-sri')?.addEventListener('input',actualizarInfo);
+    sheet.querySelector('#ent-srf')?.addEventListener('input',actualizarInfo);
+  }
+
   document.getElementById('btn-ent').addEventListener('click',async()=>{
-    let cantidad=safeNum(document.getElementById('ent-cant').value);
     const motivo=document.getElementById('ent-ref').value.trim();
     const errEl=document.getElementById('ent-error');
     errEl.style.display='none';
-    let seriales=[];
-    if(item?.requiereSerial){
-      const raw=(document.getElementById('ent-sers')?.value||'').trim();
-      seriales=raw?raw.split('\n').map(s=>s.trim()).filter(Boolean):[];
-      if(!seriales.length){errEl.textContent='Ingresa al menos un serial.';errEl.style.display='block';return;}
+    let cantidad=0, seriales=[];
+
+    if(esSerial){
+      const modo=sheet.querySelector('#ent-modo .select-chip.active')?.dataset.val||'individual';
+      if(modo==='individual'){
+        seriales=expandirSeriales('individual',document.getElementById('ent-sers')?.value);
+      }else{
+        seriales=expandirSeriales('rango',null,document.getElementById('ent-sri')?.value,document.getElementById('ent-srf')?.value);
+      }
+      if(!seriales.length){errEl.textContent=modo==='rango'?'Ingresa un rango válido (serial inicial y final).':'Ingresa al menos un serial.';errEl.style.display='block';return;}
+      // Detectar duplicados dentro del mismo ingreso
+      const dup=seriales.find((s,i)=>seriales.indexOf(s)!==i);
+      if(dup){errEl.textContent=`Serial repetido en la lista: ${dup}`;errEl.style.display='block';return;}
       cantidad=seriales.length;
-    }else if(!cantidad||cantidad<=0){errEl.textContent='Ingresa una cantidad válida.';errEl.style.display='block';return;}
+    }else{
+      cantidad=safeNum(document.getElementById('ent-cant').value);
+      if(!cantidad||cantidad<=0){errEl.textContent='Ingresa una cantidad válida.';errEl.style.display='block';return;}
+    }
 
     setLoading('btn-ent-lbl','Guardando…',true);
     try{
+      // Validar que los seriales no existan ya en la base
+      if(esSerial && seriales.length){
+        const snapSer=await db.collection('kardex').doc('seriales').collection('items').where('itemId','==',itemId).get();
+        const existentes=new Set(snapSer.docs.map(d=>String(d.data().serial)));
+        const yaExiste=seriales.find(s=>existentes.has(String(s)));
+        if(yaExiste){errEl.textContent=`El serial ${yaExiste} ya existe en el inventario.`;errEl.style.display='block';setLoading('btn-ent-lbl','Registrar entrada',false);return;}
+      }
       const now=firebase.firestore.Timestamp.now();
       const nuevoStock=(item?.stock||0)+cantidad;
       const batch=db.batch();
       batch.update(db.collection('kardex').doc('inventario').collection('items').doc(itemId),{stock:nuevoStock});
       const entRef=db.collection('kardex').doc('movimientos').collection('ajustes').doc();
-      batch.set(entRef,{tipo:'entrada',itemId,itemNombre:item?.name,cantidad,motivo:motivo||null,seriales:item?.requiereSerial?seriales:[],stockAntes:item?.stock||0,stockDespues:nuevoStock,fecha:now,registradoPor:uid_,registradoPorNombre:session_.displayName});
-      // Registrar seriales en colección de seriales
-      if(item?.requiereSerial&&seriales.length){
+      batch.set(entRef,{tipo:'entrada',itemId,itemNombre:item?.name,cantidad,motivo:motivo||null,seriales:esSerial?seriales:[],stockAntes:item?.stock||0,stockDespues:nuevoStock,fecha:now,registradoPor:uid_,registradoPorNombre:session_.displayName});
+      if(esSerial&&seriales.length){
         for(const ser of seriales){
           const serRef=db.collection('kardex').doc('seriales').collection('items').doc();
           batch.set(serRef,{sapCode:item.sapCode,axCode:item.axCode,itemId,itemNombre:item.name,serial:ser,estado:'disponible',fechaEntrada:now,registradoPor:uid_});
@@ -1664,7 +1796,7 @@ function abrirEntrada(itemId) {
       const idx=allItems_.findIndex(i=>i.id===itemId);
       if(idx!==-1) allItems_[idx].stock=nuevoStock;
       sheet.remove();renderInventario();
-      toast(`Stock actualizado: ${nuevoStock} ${safeStr(item?.unit,'')}`, 'ok');
+      toast(`Entrada registrada: +${cantidad} ${safeStr(item?.unit,'')}`, 'ok');
     }catch(err){errEl.textContent=`Error: ${err.message}`;errEl.style.display='block';setLoading('btn-ent-lbl','Registrar entrada',false);}
   });
 }
