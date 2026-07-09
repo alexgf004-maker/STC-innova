@@ -365,6 +365,17 @@ function renderNoAsignacion(container, session) {
       <p>No tienes área asignada para el día de hoy. Contacta a tu asistente.</p>
       <div class="no-assign-badge">${session.displayName}</div>
     </div>
+
+    <div class="flex-col gap-10 anim-up d1" style="margin-top:24px">
+      <div class="section-label" style="text-align:center;margin-bottom:2px">Material de bodega</div>
+      <div class="quick-card" onclick="window.__router.navigateTo('bodega')" style="cursor:pointer">
+        <div class="qc-icon" style="background:var(--purple-glass)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="var(--purple)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+        </div>
+        <div class="qc-title" style="color:var(--purple)">Solicitar material</div>
+        <div class="qc-sub">Pide material, revisa tu stock y pedidos</div>
+      </div>
+    </div>
   `;
 }
 
