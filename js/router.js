@@ -97,6 +97,8 @@ export async function navigateTo(tabId) {
     if (!viewCache[tabId]) {
       viewCache[tabId] = await import(`./views/${tabId}.js`);
     }
+    // Si el usuario navegó a otra vista mientras cargaba el módulo, abortar
+    if (currentTab !== tabId) return;
     contentArea.scrollTop = 0;
     contentArea.innerHTML = '';
     viewCache[tabId].init(contentArea, currentSession);
