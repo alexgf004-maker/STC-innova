@@ -77,6 +77,7 @@ const esValido = i => safeStr(i.name,'')!=='' && safeStr(i.unit,'')!=='';
 
 // ── Estado del módulo ─────────────────────────────
 let container_, session_, role_, area_, destino_, uid_;
+let montadoId_ = 0;  // incrementa cada init; detecta si la vista sigue activa
 let campanaTecnico_ = null;  // campaña elegida por técnico sin área asignada
 let tecnicos_ = [];          // lista de técnicos de la app para despacho
 let allItems_    = [];
@@ -94,11 +95,17 @@ export async function init(container, session) {
   area_      = session.asignacionActual?.area || null;
   destino_   = session.asignacionActual?.destino || null;
   uid_       = session.uid;
-  activeTab_ = role_==='tecnico' ? (area_ ? 'material' : 'solicitar') : 'inventario';
+  activeTab_ = role_==='tecnico' ? 'material' : 'inventario';
   areaFiltro_= area_ || localStorage.getItem('bod_area') || 'CAMBIOS';
 
+  const miMontaje = ++montadoId_;
   renderShell();
-  await loadData();
+  await loadData(miMontaje);
+}
+
+// Verifica que la vista de bodega siga activa (no se navegó a otra)
+function sigueActiva(id) {
+  return id === montadoId_ && document.getElementById('bod-content');
 }
 
 // ── Colores por campaña ───────────────────────────
@@ -154,7 +161,7 @@ function renderShell() {
 }
 
 // ── Cargar datos ──────────────────────────────────
-async function loadData() {
+async function loadData(miMontaje) {
   try {
     const [itemsSnap, salidasSnap, solicSnap, consumosSnap] = await Promise.all([
       db.collection('kardex').doc('inventario').collection('items').get(),
@@ -162,6 +169,8 @@ async function loadData() {
       db.collection('solicitudes_material').get(),
       db.collection('kardex').doc('movimientos').collection('consumos').get(),
     ]);
+    // Si el usuario ya navegó a otra vista, no renderizar
+    if (miMontaje !== undefined && !sigueActiva(miMontaje)) return;
     allItems_    = itemsSnap.docs.map(d=>normalizeItem({id:d.id,...d.data()})).filter(esValido);
     salidas_     = salidasSnap.docs.map(d=>({id:d.id,...d.data()}));
     solicitudes_ = solicSnap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(b.fecha?.seconds||0)-(a.fecha?.seconds||0));
@@ -170,12 +179,14 @@ async function loadData() {
     // Cargar técnicos por separado — si falla no rompe la bodega
     try {
       const usersSnap = await db.collection('users').where('role','==','tecnico').get();
+      if (miMontaje !== undefined && !sigueActiva(miMontaje)) return;
       tecnicos_ = usersSnap.docs.map(d=>({id:d.id,...d.data()})).filter(u=>u.active!==false).sort((a,b)=>safeStr(a.displayName).localeCompare(safeStr(b.displayName)));
     } catch(e) {
       console.warn('[bodega] No se pudieron cargar técnicos:',e);
     }
   } catch(err) {
     console.error('[bodega] Error:',err);
+    if (miMontaje !== undefined && !sigueActiva(miMontaje)) return;
     document.getElementById('bod-content').innerHTML=`<div class="dev-module"><div class="dev-title">Error al cargar</div><p>${err.message}</p></div>`;
   }
 }
