@@ -363,7 +363,7 @@ function renderConsumo() {
                 <div style="font-size:13px;font-weight:700">OT ${safeStr(c.wo)}</div>
                 <div style="font-size:10px;color:var(--text-4)">${fmtDate(c.fecha)} · ${safeStr(c.tipoTrabajo)}</div>
               </div>
-              <div class="bod-badge" style="color:#22c55e;border-color:rgba(34,197,94,.3);background:rgba(34,197,94,.08)">✓</div>
+              <div class="bod-badge" style="color:#22c55e;border-color:rgba(34,197,94,.3);background:rgba(34,197,94,.08)">&#10003;</div>
             </div>
             <div class="flex-col gap-3">
               ${(c.items||[]).map(i=>`<div style="display:flex;justify-content:space-between;font-size:11px">
@@ -477,7 +477,7 @@ function abrirRegistrarConsumo() {
         </div>
         ${esSer?`
         <button class="action-chip ${sd.cantidad>0?'ok':'muted'}" onclick="window.__bod_tog_ser('${e.id}')" style="${sd.cantidad>0?'':'color:var(--text-3);border-color:var(--border);background:var(--glass)'}">
-          ${sd.cantidad>0?'✓ Sel.':'Selec.'}
+          ${sd.cantidad>0?'Sel.':'Selec.'}
         </button>`:`
         <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
           <button class="icon-btn" style="width:32px;height:32px;font-size:18px;font-weight:700" onclick="window.__bod_dec('${e.id}')">−</button>
@@ -617,7 +617,7 @@ function renderFormSolicitar() {
       const agregado=selIds.has(item.id);
       return `<div class="bod-solicitar-row" style="background:${agregado?'rgba(34,197,94,.06)':'var(--glass)'};border-color:${agregado?'rgba(34,197,94,.2)':'var(--border)'};cursor:${agregado||item.stock===0?'default':'pointer'}" data-item="${item.id}">
         <div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:600">${tc(item.name)}</div><div style="font-size:10px;color:var(--text-4)">${item.sapCode?`SAP: ${item.sapCode} · `:''}Stock: ${item.stock} ${item.unit}</div></div>
-        ${agregado?`<span style="font-size:11px;font-weight:700;color:var(--ok)">✓</span>`:item.stock===0?`<span style="font-size:11px;color:var(--text-4)">Agotado</span>`:`<span style="font-size:11px;font-weight:700;color:var(--bod-light)">${item.stock} ${item.unit}</span>`}
+        ${agregado?`<span style="font-size:11px;font-weight:700;color:var(--ok)">&#10003;</span>`:item.stock===0?`<span style="font-size:11px;color:var(--text-4)">Agotado</span>`:`<span style="font-size:11px;font-weight:700;color:var(--bod-light)">${item.stock} ${item.unit}</span>`}
       </div>`;
     }).join('');
     el.querySelectorAll('[data-item]').forEach(row=>{
@@ -703,8 +703,8 @@ function renderInventario() {
           </button>
         </div>
       </div>
-      ${agotados?`<div class="otc-alert-card crit anim-up d2"><div class="otc-alert-header">🔴 ${agotados} item${agotados>1?'s':''} agotado${agotados>1?'s':''}</div></div>`:''}
-      ${bajos?`<div class="otc-alert-card warn anim-up d2"><div class="otc-alert-header">⚠ ${bajos} item${bajos>1?'s':''} bajo stock mínimo</div></div>`:''}
+      ${agotados?`<div class="otc-alert-card crit anim-up d2"><div class="otc-alert-header">${agotados} item${agotados>1?'s':''} agotado${agotados>1?'s':''}</div></div>`:''}
+      ${bajos?`<div class="otc-alert-card warn anim-up d2"><div class="otc-alert-header">${bajos} item${bajos>1?'s':''} bajo stock mínimo</div></div>`:''}
       <div class="flex-col gap-8 anim-up d2">
         ${!items.length?`<div class="dev-module"><div class="dev-title">Sin items</div></div>`
           :items.sort((a,b)=>a.stock-b.stock).map(item=>renderItemCard(item)).join('')}
@@ -823,7 +823,7 @@ function renderStockUsuarios() {
           const criticos=items.filter(e=>e.cant<=0||(e.item.minStock&&e.cant<=e.item.minStock/2)).length;
           const bajos=items.filter(e=>e.cant>0&&e.item.minStock&&e.cant<=e.item.minStock&&e.cant>e.item.minStock/2).length;
           const color=criticos>0?'#ef4444':bajos>0?'#fbbf24':'#22c55e';
-          const alertaTxt = criticos>0 ? ('⚠ '+criticos+' crítico'+(criticos>1?'s':'')) : bajos>0 ? ('⚠ '+bajos+' bajo'+(bajos>1?'s':'')) : '✓ Sin alertas';
+          const alertaTxt = criticos>0 ? (''+criticos+' crítico'+(criticos>1?'s':'')) : bajos>0 ? (''+bajos+' bajo'+(bajos>1?'s':'')) : '&#10003; Sin alertas';
           return `<div>
             <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
               <div style="width:36px;height:36px;border-radius:10px;background:rgba(37,99,235,.15);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;color:var(--otc-light)">${u.slice(0,2)}</div>
@@ -1245,7 +1245,7 @@ function abrirDespacho(solicitud=null) {
         const ag=selIds.has(item.id);
         return `<div class="bod-solicitar-row" style="background:${ag?'rgba(34,197,94,.06)':'var(--glass)'};border-color:${ag?'rgba(34,197,94,.2)':'var(--border)'};cursor:${ag||item.stock===0?'default':'pointer'}" data-item="${item.id}">
           <div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:600">${tc(item.name)}</div><div style="font-size:10px;color:var(--text-4)">${item.sapCode?`SAP: ${item.sapCode} · `:''}Stock: ${item.stock} ${item.unit}</div></div>
-          ${ag?`<span style="font-size:11px;font-weight:700;color:var(--ok)">✓</span>`:item.stock===0?`<span style="font-size:11px;color:var(--text-4)">Agotado</span>`:`<span style="font-size:11px;font-weight:700;color:var(--bod-light)">${item.stock} ${item.unit}</span>`}
+          ${ag?`<span style="font-size:11px;font-weight:700;color:var(--ok)">&#10003;</span>`:item.stock===0?`<span style="font-size:11px;color:var(--text-4)">Agotado</span>`:`<span style="font-size:11px;font-weight:700;color:var(--bod-light)">${item.stock} ${item.unit}</span>`}
         </div>`;
       }).join('');
       el.querySelectorAll('[data-item]').forEach(row=>{
@@ -1565,7 +1565,7 @@ function showMemo(salida) {
     </div>
     <div style="padding:12px 16px;border-top:1px solid var(--border);display:flex;gap:8px">
       <button class="btn-action outline" style="flex:1;height:44px" onclick="this.closest('.sheet-backdrop').remove()">Cerrar</button>
-      <button class="btn-primary bod" style="flex:1;height:44px" onclick="window.__bodega._imprimir(window.__memo_data)"><span>🖨️ Imprimir</span></button>
+      <button class="btn-primary bod" style="flex:1;height:44px" onclick="window.__bodega._imprimir(window.__memo_data)"><span>Imprimir</span></button>
     </div>
   </div>`;
   document.body.appendChild(sheet);
@@ -1599,4 +1599,4 @@ function imprimirDespacho(memo) {
 
   const v=memo;
   const filas=FILAS_DOC.map(row=>{
-    if(row.header==='col') return '<tr><th class="th">RESERVA<
+    if(row.header==='col') return '<tr><th class=
