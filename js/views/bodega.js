@@ -1285,7 +1285,7 @@ function abrirDespacho(solicitud=null) {
       <div style="padding:14px 20px;border-top:1px solid var(--border);background:var(--bg);position:sticky;bottom:0">
         <div id="s2-err" class="form-error" style="margin-bottom:8px"></div>
         <button class="btn-primary full bod" id="btn-des" ${!sel.length?'disabled style="opacity:.5"':''}>
-          <span id="btn-des-lbl">${!sel.length?'Agrega materiales':hayserial?`Continuar → Seriales`:`Registrar salida · ${sel.length} item${sel.length>1?'s':''}`}</span>
+          <span id="btn-des-lbl">${!sel.length?'Agrega materiales':hayserial?`Continuar → Seriales`:esCampanaNueva?`Enviar para aceptación`:`Registrar salida · ${sel.length} item${sel.length>1?'s':''}`}</span>
         </button>
       </div>
     </div>`;
@@ -1380,7 +1380,7 @@ function abrirDespacho(solicitud=null) {
       </div>
       <div style="padding:14px 20px;border-top:1px solid var(--border);background:var(--bg);position:sticky;bottom:0">
         <div id="s3-err" class="form-error" style="margin-bottom:8px"></div>
-        <button class="btn-primary full bod" id="btn-des3"><span id="btn-des-lbl">Registrar salida · ${sel.length} item${sel.length>1?'s':''}</span></button>
+        <button class="btn-primary full bod" id="btn-des3"><span id="btn-des-lbl">${esCampanaNueva?'Enviar para aceptación':`Registrar salida · ${sel.length} item${sel.length>1?'s':''}`}</span></button>
       </div>
     </div>`;
 
@@ -1517,6 +1517,41 @@ function abrirDespacho(solicitud=null) {
     const lbl=document.getElementById('btn-des-lbl');
     if(lbl) lbl.innerHTML='<div class="spinner"></div>';
     const placa=hdr.placa==='__otro__'?hdr.placaOtro:hdr.placa;
+
+    const areaDespacho=solicitud?.area||areaFiltro_;
+    const esCampanaNueva=(areaDespacho==='AMI'||areaDespacho==='Caracterizacion'||areaDespacho==='ReclamosSIGET');
+
+    // ── Campañas nuevas: crear despacho PENDIENTE (no descuenta stock aún) ──
+    if(esCampanaNueva){
+      try{
+        // Buscar el UID del técnico que recibe (para que le llegue en su sesión)
+        const tecRecibe=tecnicos_.find(t=>safeStr(t.displayName)===hdr.responsable);
+        const pendData={
+          area:areaDespacho,
+          estado:'pendiente_aceptacion',
+          usuarioResponsable:hdr.responsable,
+          tecnicoRecibeUid:tecRecibe?.id||null,
+          parejaAcompanante:hdr.pareja||'',usuarioRespAsignado:hdr.usuarioResp||'',empresaContratista:hdr.contratista,
+          placaVehiculo:placa,fechaEntrega:hdr.fechaEnt,
+          entregadoPor:session_.displayName,entregadoPorUid:uid_,
+          solicitudId:solicitud?.id||null,
+          items:sel.map(s=>({itemId:s.itemId,sapCode:s.sapCode,axCode:s.axCode,nombre:s.name,unit:s.unit,cantidad:s.cantidad,requiereSerial:s.requiereSerial,modoSerial:s.requiereSerial?s.modoSerial:null,seriales:s.requiereSerial&&s.modoSerial==='individual'?s.seriales:[],serialInicio:s.requiereSerial&&s.modoSerial==='rango'?s.serialInicio:'',serialFin:s.requiereSerial&&s.modoSerial==='rango'?s.serialFin:''})),
+          fecha:firebase.firestore.FieldValue.serverTimestamp(),
+        };
+        await db.collection('despachos_pendientes').add(pendData);
+        ov.remove();
+        toast('Enviado al técnico para aceptación','ok');
+      }catch(err){
+        console.error('[bodega] Error despacho pendiente:',err);
+        if(errEl){errEl.textContent=`Error: ${err.message}`;errEl.style.display='block';}
+        if(btn) btn.disabled=false;
+        const lbl2=document.getElementById('btn-des-lbl');
+        if(lbl2) lbl2.textContent='Enviar para aceptación';
+      }
+      return;
+    }
+
+    // ── CAMBIOS/OTC: flujo normal (descuenta stock de una vez) ──
     try{
       const salidaData={
         area:solicitud?.area||areaFiltro_,
