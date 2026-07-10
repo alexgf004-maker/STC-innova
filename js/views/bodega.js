@@ -1352,7 +1352,29 @@ function abrirDespacho(solicitud=null) {
               <div style="font-size:14px;font-weight:700">${tc(s.name)}</div>
               <div style="font-size:11px;font-weight:700;color:var(--bod-light);background:var(--bod-glass);border:1px solid var(--bod-border);padding:3px 10px;border-radius:20px">${s.cantidad} ${s.unit}</div>
             </div>
-            ${renderSerial(s,idx)}
+            <div style="background:rgba(139,92,246,.06);border:1px solid rgba(139,92,246,.2);border-radius:10px;padding:10px">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+                <div style="font-size:10px;font-weight:700;color:var(--bod-light);text-transform:uppercase">Seriales a entregar</div>
+                <div id="est-${idx}"></div>
+              </div>
+              <div style="display:flex;gap:6px;margin-bottom:8px">
+                <div class="select-chip ${s.modoSerial==='individual'?'active':''}" style="font-size:10px" onclick="window.__d_smod(${idx},'individual')">Individual</div>
+                <div class="select-chip ${s.modoSerial==='rango'?'active':''}" style="font-size:10px" onclick="window.__d_smod(${idx},'rango')">Rango</div>
+              </div>
+              ${s.modoSerial==='individual'?`
+              <div style="display:flex;gap:6px;margin-bottom:8px">
+                <input class="form-input" id="si-${idx}" type="text" inputmode="numeric" placeholder="Escribe o escanea el serial…" style="flex:1;padding:8px 10px;font-size:12px" onkeydown="if(event.key==='Enter'){event.preventDefault();window.__d_sadd(${idx});}"/>
+                <button class="icon-btn" style="width:36px;height:36px;color:var(--bod-light);border-color:var(--bod-border);background:var(--bod-glass)" onclick="window.__d_sadd(${idx})">+</button>
+              </div>
+              <div class="flex-col gap-4" id="chips-${idx}"></div>
+              `:`
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+                <div><div style="font-size:10px;color:var(--text-4);margin-bottom:4px">Serial inicial</div><input class="form-input" id="sri-${idx}" type="text" value="${s.serialInicio}" placeholder="Ej. 12345001" style="font-size:12px;padding:8px 10px"/></div>
+                <div><div style="font-size:10px;color:var(--text-4);margin-bottom:4px">Serial final</div><input class="form-input" id="srf-${idx}" type="text" value="${s.serialFin}" placeholder="Ej. 12345010" style="font-size:12px;padding:8px 10px"/></div>
+              </div>
+              <div class="flex-col gap-4" id="chips-${idx}"></div>
+              `}
+            </div>
           </div>`;}).join('')}
       </div>
       <div style="padding:14px 20px;border-top:1px solid var(--border);background:var(--bg);position:sticky;bottom:0">
@@ -1362,31 +1384,81 @@ function abrirDespacho(solicitud=null) {
     </div>`;
 
     window.__d_smod=(idx,modo)=>{sel[idx].modoSerial=modo;renderStep3();};
-    window.__d_sadd=idx=>{const el=document.getElementById(`si-${idx}`);const v=el?.value.trim();if(v&&!sel[idx].seriales.includes(v)){sel[idx].seriales.push(v);renderStep3();setTimeout(()=>document.getElementById(`si-${idx}`)?.focus(),30);}};
-    window.__d_sdel=(idx,i)=>{sel[idx].seriales.splice(i,1);renderStep3();};
-    window.__d_srange=idx=>{
-      sel[idx].serialInicio=document.getElementById(`sri-${idx}`)?.value.trim()||'';
-      sel[idx].serialFin=document.getElementById(`srf-${idx}`)?.value.trim()||'';
-      // Actualizar solo el estado sin re-render para no perder foco
-      actualizarEstadoSerie(idx);
+    window.__d_sadd=idx=>{
+      const el=document.getElementById(`si-${idx}`);
+      const v=el?.value.trim();
+      if(v&&!sel[idx].seriales.includes(v)){
+        sel[idx].seriales.push(v);
+        if(el) el.value='';
+        pintarSerial(idx);        // solo actualiza chips+estado, no re-render
+        el?.focus();              // mantener foco/teclado
+      }
     };
-
-    // Actualiza el chip de estado de un item sin re-render completo (para rango en vivo)
-    function actualizarEstadoSerie(idx){
-      // Re-render diferido para mostrar chips validados
-      clearTimeout(window.__rangeTimer);
-      window.__rangeTimer=setTimeout(()=>{ if(step===3) renderStep3(); },600);
-    }
-
+    window.__d_sdel=(idx,i)=>{sel[idx].seriales.splice(i,1);pintarSerial(idx);};
 
     ov.querySelector('#back2').onclick=()=>{step=2;renderStep2();};
     ov.querySelector('#btn-des3').addEventListener('click',handleDespacho);
+
+    // Listeners de rango: actualizan estado SIN re-render (debounce ligero)
+    conSerial.forEach(s=>{
+      const idx=sel.indexOf(s);
+      if(s.modoSerial==='rango'){
+        const sri=document.getElementById(`sri-${idx}`);
+        const srf=document.getElementById(`srf-${idx}`);
+        const upd=()=>{
+          sel[idx].serialInicio=sri?.value.trim()||'';
+          sel[idx].serialFin=srf?.value.trim()||'';
+          clearTimeout(window['__rt'+idx]);
+          window['__rt'+idx]=setTimeout(()=>pintarSerial(idx),400);
+        };
+        sri?.addEventListener('input',upd);
+        srf?.addEventListener('input',upd);
+      }
+      pintarSerial(idx); // pintar estado inicial
+    });
+  }
+
+  // Actualiza SOLO el estado y los chips de un item, sin tocar los inputs
+  function pintarSerial(idx){
+    const s=sel[idx];
+    if(!s) return;
+    const v=validarSeriales(s);
+    const estEl=document.getElementById(`est-${idx}`);
+    const chipsEl=document.getElementById(`chips-${idx}`);
+    if(estEl) estEl.innerHTML=estadoHTML(s,v);
+    if(chipsEl){
+      const conDel=s.modoSerial==='individual';
+      chipsEl.innerHTML=v.series.map((x,i)=>chipSerieHTML(x.serial,x.ok,conDel?idx:null,i)).join('');
+    }
+  }
+
+  function estadoHTML(s,v){
+    if(v.cargando) return `<div style="font-size:10px;color:var(--text-4)">Verificando…</div>`;
+    if(v.lista.length===0) return `<div style="font-size:10px;color:var(--text-4)">Faltan ${s.cantidad}</div>`;
+    if(v.lista.length!==s.cantidad){
+      const dif=v.lista.length<s.cantidad?`faltan ${s.cantidad-v.lista.length}`:`sobran ${v.lista.length-s.cantidad}`;
+      return `<div style="font-size:10px;color:#fbbf24;font-weight:600">${v.lista.length}/${s.cantidad} · ${dif}</div>`;
+    }
+    if(v.invalidos.length) return `<div style="font-size:10px;color:#ef4444;font-weight:600">${v.invalidos.length} no en bodega</div>`;
+    return `<div style="font-size:10px;color:#22c55e;font-weight:700">&#10003; ${v.lista.length} verificada${v.lista.length>1?'s':''}</div>`;
+  }
+
+  function chipSerieHTML(ser,ok,idxDel,i){
+    const col = ok===false?'#ef4444':ok===true?'#22c55e':'var(--text-3)';
+    const bg  = ok===false?'rgba(239,68,68,.08)':ok===true?'rgba(34,197,94,.08)':'var(--glass)';
+    const bd  = ok===false?'rgba(239,68,68,.3)':ok===true?'rgba(34,197,94,.3)':'var(--border)';
+    const ic  = ok===false?'&#10007;':ok===true?'&#10003;':'';
+    const del = idxDel!==null?`<button class="icon-btn" style="width:24px;height:24px" onclick="window.__d_sdel(${idxDel},${i})"><svg viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="10" height="10"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>`:'';
+    return `<div style="display:flex;align-items:center;gap:6px;font-size:11px">
+      <div style="flex:1;background:${bg};border:1px solid ${bd};border-radius:6px;padding:5px 8px;font-family:monospace;color:${col};display:flex;justify-content:space-between;align-items:center">
+        <span>${ser}</span><span style="font-weight:700">${ic}</span>
+      </div>${del}
+    </div>`;
   }
 
   // Valida las series de un item contra los disponibles en bodega.
-  // Devuelve {series:[{serial,ok}], validos, faltan, invalidos:[], completo}
   function validarSeriales(s){
-    const disp=serialesCache_[s.itemId]||null; // null = aún cargando
+    const disp=serialesCache_[s.itemId]||null;
     let lista=[];
     if(s.modoSerial==='rango'){
       lista=expandirSeriales('rango',null,s.serialInicio,s.serialFin);
@@ -1395,7 +1467,7 @@ function abrirDespacho(solicitud=null) {
     }
     const series=lista.map(ser=>{
       const t=String(ser).trim();
-      let ok=null; // null = no se puede validar aún (cargando)
+      let ok=null;
       if(disp!==null) ok=disp.includes(t);
       return {serial:t, ok};
     });
@@ -1404,61 +1476,6 @@ function abrirDespacho(solicitud=null) {
     const completo = lista.length===s.cantidad && invalidos.length===0 && (disp===null || series.every(x=>x.ok===true));
     return {series, lista, validos, invalidos, cargando:disp===null,
             faltan:s.cantidad-lista.length, completo};
-  }
-
-  function renderSerial(s,idx){
-    const v=validarSeriales(s);
-    // Estado resumen
-    let estado='';
-    if(v.cargando){
-      estado=`<div style="font-size:10px;color:var(--text-4)">Verificando disponibilidad…</div>`;
-    }else if(v.lista.length===0){
-      estado=`<div style="font-size:10px;color:var(--text-4)">Faltan ${s.cantidad} serie${s.cantidad>1?'s':''}</div>`;
-    }else if(v.lista.length!==s.cantidad){
-      const dif=v.lista.length<s.cantidad?`faltan ${s.cantidad-v.lista.length}`:`sobran ${v.lista.length-s.cantidad}`;
-      estado=`<div style="font-size:10px;color:#fbbf24;font-weight:600">${v.lista.length} de ${s.cantidad} · ${dif}</div>`;
-    }else if(v.invalidos.length){
-      estado=`<div style="font-size:10px;color:#ef4444;font-weight:600">${v.invalidos.length} no ${v.invalidos.length>1?'están':'está'} en bodega</div>`;
-    }else{
-      estado=`<div style="font-size:10px;color:#22c55e;font-weight:700">&#10003; ${v.lista.length} serie${v.lista.length>1?'s':''} verificada${v.lista.length>1?'s':''}</div>`;
-    }
-
-    const chipSerie=(ser,ok,delBtn)=>{
-      const col = ok===false?'#ef4444':ok===true?'#22c55e':'var(--text-3)';
-      const bg  = ok===false?'rgba(239,68,68,.08)':ok===true?'rgba(34,197,94,.08)':'var(--glass)';
-      const bd  = ok===false?'rgba(239,68,68,.3)':ok===true?'rgba(34,197,94,.3)':'var(--border)';
-      const ic  = ok===false?'&#10007;':ok===true?'&#10003;':'';
-      return `<div style="display:flex;align-items:center;gap:6px;font-size:11px">
-        <div style="flex:1;background:${bg};border:1px solid ${bd};border-radius:6px;padding:5px 8px;font-family:monospace;color:${col};display:flex;justify-content:space-between;align-items:center">
-          <span>${ser}</span><span style="font-weight:700">${ic}</span>
-        </div>
-        ${delBtn}
-      </div>`;
-    };
-
-    return `<div style="background:rgba(139,92,246,.06);border:1px solid rgba(139,92,246,.2);border-radius:10px;padding:10px;margin-top:8px">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-        <div style="font-size:10px;font-weight:700;color:var(--bod-light);text-transform:uppercase">Seriales a entregar</div>
-        ${estado}
-      </div>
-      <div style="display:flex;gap:6px;margin-bottom:8px">
-        <div class="select-chip ${s.modoSerial==='individual'?'active':''}" style="font-size:10px" onclick="window.__d_smod(${idx},'individual')">Individual</div>
-        <div class="select-chip ${s.modoSerial==='rango'?'active':''}" style="font-size:10px" onclick="window.__d_smod(${idx},'rango')">Rango</div>
-      </div>
-      ${s.modoSerial==='individual'?`
-      <div style="display:flex;gap:6px;margin-bottom:6px">
-        <input class="form-input" id="si-${idx}" type="text" placeholder="Escribe o escanea el serial…" style="flex:1;padding:8px 10px;font-size:12px" onkeydown="if(event.key==='Enter'){event.preventDefault();window.__d_sadd(${idx});}"/>
-        <button class="icon-btn" style="width:36px;height:36px;color:var(--bod-light);border-color:var(--bod-border);background:var(--bod-glass)" onclick="window.__d_sadd(${idx})">+</button>
-      </div>
-      <div class="flex-col gap-4">${v.series.map((x,i)=>chipSerie(x.serial,x.ok,`<button class="icon-btn" style="width:24px;height:24px" onclick="window.__d_sdel(${idx},${i})"><svg viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="10" height="10"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>`)).join('')}</div>
-      `:`
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
-        <div><div style="font-size:10px;color:var(--text-4);margin-bottom:4px">Serial inicial</div><input class="form-input" id="sri-${idx}" type="text" value="${s.serialInicio}" placeholder="Ej. 12345001" style="font-size:12px;padding:8px 10px" oninput="window.__d_srange(${idx})"/></div>
-        <div><div style="font-size:10px;color:var(--text-4);margin-bottom:4px">Serial final</div><input class="form-input" id="srf-${idx}" type="text" value="${s.serialFin}" placeholder="Ej. 12345010" style="font-size:12px;padding:8px 10px" oninput="window.__d_srange(${idx})"/></div>
-      </div>
-      ${v.lista.length?`<div class="flex-col gap-4">${v.series.map(x=>chipSerie(x.serial,x.ok,'')).join('')}</div>`:''}
-      `}
-    </div>`;
   }
 
   async function handleDespacho(){
@@ -2107,6 +2124,7 @@ function expandirSeriales(modo, textoIndividual, inicio, fin) {
     const nI = parseInt(ini.replace(/\D/g,''),10);
     const nF = parseInt(f.replace(/\D/g,''),10);
     if (isNaN(nI) || isNaN(nF) || nF < nI) return [];
+    if (nF - nI > 1000) return []; // tope de seguridad: rango máximo 1000
     const prefix = ini.replace(/\d+$/,'');
     const digits = String(nF).length;
     const lista = [];
