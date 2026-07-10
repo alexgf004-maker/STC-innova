@@ -83,6 +83,7 @@ let tecnicos_ = [];          // lista de técnicos de la app para despacho
 let serialesCache_ = {};     // itemId -> [seriales disponibles] para validación en vivo
 let allItems_    = [];
 let salidas_     = [];
+let despachosPendientes_ = [];  // despachos esperando aceptación del técnico
 let solicitudes_ = [];
 let consumos_    = [];
 let activeTab_   = 'inventario';
@@ -185,6 +186,17 @@ async function loadData(miMontaje) {
       tecnicos_ = usersSnap.docs.map(d=>({id:d.id,...d.data()})).filter(u=>u.active!==false).sort((a,b)=>safeStr(a.displayName).localeCompare(safeStr(b.displayName)));
     } catch(e) {
       console.warn('[bodega] No se pudieron cargar técnicos:',e);
+    }
+    // Cargar despachos pendientes de aceptación (admin/asistente)
+    if (role_==='admin' || role_==='asistente') {
+      try {
+        const pendSnap = await db.collection('despachos_pendientes').get();
+        if (miMontaje !== undefined && !sigueActiva(miMontaje)) return;
+        despachosPendientes_ = pendSnap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(b.fecha?.seconds||0)-(a.fecha?.seconds||0));
+        if (despachosPendientes_.length && activeTab_==='historial') renderHistorial();
+      } catch(e) {
+        console.warn('[bodega] No se pudieron cargar despachos pendientes:',e);
+      }
     }
   } catch(err) {
     console.error('[bodega] Error:',err);
@@ -804,6 +816,32 @@ function renderHistorial() {
   const sorted  = [...salidas_]
     .filter(s => (s.area || 'CAMBIOS') === areaFiltro_)
     .sort((a,b)=>(b.fecha?.seconds||0)-(a.fecha?.seconds||0));
+  const pendientes = despachosPendientes_.filter(p => (p.area||'') === areaFiltro_);
+
+  const pendHTML = pendientes.length ? `
+    <div class="anim-up d1" style="margin-bottom:4px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+        <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:#fbbf24">Pendientes de aceptación</div>
+        <div style="flex:1;height:1px;background:rgba(251,191,36,.2)"></div>
+        <div style="font-size:11px;color:var(--text-4)">${pendientes.length}</div>
+      </div>
+      <div class="flex-col gap-8">
+        ${pendientes.map(p=>`
+          <div class="bod-solic-card" style="background:rgba(251,191,36,.05);border-color:rgba(251,191,36,.25)">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:8px">
+              <div>
+                <div style="font-size:13px;font-weight:700">${safeStr(p.usuarioResponsable)}</div>
+                <div style="font-size:10px;color:var(--text-4)">${fmtDate(p.fecha)} · Esperando aceptación del técnico</div>
+              </div>
+              <button class="bod-badge" style="color:#ef4444;border-color:rgba(239,68,68,.3);background:rgba(239,68,68,.08);cursor:pointer" onclick="window.__bodega._cancelarPend('${p.id}')">Cancelar</button>
+            </div>
+            <div class="flex-col gap-3">
+              ${(p.items||[]).slice(0,3).map(m=>`<div style="display:flex;justify-content:space-between;font-size:11px"><span style="color:var(--text-3)">${tc(m.nombre||m.name||'—')}</span><span style="font-weight:600">${m.cantidad} ${safeStr(m.unit,'')}</span></div>`).join('')}
+              ${(p.items||[]).length>3?`<div style="font-size:10px;color:var(--text-4)">+${(p.items||[]).length-3} más</div>`:''}
+            </div>
+          </div>`).join('')}
+      </div>
+    </div>` : '';
 
   content.innerHTML=`
     <div class="flex-col gap-12">
@@ -813,6 +851,7 @@ function renderHistorial() {
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
         </button>
       </div>
+      ${pendHTML}
       ${!sorted.length?`<div class="dev-module anim-up d1"><div class="dev-title">Sin salidas</div></div>`:`
       <div class="flex-col gap-8 anim-up d1">
         ${sorted.map(s=>`
@@ -837,6 +876,21 @@ function renderHistorial() {
 
   window.__bodega._verMemo=(id)=>{const s=salidas_.find(x=>x.id===id);if(s)showMemo(s);};
   window.__bodega._devolucion=(id)=>{const s=salidas_.find(x=>x.id===id);if(s)abrirDevolucion(s);};
+  window.__bodega._cancelarPend=(id)=>cancelarPendiente(id);
+}
+
+async function cancelarPendiente(id){
+  const p=despachosPendientes_.find(x=>x.id===id);
+  if(!p) return;
+  if(!confirm(`¿Cancelar el despacho pendiente para ${safeStr(p.usuarioResponsable)}? El material no se ha descontado.`)) return;
+  try{
+    await db.collection('despachos_pendientes').doc(id).delete();
+    despachosPendientes_=despachosPendientes_.filter(x=>x.id!==id);
+    toast('Despacho cancelado','ok');
+    renderHistorial();
+  }catch(err){
+    toast('Error al cancelar: '+err.message,'error');
+  }
 }
 
 // ── Stock por usuario ─────────────────────────────
