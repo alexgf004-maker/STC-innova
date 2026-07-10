@@ -2027,33 +2027,37 @@ function abrirEntrada(itemId) {
 // ── Helpers ───────────────────────────────────────
 function mostrarModalCantidad(item, onAdd) {
   const m=document.createElement('div');
-  m.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:flex-end;z-index:600;';
-  m.innerHTML=`<div style="background:var(--bg-card);width:100%;border-radius:20px 20px 0 0;padding:20px 20px max(32px,20px)">
-    <div style="width:36px;height:4px;background:rgba(255,255,255,.15);border-radius:2px;margin:0 auto 16px"></div>
-    <div style="font-size:15px;font-weight:700;margin-bottom:4px">${tc(item.name)}</div>
-    <div style="font-size:11px;color:var(--text-4);margin-bottom:20px">${item.stock} ${item.unit} disponibles</div>
-    <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:20px">
-      <button id="mc-dec" class="icon-btn" style="width:56px;height:56px;font-size:24px;font-weight:700">−</button>
+  m.style.cssText='position:fixed;inset:0;background:rgba(3,7,18,.75);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);display:flex;align-items:flex-end;justify-content:center;z-index:600;';
+  m.innerHTML=`<div style="background:#161f2e;width:100%;max-width:520px;border-radius:24px 24px 0 0;padding:8px 22px max(34px,22px);border-top:1px solid rgba(255,255,255,.08);box-shadow:0 -8px 40px rgba(0,0,0,.5)">
+    <div style="width:40px;height:4px;background:rgba(255,255,255,.18);border-radius:2px;margin:0 auto 20px"></div>
+    <div style="font-size:17px;font-weight:800;margin-bottom:4px">${tc(item.name)}</div>
+    <div style="font-size:12px;color:var(--text-4);margin-bottom:24px">${item.stock} ${item.unit} disponibles en bodega</div>
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:18px;margin-bottom:24px">
+      <button id="mc-dec" style="width:60px;height:60px;border-radius:16px;border:1px solid var(--border);background:var(--glass);color:var(--text);font-size:28px;font-weight:700;cursor:pointer;flex-shrink:0">−</button>
       <div style="flex:1;text-align:center">
-        <input id="mc-cant" type="number" min="1" max="${item.stock}" value="1" style="width:100%;text-align:center;font-size:40px;font-weight:900;color:var(--text);background:transparent;border:none;outline:none;font-family:'Outfit',sans-serif"/>
-        <div style="font-size:12px;color:var(--text-4)">${item.unit}</div>
+        <input id="mc-cant" type="number" min="1" max="${item.stock}" value="1" style="width:100%;text-align:center;font-size:44px;font-weight:900;color:var(--bod-light);background:transparent;border:none;outline:none;font-family:'Outfit',sans-serif"/>
+        <div style="font-size:12px;color:var(--text-4);margin-top:-4px">${item.unit}</div>
       </div>
-      <button id="mc-inc" class="icon-btn" style="width:56px;height:56px;font-size:24px;font-weight:700;color:var(--bod-light);border-color:var(--bod-border);background:var(--bod-glass)">+</button>
+      <button id="mc-inc" style="width:60px;height:60px;border-radius:16px;border:1px solid var(--bod-border);background:var(--bod-glass);color:var(--bod-light);font-size:28px;font-weight:700;cursor:pointer;flex-shrink:0">+</button>
     </div>
-    <div id="mc-err" class="form-error" style="margin-bottom:8px"></div>
-    <button class="btn-primary full bod" id="mc-add">Agregar al despacho</button>
+    <div id="mc-err" class="form-error" style="margin-bottom:10px"></div>
+    <div style="display:flex;gap:10px">
+      <button id="mc-cancel" style="flex:1;height:50px;border-radius:14px;border:1px solid var(--border);background:transparent;color:var(--text-3);font-size:14px;font-weight:600;cursor:pointer;font-family:'Outfit',sans-serif">Cancelar</button>
+      <button class="btn-primary bod" id="mc-add" style="flex:2;height:50px">Agregar</button>
+    </div>
   </div>`;
   document.body.appendChild(m);
   const cantEl=m.querySelector('#mc-cant');
   setTimeout(()=>{cantEl.focus();cantEl.select();},80);
   m.addEventListener('click',e=>{if(e.target===m)m.remove();});
+  m.querySelector('#mc-cancel').onclick=()=>m.remove();
   m.querySelector('#mc-dec').onclick=()=>{const v=safeNum(cantEl.value);if(v>1)cantEl.value=v-1;};
   m.querySelector('#mc-inc').onclick=()=>{const v=safeNum(cantEl.value);if(v<item.stock)cantEl.value=v+1;};
   m.querySelector('#mc-add').addEventListener('click',()=>{
     const cant=safeNum(cantEl.value);
     const errEl=m.querySelector('#mc-err');
     if(cant<=0){errEl.textContent='Cantidad inválida.';errEl.style.display='block';return;}
-    if(cant>item.stock){errEl.textContent=`Máximo: ${item.stock}`;errEl.style.display='block';return;}
+    if(cant>item.stock){errEl.textContent=`Solo hay ${item.stock} ${item.unit} en bodega.`;errEl.style.display='block';return;}
     m.remove();onAdd(cant);
   });
 }
