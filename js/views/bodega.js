@@ -1078,7 +1078,7 @@ function abrirDevolucion(salida) {
 function abrirDespacho(solicitud=null) {
   const campanaDespacho = solicitud?.area || areaFiltro_ || 'CAMBIOS';
   const esCampanaNueva = (campanaDespacho==='AMI' || campanaDespacho==='Caracterizacion');
-  const hdr={responsable:solicitud?.usuarioNombre||'',pareja:'',contratista:'INNOVA',instalador:'',placa:'',placaOtro:'',fechaSol:new Date().toISOString().split('T')[0],fechaEnt:new Date().toISOString().split('T')[0]};
+  const hdr={responsable:solicitud?.usuarioNombre||'',pareja:'',usuarioResp:'',contratista:'INNOVA',instalador:'',placa:'',placaOtro:'',fechaSol:new Date().toISOString().split('T')[0],fechaEnt:new Date().toISOString().split('T')[0]};
   let sel=[];
   if(solicitud?.materiales?.length){
     sel=solicitud.materiales.map(m=>{
@@ -1121,6 +1121,10 @@ function abrirDespacho(solicitud=null) {
           </div>
         </div>
         ${esCampanaNueva?`
+        <div class="form-field">
+          <div class="form-label">Usuario responsable</div>
+          <input class="form-input" id="hdr-usuario" value="${hdr.usuarioResp||''}" placeholder="Usuario asignado (opcional)" autocomplete="off"/>
+        </div>
         <div class="form-field">
           <div class="form-label">Pareja / acompañante</div>
           <div style="position:relative">
@@ -1188,6 +1192,7 @@ function abrirDespacho(solicitud=null) {
       if(!resp||!cont){errEl.textContent='Técnico que recibe y contratista son obligatorios.';errEl.style.display='block';return;}
       hdr.responsable=resp;hdr.contratista=cont;
       hdr.pareja=ov.querySelector('#hdr-pareja')?.value.trim()||'';
+      hdr.usuarioResp=ov.querySelector('#hdr-usuario')?.value.trim()||'';
       hdr.instalador='';
       hdr.placa=ov.querySelector('#hdr-placa .select-chip.active')?.dataset.val||'';
       hdr.placaOtro=ov.querySelector('#hdr-placa-otro').value.trim();
@@ -1384,7 +1389,7 @@ function abrirDespacho(solicitud=null) {
       const col = ok===false?'#ef4444':ok===true?'#22c55e':'var(--text-3)';
       const bg  = ok===false?'rgba(239,68,68,.08)':ok===true?'rgba(34,197,94,.08)':'var(--glass)';
       const bd  = ok===false?'rgba(239,68,68,.3)':ok===true?'rgba(34,197,94,.3)':'var(--border)';
-      const ic  = ok===false?'✕':ok===true?'&#10003;':'';
+      const ic  = ok===false?'&#10007;':ok===true?'&#10003;':'';
       return `<div style="display:flex;align-items:center;gap:6px;font-size:11px">
         <div style="flex:1;background:${bg};border:1px solid ${bd};border-radius:6px;padding:5px 8px;font-family:monospace;color:${col};display:flex;justify-content:space-between;align-items:center">
           <span>${ser}</span><span style="font-weight:700">${ic}</span>
@@ -1459,7 +1464,7 @@ function abrirDespacho(solicitud=null) {
     try{
       const salidaData={
         area:solicitud?.area||areaFiltro_,
-        usuarioResponsable:hdr.responsable,parejaAcompanante:hdr.pareja||'',empresaContratista:hdr.contratista,
+        usuarioResponsable:hdr.responsable,parejaAcompanante:hdr.pareja||'',usuarioRespAsignado:hdr.usuarioResp||'',empresaContratista:hdr.contratista,
         instaladorResponsable:hdr.instalador,placaVehiculo:placa,
         fechaSolicitud:hdr.fechaSol,fechaEntrega:hdr.fechaEnt,
         entregadoPor:session_.displayName,entregadoPorUid:uid_,
@@ -1564,51 +1569,93 @@ function showMemoCampana(salida) {
   const memoData = { area:salida.area, camp, items,
     recibe: safeStr(salida.usuarioResponsable||salida.tecnicoNombre,''),
     pareja: safeStr(salida.parejaAcompanante,''),
+    usuarioResp: safeStr(salida.usuarioRespAsignado,''),
     vehiculo: safeStr(salida.placaVehiculo,''),
     entrega: safeStr(salida.entregadoPor||salida.registradoPorNombre,''),
     fecha: fechaEnt,
   };
 
-  const filaMat = (m) => {
-    const serieHtml = m.requiereSerial && m.series.length
-      ? `<div style="margin-top:4px;padding:6px 8px;background:rgba(255,255,255,.03);border-radius:6px">
-           <div style="font-size:8px;font-weight:700;color:var(--text-4);text-transform:uppercase;margin-bottom:3px">Series (${m.series.length})</div>
-           <div style="font-family:monospace;font-size:10px;line-height:1.6;color:var(--text-2)">${m.series.join(' · ')}</div>
-         </div>` : '';
-    return `<div style="padding:8px;border-bottom:1px solid rgba(255,255,255,.05)">
-      <div style="display:flex;justify-content:space-between;gap:8px">
-        <span style="font-size:11px;text-transform:uppercase">${tc(m.nombre)}</span>
-        <span style="font-size:12px;font-weight:700">${m.cantidad} ${m.unit}</span>
-      </div>${serieHtml}
-    </div>`;
+  const AC = salida.area==='AMI' ? '#fbbf24' : '#a78bfa'; // color de acento por campaña
+
+  // Filas de material (con series en tabla si aplica)
+  const filaMat = (m,i) => {
+    const seriesTabla = m.requiereSerial && m.series.length
+      ? `<tr><td colspan="2" style="padding:0;border:none">
+          <div style="background:rgba(255,255,255,.02);border-left:2px solid ${AC};margin:2px 0 6px 8px;padding:6px 10px;border-radius:0 6px 6px 0">
+            <div style="font-size:8px;font-weight:800;color:${AC};text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">Series entregadas · ${m.series.length}</div>
+            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(90px,1fr));gap:3px">
+              ${m.series.map(s=>`<div style="font-family:monospace;font-size:10px;color:var(--text-2);background:rgba(255,255,255,.03);border-radius:4px;padding:2px 6px;text-align:center">${s}</div>`).join('')}
+            </div>
+          </div></td></tr>`
+      : '';
+    return `<tr style="border-bottom:1px solid rgba(255,255,255,.05)">
+        <td style="padding:9px 10px;font-size:12px;text-transform:uppercase;letter-spacing:.02em">${tc(m.nombre)}</td>
+        <td style="padding:9px 10px;font-size:13px;font-weight:800;text-align:right;white-space:nowrap;color:${AC}">${m.cantidad} <span style="font-size:10px;font-weight:600;color:var(--text-4)">${m.unit}</span></td>
+      </tr>${seriesTabla}`;
   };
+
+  const dato = (k,v) => `
+    <div style="display:flex;gap:10px;align-items:baseline">
+      <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:var(--text-4);min-width:112px">${k}</div>
+      <div style="font-weight:600;font-size:12px;flex:1;border-bottom:1px dashed var(--border-md);padding-bottom:3px">${v||'—'}</div>
+    </div>`;
+
+  const firma = (rol,nom) => `
+    <div style="flex:1;text-align:center">
+      <div style="height:38px;border-bottom:1.5px solid var(--text-3);margin-bottom:6px"></div>
+      <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:${AC}">${rol}</div>
+      <div style="font-size:11px;font-weight:600;margin-top:2px">${nom||'—'}</div>
+    </div>`;
 
   const sheet=document.createElement('div');
   sheet.className='sheet-backdrop open';
-  sheet.innerHTML=`<div class="sheet" style="max-height:90vh;overflow-y:auto">
+  sheet.innerHTML=`<div class="sheet" style="max-height:92vh;overflow-y:auto">
     <div class="sheet-handle"></div>
-    <div class="sheet-title">Memo de despacho — ${camp}</div>
-    <div class="sheet-body">
-      <div style="text-align:center;border-bottom:1px solid var(--border);padding-bottom:12px;margin-bottom:14px">
-        <div style="font-size:15px;font-weight:800;letter-spacing:.05em">INNOVA</div>
-        <div style="font-size:10px;color:var(--text-3);margin-top:2px">Servicios Técnicos y Comerciales</div>
-        <div style="font-size:11px;font-weight:700;color:var(--bod-light);margin-top:6px;text-transform:uppercase">Campaña: ${camp}</div>
+    <div class="sheet-body" style="padding-top:4px">
+
+      <!-- Encabezado -->
+      <div style="position:relative;text-align:center;padding:18px 0 16px;border-radius:16px;background:linear-gradient(160deg,${AC}14,transparent 70%);margin-bottom:4px">
+        <div style="display:inline-flex;align-items:center;gap:8px;margin-bottom:4px">
+          <div style="width:26px;height:26px;border-radius:8px;background:${AC};display:flex;align-items:center;justify-content:center">
+            <svg viewBox="0 0 24 24" fill="none" stroke="#0a1628" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+          </div>
+          <div style="font-size:20px;font-weight:900;letter-spacing:.08em">INNOVA</div>
+        </div>
+        <div style="font-size:10px;color:var(--text-3);font-weight:500">Servicios Técnicos y Comerciales</div>
+        <div style="display:inline-block;margin-top:8px;font-size:11px;font-weight:800;color:${AC};text-transform:uppercase;letter-spacing:.06em;background:${AC}1a;border:1px solid ${AC}44;padding:3px 14px;border-radius:20px">${camp}</div>
       </div>
-      <div class="flex-col gap-6" style="margin-bottom:16px">
-        ${[['Persona que retira',memoData.recibe],['Pareja / acompañante',memoData.pareja],['Vehículo',memoData.vehiculo],['Fecha de entrega',memoData.fecha]].map(([k,v])=>`
-          <div style="display:flex;gap:8px;font-size:11px">
-            <div style="font-size:9px;font-weight:700;text-transform:uppercase;color:var(--text-4);min-width:130px;padding-top:2px">${k}:</div>
-            <div style="font-weight:600;border-bottom:1px solid var(--border-md);flex:1;padding-bottom:2px">${v||'—'}</div>
-          </div>`).join('')}
+
+      <!-- Firmas ARRIBA -->
+      <div style="display:flex;gap:20px;padding:16px 8px 18px">
+        ${firma('Entrega', memoData.entrega)}
+        ${firma('Recibe', memoData.recibe)}
       </div>
-      <div style="font-size:9px;font-weight:700;text-transform:uppercase;color:var(--text-4);margin-bottom:8px">Material entregado</div>
-      <div style="border:1px solid var(--border-md);border-radius:8px;overflow:hidden;margin-bottom:16px">
-        ${items.map(filaMat).join('')}
+
+      <!-- Datos -->
+      <div class="flex-col gap-9" style="padding:14px;background:var(--glass);border:1px solid var(--border);border-radius:12px;margin-bottom:16px">
+        ${dato('Usuario resp.', memoData.usuarioResp)}
+        ${dato('Persona retira', memoData.recibe)}
+        ${dato('Acompañante', memoData.pareja)}
+        ${dato('Vehículo', memoData.vehiculo)}
+        ${dato('Fecha entrega', memoData.fecha)}
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:24px">
-        <div style="text-align:center"><div style="border-bottom:1px solid var(--border-md);height:32px;margin-bottom:4px"></div><div style="font-size:9px;font-weight:700;text-transform:uppercase;color:var(--text-4)">Entrega: ${memoData.entrega||'—'}</div></div>
-        <div style="text-align:center"><div style="border-bottom:1px solid var(--border-md);height:32px;margin-bottom:4px"></div><div style="font-size:9px;font-weight:700;text-transform:uppercase;color:var(--text-4)">Recibe: ${memoData.recibe||'—'}</div></div>
+
+      <!-- Material -->
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+        <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:var(--text-3)">Material entregado</div>
+        <div style="flex:1;height:1px;background:var(--border)"></div>
+        <div style="font-size:10px;color:var(--text-4)">${items.length} línea${items.length>1?'s':''}</div>
       </div>
+      <div style="border:1px solid var(--border);border-radius:12px;overflow:hidden">
+        <table style="width:100%;border-collapse:collapse">
+          <thead><tr style="background:${AC}12">
+            <th style="text-align:left;padding:8px 10px;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:var(--text-3)">Descripción</th>
+            <th style="text-align:right;padding:8px 10px;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:var(--text-3)">Cantidad</th>
+          </tr></thead>
+          <tbody>${items.map(filaMat).join('')}</tbody>
+        </table>
+      </div>
+
     </div>
     <div style="padding:12px 16px;border-top:1px solid var(--border);display:flex;gap:8px">
       <button class="btn-action outline" style="flex:1;height:44px" onclick="this.closest('.sheet-backdrop').remove()">Cerrar</button>
@@ -1622,58 +1669,67 @@ function showMemoCampana(salida) {
 }
 
 function imprimirCampana(m) {
+  const AC = m.area==='AMI' ? '#c98a00' : '#7c5cd6';
   const filas = m.items.map(it=>{
     const serie = it.requiereSerial && it.series.length
-      ? `<div style="font-family:'Courier New',monospace;font-size:7pt;margin-top:1mm;color:#333">Series: ${it.series.join(' · ')}</div>`
+      ? `<tr><td colspan="2" style="border:0.4pt solid #000;border-top:none;padding:1.5mm 2mm;background:#fafafa">
+           <div style="font-size:7pt;font-weight:bold;color:${AC};text-transform:uppercase;margin-bottom:1mm">Series entregadas (${it.series.length})</div>
+           <div style="display:flex;flex-wrap:wrap;gap:1.5mm">
+             ${it.series.map(s=>`<span style="font-family:'Courier New',monospace;font-size:8pt;border:0.3pt solid #999;border-radius:1mm;padding:0.3mm 1.5mm">${s}</span>`).join('')}
+           </div>
+         </td></tr>`
       : '';
     return `<tr>
-      <td style="border:0.4pt solid #000;padding:1mm 1.5mm;font-size:8pt">${(it.nombre||'').toUpperCase()}${serie}</td>
-      <td style="border:0.4pt solid #000;padding:1mm 1.5mm;font-size:8pt;text-align:center;font-weight:bold;width:25mm">${it.cantidad} ${it.unit}</td>
-    </tr>`;
+      <td style="border:0.4pt solid #000;padding:1.5mm 2mm;font-size:9pt;text-transform:uppercase">${(it.nombre||'').toUpperCase()}</td>
+      <td style="border:0.4pt solid #000;padding:1.5mm 2mm;font-size:9pt;text-align:right;font-weight:bold;width:28mm">${it.cantidad} ${it.unit}</td>
+    </tr>${serie}`;
   }).join('');
 
   const html=`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Memo ${m.camp}</title>
   <style>
-    @page{size:215.9mm 279.4mm;margin:15mm 15mm;}
+    @page{size:215.9mm 279.4mm;margin:14mm 16mm;}
     *{margin:0;padding:0;box-sizing:border-box;}
-    body{font-family:Arial,sans-serif;color:#000;background:#fff;font-size:9pt;}
-    .head{text-align:center;border-bottom:1.5pt solid #000;padding-bottom:4mm;margin-bottom:6mm;}
-    .emp{font-size:18pt;font-weight:bold;letter-spacing:2px;}
-    .uni{font-size:9pt;margin-top:1mm;}
-    .camp{font-size:11pt;font-weight:bold;margin-top:3mm;text-transform:uppercase;}
-    .datos{margin-bottom:6mm;}
-    .datos tr td{padding:1.5mm 0;font-size:9pt;}
-    .lbl{font-weight:bold;text-transform:uppercase;font-size:8pt;width:45mm;color:#333;}
-    .val{border-bottom:0.4pt solid #000;}
-    .tit{font-size:8pt;font-weight:bold;text-transform:uppercase;color:#333;margin-bottom:2mm;}
-    table.mat{width:100%;border-collapse:collapse;margin-bottom:8mm;}
-    table.mat th{background:#eee;border:0.4pt solid #000;padding:1.5mm;font-size:8pt;text-transform:uppercase;}
-    .firmas{display:flex;gap:20mm;margin-top:16mm;}
+    body{font-family:Arial,Helvetica,sans-serif;color:#111;background:#fff;font-size:9pt;}
+    .head{position:relative;text-align:center;padding-bottom:5mm;margin-bottom:6mm;border-bottom:2pt solid ${AC};}
+    .emp{font-size:22pt;font-weight:900;letter-spacing:3px;}
+    .uni{font-size:8.5pt;color:#444;margin-top:1mm;}
+    .camp{display:inline-block;font-size:9pt;font-weight:bold;margin-top:2.5mm;text-transform:uppercase;letter-spacing:1px;color:${AC};border:1pt solid ${AC};border-radius:10pt;padding:1mm 5mm;}
+    .firmas{display:flex;gap:20mm;margin-bottom:8mm;}
     .firma{flex:1;text-align:center;}
-    .firma .linea{border-bottom:0.5pt solid #000;height:14mm;margin-bottom:2mm;}
-    .firma .rol{font-size:8pt;font-weight:bold;text-transform:uppercase;}
-    .firma .nom{font-size:8pt;margin-top:1mm;}
+    .firma .linea{border-bottom:0.6pt solid #000;height:16mm;margin-bottom:1.5mm;}
+    .firma .rol{font-size:7.5pt;font-weight:bold;text-transform:uppercase;letter-spacing:.5px;color:${AC};}
+    .firma .nom{font-size:8.5pt;margin-top:0.5mm;}
+    .datos{width:100%;margin-bottom:6mm;border-collapse:collapse;}
+    .datos td{padding:1.5mm 0;font-size:9pt;vertical-align:bottom;}
+    .lbl{font-weight:bold;text-transform:uppercase;font-size:7.5pt;width:38mm;color:#333;}
+    .val{border-bottom:0.4pt solid #000;padding-left:2mm !important;}
+    .tit{font-size:8pt;font-weight:bold;text-transform:uppercase;color:#333;margin-bottom:2mm;letter-spacing:.5px;}
+    table.mat{width:100%;border-collapse:collapse;}
+    table.mat th{background:${AC}22;border:0.4pt solid #000;padding:1.5mm 2mm;font-size:7.5pt;text-transform:uppercase;letter-spacing:.5px;}
   </style></head><body>
     <div class="head">
       <div class="emp">INNOVA</div>
       <div class="uni">Servicios Técnicos y Comerciales</div>
       <div class="camp">Campaña: ${m.camp}</div>
     </div>
-    <table class="datos" style="width:100%">
-      <tr><td class="lbl">Persona que retira:</td><td class="val">${m.recibe||''}</td></tr>
-      <tr><td class="lbl">Pareja / acompañante:</td><td class="val">${m.pareja||''}</td></tr>
-      <tr><td class="lbl">Vehículo:</td><td class="val">${m.vehiculo||''}</td></tr>
-      <tr><td class="lbl">Fecha de entrega:</td><td class="val">${m.fecha||''}</td></tr>
-    </table>
-    <div class="tit">Material entregado</div>
-    <table class="mat">
-      <tr><th style="text-align:left">Descripción</th><th style="width:25mm">Cantidad</th></tr>
-      ${filas}
-    </table>
+
     <div class="firmas">
       <div class="firma"><div class="linea"></div><div class="rol">Entrega</div><div class="nom">${m.entrega||''}</div></div>
       <div class="firma"><div class="linea"></div><div class="rol">Recibe</div><div class="nom">${m.recibe||''}</div></div>
     </div>
+
+    <table class="datos">
+      <tr><td class="lbl">Usuario responsable:</td><td class="val">${m.usuarioResp||''}</td></tr>
+      <tr><td class="lbl">Persona que retira:</td><td class="val">${m.recibe||''}</td></tr>
+      <tr><td class="lbl">Acompañante:</td><td class="val">${m.pareja||''}</td></tr>
+      <tr><td class="lbl">Vehículo:</td><td class="val">${m.vehiculo||''}</td><td class="lbl" style="width:24mm;padding-left:6mm">Fecha:</td><td class="val">${m.fecha||''}</td></tr>
+    </table>
+
+    <div class="tit">Material entregado</div>
+    <table class="mat">
+      <tr><th style="text-align:left">Descripción</th><th style="width:28mm;text-align:right">Cantidad</th></tr>
+      ${filas}
+    </table>
   </body></html>`;
 
   const w=window.open('','_blank');
