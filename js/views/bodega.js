@@ -706,11 +706,43 @@ function renderInventario() {
       </div>
       ${agotados?`<div class="otc-alert-card crit anim-up d2"><div class="otc-alert-header">${agotados} item${agotados>1?'s':''} agotado${agotados>1?'s':''}</div></div>`:''}
       ${bajos?`<div class="otc-alert-card warn anim-up d2"><div class="otc-alert-header">${bajos} item${bajos>1?'s':''} bajo stock mínimo</div></div>`:''}
-      <div class="flex-col gap-8 anim-up d2">
+      <div class="buscar-wrap anim-up d2">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14" style="color:var(--text-4);flex-shrink:0"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input class="buscar-input" id="bod-inv-buscar" placeholder="Buscar material…" autocomplete="off"/>
+      </div>
+      <div class="flex-col gap-6 anim-up d2" id="bod-inv-lista">
         ${!items.length?`<div class="dev-module"><div class="dev-title">Sin items</div></div>`
           :items.sort((a,b)=>a.stock-b.stock).map(item=>renderItemCard(item)).join('')}
       </div>
     </div>`;
+
+  // Buscador
+  const buscar=document.getElementById('bod-inv-buscar');
+  const lista=document.getElementById('bod-inv-lista');
+  function pintar(q){
+    const term=(q||'').toLowerCase().trim();
+    const arr=items.filter(i=>!term||i.name.toLowerCase().includes(term)||(i.sapCode||'').includes(term)||(i.axCode||'').includes(term)).sort((a,b)=>a.stock-b.stock);
+    lista.innerHTML=arr.length?arr.map(item=>renderItemCard(item)).join(''):`<div style="text-align:center;color:var(--text-4);font-size:12px;padding:24px">Sin resultados</div>`;
+    enlazarFilas();
+  }
+  buscar?.addEventListener('input',e=>pintar(e.target.value));
+
+  // Expandir/colapsar acciones al tocar
+  function enlazarFilas(){
+    lista.querySelectorAll('.bod-item-row').forEach(row=>{
+      const head=row.querySelector('.bod-item-head');
+      const acts=row.querySelector('.bod-item-actions');
+      const chev=row.querySelector('.bod-item-chevron');
+      head.addEventListener('click',()=>{
+        const abierto=acts.style.display==='flex';
+        // cerrar otros
+        lista.querySelectorAll('.bod-item-actions').forEach(a=>a.style.display='none');
+        lista.querySelectorAll('.bod-item-chevron').forEach(c=>c.style.transform='');
+        if(!abierto){acts.style.display='flex';chev.style.transform='rotate(90deg)';}
+      });
+    });
+  }
+  enlazarFilas();
 }
 
 function setCampana(area) {
@@ -737,24 +769,30 @@ function renderItemCard(item) {
   const bajo=item.stock>0&&item.stock<=item.minStock;
   const agotado=item.stock===0;
   const color=agotado?'#ef4444':bajo?'#fbbf24':'#22c55e';
-  const bg=agotado?'rgba(239,68,68,.06)':bajo?'rgba(245,158,11,.06)':'var(--glass)';
-  const border=agotado?'rgba(239,68,68,.25)':bajo?'rgba(245,158,11,.25)':'var(--border)';
-  return `<div class="bod-item-card" style="background:${bg};border-color:${border}">
-    <div style="flex:1;min-width:0">
-      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:3px">
-        <div style="font-size:13px;font-weight:700">${tc(item.name)}</div>
-        ${agotado?'<div class="bod-badge crit">Agotado</div>':bajo?'<div class="bod-badge warn">Stock bajo</div>':''}
-        ${item.requiereSerial?`<div class="bod-badge" style="color:var(--bod-light);border-color:var(--bod-border);background:var(--bod-glass);cursor:pointer" onclick="window.__bodega.verSeriales('${item.id}')">Serial</div>`:''}
+  const bg=agotado?'rgba(239,68,68,.05)':bajo?'rgba(245,158,11,.05)':'var(--glass)';
+  const border=agotado?'rgba(239,68,68,.22)':bajo?'rgba(245,158,11,.22)':'var(--border)';
+  return `<div class="bod-item-row" data-item="${item.id}" style="background:${bg};border:1px solid ${border};border-radius:12px;overflow:hidden">
+    <div class="bod-item-head" style="display:flex;align-items:center;gap:10px;padding:11px 13px;cursor:pointer">
+      <div style="flex:1;min-width:0">
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+          <span style="font-size:13px;font-weight:700">${tc(item.name)}</span>
+          ${agotado?'<span class="bod-badge crit" style="font-size:8px">Agotado</span>':bajo?'<span class="bod-badge warn" style="font-size:8px">Bajo</span>':''}
+          ${item.requiereSerial?`<span class="bod-badge" style="font-size:8px;color:var(--bod-light);border-color:var(--bod-border);background:var(--bod-glass)">Serial</span>`:''}
+        </div>
+        <div style="font-size:9.5px;color:var(--text-4);margin-top:2px">${item.sapCode?`SAP ${item.sapCode}`:''}${item.axCode?` · AX ${item.axCode}`:''} · Mín ${item.minStock}</div>
       </div>
-      <div style="font-size:10px;color:var(--text-4)">${item.sapCode?`SAP: ${item.sapCode}`:''}${item.axCode?` · AX: ${item.axCode}`:''} · Mín: ${item.minStock}</div>
+      <div style="text-align:right;flex-shrink:0;line-height:1">
+        <div style="font-size:19px;font-weight:800;color:${color}">${item.stock}</div>
+        <div style="font-size:9px;color:var(--text-4)">${safeStr(item.unit,'')}</div>
+      </div>
+      <svg class="bod-item-chevron" viewBox="0 0 24 24" fill="none" stroke="var(--text-4)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="15" height="15" style="flex-shrink:0;transition:transform .2s"><polyline points="9 18 15 12 9 6"/></svg>
     </div>
-    <div style="text-align:right;flex-shrink:0">
-      <div style="font-size:22px;font-weight:800;color:${color}">${item.stock}</div>
-      <div style="font-size:10px;color:var(--text-4)">${safeStr(item.unit,'')}</div>
-    </div>
-    <div style="display:flex;gap:6px;width:100%;margin-top:8px">
-      <button class="icon-btn" style="flex:1;height:34px;font-size:11px;font-family:'Outfit',sans-serif" onclick="window.__bodega.abrirEntrada('${item.id}')">+ Entrada</button>
-      <button class="icon-btn" style="flex:1;height:34px;font-size:11px;font-family:'Outfit',sans-serif" onclick="window.__bodega.abrirNuevoItem('${item.id}')">Editar</button>
+    <div class="bod-item-actions" style="display:none;gap:6px;padding:0 13px 11px">
+      <button class="btn-action" style="flex:1;height:38px;font-size:12px;color:var(--bod-light);border:1px solid var(--bod-border);background:var(--bod-glass)" onclick="event.stopPropagation();window.__bodega.abrirEntrada('${item.id}')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="13" height="13"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Entrada
+      </button>
+      <button class="btn-action outline" style="flex:1;height:38px;font-size:12px" onclick="event.stopPropagation();window.__bodega.abrirNuevoItem('${item.id}')">Editar</button>
+      ${item.requiereSerial?`<button class="btn-action outline" style="flex:1;height:38px;font-size:12px" onclick="event.stopPropagation();window.__bodega.verSeriales('${item.id}')">Series</button>`:''}
     </div>
   </div>`;
 }
