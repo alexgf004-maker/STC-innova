@@ -1184,40 +1184,49 @@ function abrirDespacho(solicitud=null) {
 
   function renderStep2(){
     const itemsArea=allItems_.filter(i=>i.area===(solicitud?.area||areaFiltro_));
+    const hayserial=sel.some(s=>s.requiereSerial);
     ov.innerHTML=`
-    <div style="max-width:500px;margin:0 auto;display:flex;flex-direction:column;min-height:100vh">
+    <div style="max-width:520px;margin:0 auto;display:flex;flex-direction:column;min-height:100vh">
       <div style="padding:14px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px;position:sticky;top:0;background:var(--bg);z-index:10">
         <button class="icon-btn" id="back1"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><polyline points="15 18 9 12 15 6"/></svg></button>
-        <div class="section-title">Materiales del despacho</div>
+        <div style="flex:1">
+          <div class="section-title">Materiales</div>
+          <div style="font-size:11px;color:var(--text-4)">Paso 2 de ${hayserial?'3':'2'} · toca para agregar</div>
+        </div>
       </div>
-      ${sel.length?`<div style="padding:12px 20px;border-bottom:1px solid var(--border);background:var(--bod-glass)">
-        <div class="section-label" style="margin-bottom:8px">${sel.length} material${sel.length>1?'es':''} seleccionado${sel.length>1?'s':''}</div>
-        <div class="flex-col gap-8">
-          ${sel.map((s,idx)=>`<div>
-            <div style="display:flex;align-items:center;gap:8px">
-              <div style="flex:1;font-size:12px;font-weight:600">${tc(s.name)}</div>
-              <button class="icon-btn" style="width:28px;height:28px" onclick="window.__d_del(${idx})"><svg viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="12" height="12"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
-            </div>
-            <div style="display:flex;align-items:center;gap:10px;margin-top:6px">
-              <button class="icon-btn" style="width:34px;height:34px;font-size:18px;font-weight:700" onclick="window.__d_dec(${idx})">−</button>
-              <div style="flex:1;text-align:center;font-size:20px;font-weight:800;color:var(--bod-light)">${s.cantidad} <span style="font-size:11px;color:var(--text-4)">${s.unit}</span></div>
-              <button class="icon-btn" style="width:34px;height:34px;font-size:18px;font-weight:700;color:var(--bod-light);border-color:var(--bod-border);background:var(--bod-glass)" onclick="window.__d_inc(${idx})">+</button>
-            </div>
-            ${s.requiereSerial?renderSerial(s,idx):''}
-          </div>`).join('<div style="height:1px;background:var(--border);margin:4px 0"></div>')}
+
+      ${sel.length?`
+      <div style="padding:12px 20px;background:var(--bod-glass);border-bottom:1px solid var(--border)">
+        <div class="section-label" style="margin-bottom:10px">Seleccionados (${sel.length})</div>
+        <div class="flex-col gap-6">
+          ${sel.map((s,idx)=>`
+            <div style="display:flex;align-items:center;gap:10px;background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:8px 10px">
+              <div style="flex:1;min-width:0">
+                <div style="font-size:12px;font-weight:700">${tc(s.name)}</div>
+                ${s.requiereSerial?`<div style="font-size:9px;color:var(--bod-light);font-weight:600;text-transform:uppercase;margin-top:1px">Requiere serial</div>`:''}
+              </div>
+              <div style="display:flex;align-items:center;gap:6px">
+                <button class="icon-btn" style="width:30px;height:30px;font-size:16px;font-weight:700" onclick="window.__d_dec(${idx})">−</button>
+                <div style="min-width:42px;text-align:center;font-size:15px;font-weight:800;color:var(--bod-light)">${s.cantidad}</div>
+                <button class="icon-btn" style="width:30px;height:30px;font-size:16px;font-weight:700;color:var(--bod-light);border-color:var(--bod-border);background:var(--bod-glass)" onclick="window.__d_inc(${idx})">+</button>
+              </div>
+              <button class="icon-btn" style="width:30px;height:30px" onclick="window.__d_del(${idx})"><svg viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="13" height="13"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+            </div>`).join('')}
         </div>
       </div>`:''}
-      <div style="padding:12px 20px 0;flex:1">
-        <div class="buscar-wrap" style="margin-bottom:10px">
+
+      <div style="padding:14px 20px 0;flex:1">
+        <div class="buscar-wrap" style="margin-bottom:12px">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14" style="color:var(--text-4);flex-shrink:0"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
           <input class="buscar-input" id="bus-mat" placeholder="Buscar material…" value="${busq}" autocomplete="off"/>
         </div>
         <div id="lista-mat" class="flex-col gap-6"></div>
       </div>
+
       <div style="padding:14px 20px;border-top:1px solid var(--border);background:var(--bg);position:sticky;bottom:0">
         <div id="s2-err" class="form-error" style="margin-bottom:8px"></div>
         <button class="btn-primary full bod" id="btn-des" ${!sel.length?'disabled style="opacity:.5"':''}>
-          <span id="btn-des-lbl">${sel.length>0?`Registrar salida · ${sel.length} material${sel.length>1?'es':''}`:'Agrega materiales'}</span>
+          <span id="btn-des-lbl">${!sel.length?'Agrega materiales':hayserial?`Continuar → Seriales`:`Registrar salida · ${sel.length} item${sel.length>1?'s':''}`}</span>
         </button>
       </div>
     </div>`;
@@ -1225,14 +1234,14 @@ function abrirDespacho(solicitud=null) {
     window.__d_del=idx=>{sel.splice(idx,1);renderStep2();};
     window.__d_dec=idx=>{if(sel[idx].cantidad>1){sel[idx].cantidad--;}renderStep2();};
     window.__d_inc=idx=>{if(sel[idx].cantidad<sel[idx].stock){sel[idx].cantidad++;}renderStep2();};
-    window.__d_smod=(idx,modo)=>{sel[idx].modoSerial=modo;renderStep2();};
-    window.__d_sadd=idx=>{const v=document.getElementById(`si-${idx}`)?.value.trim();if(v&&!sel[idx].seriales.includes(v)){sel[idx].seriales.push(v);document.getElementById(`si-${idx}`).value='';renderStep2();}};
-    window.__d_sdel=(idx,i)=>{sel[idx].seriales.splice(i,1);renderStep2();};
-    window.__d_srange=idx=>{sel[idx].serialInicio=document.getElementById(`sri-${idx}`)?.value.trim()||'';sel[idx].serialFin=document.getElementById(`srf-${idx}`)?.value.trim()||'';};
 
     ov.querySelector('#back1').onclick=()=>{step=1;renderStep1();};
     ov.querySelector('#bus-mat').addEventListener('input',e=>{busq=e.target.value;renderLista();});
-    ov.querySelector('#btn-des').addEventListener('click',handleDespacho);
+    ov.querySelector('#btn-des').addEventListener('click',()=>{
+      if(!sel.length) return;
+      if(hayserial){ step=3; renderStep3(); }
+      else handleDespacho();
+    });
     renderLista();
 
     function renderLista(){
@@ -1241,11 +1250,16 @@ function abrirDespacho(solicitud=null) {
       const q=busq.toLowerCase();
       const selIds=new Set(sel.map(s=>s.itemId));
       const lista=q?itemsArea.filter(i=>i.name.toLowerCase().includes(q)||i.sapCode.includes(q)):itemsArea;
+      if(!lista.length){el.innerHTML=`<div style="text-align:center;color:var(--text-4);font-size:12px;padding:24px">Sin materiales</div>`;return;}
       el.innerHTML=lista.map(item=>{
         const ag=selIds.has(item.id);
-        return `<div class="bod-solicitar-row" style="background:${ag?'rgba(34,197,94,.06)':'var(--glass)'};border-color:${ag?'rgba(34,197,94,.2)':'var(--border)'};cursor:${ag||item.stock===0?'default':'pointer'}" data-item="${item.id}">
-          <div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:600">${tc(item.name)}</div><div style="font-size:10px;color:var(--text-4)">${item.sapCode?`SAP: ${item.sapCode} · `:''}Stock: ${item.stock} ${item.unit}</div></div>
-          ${ag?`<span style="font-size:11px;font-weight:700;color:var(--ok)">&#10003;</span>`:item.stock===0?`<span style="font-size:11px;color:var(--text-4)">Agotado</span>`:`<span style="font-size:11px;font-weight:700;color:var(--bod-light)">${item.stock} ${item.unit}</span>`}
+        const dis=ag||item.stock===0;
+        return `<div class="bod-solicitar-row" style="background:${ag?'rgba(34,197,94,.06)':'var(--glass)'};border-color:${ag?'rgba(34,197,94,.25)':'var(--border)'};cursor:${dis?'default':'pointer'};opacity:${item.stock===0?'.5':'1'}" data-item="${item.id}">
+          <div style="flex:1;min-width:0">
+            <div style="font-size:13px;font-weight:600">${tc(item.name)}${item.requiereSerial?`<span style="font-size:9px;color:var(--bod-light);font-weight:700;text-transform:uppercase;margin-left:6px">Serial</span>`:''}</div>
+            <div style="font-size:10px;color:var(--text-4)">${item.sapCode?`SAP: ${item.sapCode} · `:''}Stock: ${item.stock} ${item.unit}</div>
+          </div>
+          ${ag?`<span style="font-size:16px;font-weight:700;color:var(--ok)">&#10003;</span>`:item.stock===0?`<span style="font-size:11px;color:var(--text-4)">Agotado</span>`:`<span style="font-size:20px;font-weight:800;color:var(--text-4);line-height:1">+</span>`}
         </div>`;
       }).join('');
       el.querySelectorAll('[data-item]').forEach(row=>{
@@ -1259,6 +1273,42 @@ function abrirDespacho(solicitud=null) {
         });
       });
     }
+  }
+
+  function renderStep3(){
+    const conSerial=sel.filter(s=>s.requiereSerial);
+    ov.innerHTML=`
+    <div style="max-width:520px;margin:0 auto;display:flex;flex-direction:column;min-height:100vh">
+      <div style="padding:14px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px;position:sticky;top:0;background:var(--bg);z-index:10">
+        <button class="icon-btn" id="back2"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><polyline points="15 18 9 12 15 6"/></svg></button>
+        <div style="flex:1">
+          <div class="section-title">Seriales</div>
+          <div style="font-size:11px;color:var(--text-4)">Paso 3 de 3 · indica qué series entregas</div>
+        </div>
+      </div>
+      <div style="padding:16px 20px;flex:1" class="flex-col gap-16">
+        ${conSerial.map(s=>{const idx=sel.indexOf(s);return `
+          <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:14px;padding:14px">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+              <div style="font-size:14px;font-weight:700">${tc(s.name)}</div>
+              <div style="font-size:11px;font-weight:700;color:var(--bod-light);background:var(--bod-glass);border:1px solid var(--bod-border);padding:3px 10px;border-radius:20px">${s.cantidad} ${s.unit}</div>
+            </div>
+            ${renderSerial(s,idx)}
+          </div>`;}).join('')}
+      </div>
+      <div style="padding:14px 20px;border-top:1px solid var(--border);background:var(--bg);position:sticky;bottom:0">
+        <div id="s3-err" class="form-error" style="margin-bottom:8px"></div>
+        <button class="btn-primary full bod" id="btn-des3"><span id="btn-des-lbl">Registrar salida · ${sel.length} item${sel.length>1?'s':''}</span></button>
+      </div>
+    </div>`;
+
+    window.__d_smod=(idx,modo)=>{sel[idx].modoSerial=modo;renderStep3();};
+    window.__d_sadd=idx=>{const v=document.getElementById(`si-${idx}`)?.value.trim();if(v&&!sel[idx].seriales.includes(v)){sel[idx].seriales.push(v);renderStep3();}};
+    window.__d_sdel=(idx,i)=>{sel[idx].seriales.splice(i,1);renderStep3();};
+    window.__d_srange=idx=>{sel[idx].serialInicio=document.getElementById(`sri-${idx}`)?.value.trim()||'';sel[idx].serialFin=document.getElementById(`srf-${idx}`)?.value.trim()||'';};
+
+    ov.querySelector('#back2').onclick=()=>{step=2;renderStep2();};
+    ov.querySelector('#btn-des3').addEventListener('click',handleDespacho);
   }
 
   function renderSerial(s,idx){
