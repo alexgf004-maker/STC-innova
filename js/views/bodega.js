@@ -1075,7 +1075,9 @@ function abrirDevolucion(salida) {
 // FORMULARIO DESPACHO — 2 pasos
 // ══════════════════════════════════════════════════
 function abrirDespacho(solicitud=null) {
-  const hdr={responsable:solicitud?.usuarioNombre||'',contratista:'INNOVA',instalador:'',placa:'',placaOtro:'',fechaSol:new Date().toISOString().split('T')[0],fechaEnt:new Date().toISOString().split('T')[0]};
+  const campanaDespacho = solicitud?.area || areaFiltro_ || 'CAMBIOS';
+  const esCampanaNueva = (campanaDespacho==='AMI' || campanaDespacho==='Caracterizacion');
+  const hdr={responsable:solicitud?.usuarioNombre||'',pareja:'',contratista:'INNOVA',instalador:'',placa:'',placaOtro:'',fechaSol:new Date().toISOString().split('T')[0],fechaEnt:new Date().toISOString().split('T')[0]};
   let sel=[];
   if(solicitud?.materiales?.length){
     sel=solicitud.materiales.map(m=>{
@@ -1103,6 +1105,14 @@ function abrirDespacho(solicitud=null) {
             <div id="hdr-resp-lista" style="display:none;position:absolute;top:100%;left:0;right:0;z-index:20;margin-top:4px;background:var(--bg-2,#1a2332);border:1px solid var(--border);border-radius:12px;max-height:200px;overflow-y:auto;box-shadow:0 8px 24px rgba(0,0,0,.4)"></div>
           </div>
         </div>
+        ${esCampanaNueva?`
+        <div class="form-field">
+          <div class="form-label">Pareja / acompañante</div>
+          <div style="position:relative">
+            <input class="form-input" id="hdr-pareja" value="${hdr.pareja}" placeholder="Escribe para buscar…" autocomplete="off"/>
+            <div id="hdr-pareja-lista" style="display:none;position:absolute;top:100%;left:0;right:0;z-index:20;margin-top:4px;background:var(--bg-2,#1a2332);border:1px solid var(--border);border-radius:12px;max-height:200px;overflow-y:auto;box-shadow:0 8px 24px rgba(0,0,0,.4)"></div>
+          </div>
+        </div>`:''}
         <div class="form-field">
           <div class="form-label">Empresa contratista *</div>
           <div class="select-row" id="hdr-cont">
@@ -1129,22 +1139,28 @@ function abrirDespacho(solicitud=null) {
     setupChipsDyn(ov,'hdr-cont');
     ov.querySelector('#btn-cerrar-despacho')?.addEventListener('click', () => { ov.remove(); renderTab(); });
 
-    // Autocompletado de técnico que recibe
-    const respInput = ov.querySelector('#hdr-resp');
-    const respLista = ov.querySelector('#hdr-resp-lista');
-    function renderListaTecnicos(filtro) {
-      const q = safeStr(filtro,'').toLowerCase().trim();
-      const matches = tecnicos_.filter(t => safeStr(t.displayName).toLowerCase().includes(q));
-      if (!matches.length) { respLista.style.display='none'; return; }
-      respLista.innerHTML = matches.map(t=>`<div class="hdr-resp-opt" data-nombre="${safeStr(t.displayName)}" style="padding:11px 14px;font-size:13px;cursor:pointer;border-bottom:1px solid var(--border)">${safeStr(t.displayName)}</div>`).join('');
-      respLista.style.display='block';
-      respLista.querySelectorAll('.hdr-resp-opt').forEach(opt=>{
-        opt.addEventListener('click',()=>{ respInput.value=opt.dataset.nombre; respLista.style.display='none'; });
-      });
+    // Autocompletado genérico de técnicos (reutilizable)
+    function setupAutocompleteTec(inputId, listaId) {
+      const input = ov.querySelector('#'+inputId);
+      const lista = ov.querySelector('#'+listaId);
+      if (!input || !lista) return;
+      function render(filtro) {
+        const q = safeStr(filtro,'').toLowerCase().trim();
+        const matches = tecnicos_.filter(t => safeStr(t.displayName).toLowerCase().includes(q));
+        if (!matches.length) { lista.style.display='none'; return; }
+        lista.innerHTML = matches.map(t=>`<div class="ac-opt" data-nombre="${safeStr(t.displayName)}" style="padding:11px 14px;font-size:13px;cursor:pointer;border-bottom:1px solid var(--border)">${safeStr(t.displayName)}</div>`).join('');
+        lista.style.display='block';
+        lista.querySelectorAll('.ac-opt').forEach(opt=>{
+          opt.addEventListener('click',()=>{ input.value=opt.dataset.nombre; lista.style.display='none'; });
+        });
+      }
+      input.addEventListener('focus',()=>render(input.value));
+      input.addEventListener('input',()=>render(input.value));
+      document.addEventListener('click',(e)=>{ if(input && !input.contains(e.target) && !lista.contains(e.target)) lista.style.display='none'; });
     }
-    respInput?.addEventListener('focus',()=>renderListaTecnicos(respInput.value));
-    respInput?.addEventListener('input',()=>renderListaTecnicos(respInput.value));
-    document.addEventListener('click',(e)=>{ if(respInput && !respInput.contains(e.target) && !respLista.contains(e.target)) respLista.style.display='none'; });
+    setupAutocompleteTec('hdr-resp','hdr-resp-lista');
+    setupAutocompleteTec('hdr-pareja','hdr-pareja-lista');
+
 
     ov.querySelector('#hdr-placa')?.querySelectorAll('.select-chip').forEach(c=>{
       c.addEventListener('click',()=>{ov.querySelectorAll('#hdr-placa .select-chip').forEach(x=>x.classList.remove('active'));c.classList.add('active');ov.querySelector('#hdr-placa-otro').style.display=c.dataset.val==='__otro__'?'':'none';});
@@ -1156,6 +1172,7 @@ function abrirDespacho(solicitud=null) {
       errEl.style.display='none';
       if(!resp||!cont){errEl.textContent='Técnico que recibe y contratista son obligatorios.';errEl.style.display='block';return;}
       hdr.responsable=resp;hdr.contratista=cont;
+      hdr.pareja=ov.querySelector('#hdr-pareja')?.value.trim()||'';
       hdr.instalador='';
       hdr.placa=ov.querySelector('#hdr-placa .select-chip.active')?.dataset.val||'';
       hdr.placaOtro=ov.querySelector('#hdr-placa-otro').value.trim();
@@ -1275,7 +1292,7 @@ function abrirDespacho(solicitud=null) {
     try{
       const salidaData={
         area:solicitud?.area||areaFiltro_,
-        usuarioResponsable:hdr.responsable,empresaContratista:hdr.contratista,
+        usuarioResponsable:hdr.responsable,parejaAcompanante:hdr.pareja||'',empresaContratista:hdr.contratista,
         instaladorResponsable:hdr.instalador,placaVehiculo:placa,
         fechaSolicitud:hdr.fechaSol,fechaEntrega:hdr.fechaEnt,
         entregadoPor:session_.displayName,entregadoPorUid:uid_,
@@ -1343,7 +1360,163 @@ function abrirDespacho(solicitud=null) {
 }
 
 // ── Memo oficial DELSUR ───────────────────────────
+// ── Memo INNOVA para AMI y Caracterización ────────
+const CAMPANA_LABEL = { AMI:'AMI', Caracterizacion:'Caracterización de la Carga' };
+
+// Expande las series de un item de salida para listarlas explícitas
+function seriesDeItem(it) {
+  if (it.seriales && it.seriales.length) return it.seriales.slice();
+  if (it.serialInicio) {
+    const ini=String(it.serialInicio).trim(), fin=String(it.serialFin||'').trim();
+    const nI=parseInt(ini.replace(/\D/g,''),10), nF=parseInt(fin.replace(/\D/g,''),10);
+    const prefix=ini.replace(/\d+$/,'');
+    if(!isNaN(nI)&&!isNaN(nF)&&nF>=nI&&(nF-nI)<=500){
+      const out=[], digits=String(nF).length;
+      for(let n=nI;n<=nF;n++) out.push(prefix+String(n).padStart(digits,'0'));
+      return out;
+    }
+  }
+  return [];
+}
+
+function showMemoCampana(salida) {
+  const camp = CAMPANA_LABEL[salida.area] || salida.area;
+  const items = (salida.items||[]).map(i=>({
+    nombre: safeStr(i.nombre||i.name,''),
+    cantidad: safeNum(i.cantidad),
+    unit: safeStr(i.unit,''),
+    requiereSerial: !!i.requiereSerial,
+    series: i.requiereSerial ? seriesDeItem(i) : [],
+  }));
+
+  const fechaEnt = safeStr(salida.fechaEntrega,'') || (salida.fecha?.seconds ? fmtDate(salida.fecha) : '');
+  const memoData = { area:salida.area, camp, items,
+    recibe: safeStr(salida.usuarioResponsable||salida.tecnicoNombre,''),
+    pareja: safeStr(salida.parejaAcompanante,''),
+    vehiculo: safeStr(salida.placaVehiculo,''),
+    entrega: safeStr(salida.entregadoPor||salida.registradoPorNombre,''),
+    fecha: fechaEnt,
+  };
+
+  const filaMat = (m) => {
+    const serieHtml = m.requiereSerial && m.series.length
+      ? `<div style="margin-top:4px;padding:6px 8px;background:rgba(255,255,255,.03);border-radius:6px">
+           <div style="font-size:8px;font-weight:700;color:var(--text-4);text-transform:uppercase;margin-bottom:3px">Series (${m.series.length})</div>
+           <div style="font-family:monospace;font-size:10px;line-height:1.6;color:var(--text-2)">${m.series.join(' · ')}</div>
+         </div>` : '';
+    return `<div style="padding:8px;border-bottom:1px solid rgba(255,255,255,.05)">
+      <div style="display:flex;justify-content:space-between;gap:8px">
+        <span style="font-size:11px;text-transform:uppercase">${tc(m.nombre)}</span>
+        <span style="font-size:12px;font-weight:700">${m.cantidad} ${m.unit}</span>
+      </div>${serieHtml}
+    </div>`;
+  };
+
+  const sheet=document.createElement('div');
+  sheet.className='sheet-backdrop open';
+  sheet.innerHTML=`<div class="sheet" style="max-height:90vh;overflow-y:auto">
+    <div class="sheet-handle"></div>
+    <div class="sheet-title">Memo de despacho — ${camp}</div>
+    <div class="sheet-body">
+      <div style="text-align:center;border-bottom:1px solid var(--border);padding-bottom:12px;margin-bottom:14px">
+        <div style="font-size:15px;font-weight:800;letter-spacing:.05em">INNOVA</div>
+        <div style="font-size:10px;color:var(--text-3);margin-top:2px">Servicios Técnicos y Comerciales</div>
+        <div style="font-size:11px;font-weight:700;color:var(--bod-light);margin-top:6px;text-transform:uppercase">Campaña: ${camp}</div>
+      </div>
+      <div class="flex-col gap-6" style="margin-bottom:16px">
+        ${[['Persona que retira',memoData.recibe],['Pareja / acompañante',memoData.pareja],['Vehículo',memoData.vehiculo],['Fecha de entrega',memoData.fecha]].map(([k,v])=>`
+          <div style="display:flex;gap:8px;font-size:11px">
+            <div style="font-size:9px;font-weight:700;text-transform:uppercase;color:var(--text-4);min-width:130px;padding-top:2px">${k}:</div>
+            <div style="font-weight:600;border-bottom:1px solid var(--border-md);flex:1;padding-bottom:2px">${v||'—'}</div>
+          </div>`).join('')}
+      </div>
+      <div style="font-size:9px;font-weight:700;text-transform:uppercase;color:var(--text-4);margin-bottom:8px">Material entregado</div>
+      <div style="border:1px solid var(--border-md);border-radius:8px;overflow:hidden;margin-bottom:16px">
+        ${items.map(filaMat).join('')}
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:24px">
+        <div style="text-align:center"><div style="border-bottom:1px solid var(--border-md);height:32px;margin-bottom:4px"></div><div style="font-size:9px;font-weight:700;text-transform:uppercase;color:var(--text-4)">Entrega: ${memoData.entrega||'—'}</div></div>
+        <div style="text-align:center"><div style="border-bottom:1px solid var(--border-md);height:32px;margin-bottom:4px"></div><div style="font-size:9px;font-weight:700;text-transform:uppercase;color:var(--text-4)">Recibe: ${memoData.recibe||'—'}</div></div>
+      </div>
+    </div>
+    <div style="padding:12px 16px;border-top:1px solid var(--border);display:flex;gap:8px">
+      <button class="btn-action outline" style="flex:1;height:44px" onclick="this.closest('.sheet-backdrop').remove()">Cerrar</button>
+      <button class="btn-primary bod" style="flex:1;height:44px" onclick="window.__bodega._imprimirCamp(window.__memo_camp)"><span>Imprimir</span></button>
+    </div>
+  </div>`;
+  document.body.appendChild(sheet);
+  sheet.addEventListener('click',e=>{if(e.target===sheet)sheet.remove();});
+  window.__memo_camp = memoData;
+  window.__bodega._imprimirCamp = (m)=>imprimirCampana(m);
+}
+
+function imprimirCampana(m) {
+  const filas = m.items.map(it=>{
+    const serie = it.requiereSerial && it.series.length
+      ? `<div style="font-family:'Courier New',monospace;font-size:7pt;margin-top:1mm;color:#333">Series: ${it.series.join(' · ')}</div>`
+      : '';
+    return `<tr>
+      <td style="border:0.4pt solid #000;padding:1mm 1.5mm;font-size:8pt">${(it.nombre||'').toUpperCase()}${serie}</td>
+      <td style="border:0.4pt solid #000;padding:1mm 1.5mm;font-size:8pt;text-align:center;font-weight:bold;width:25mm">${it.cantidad} ${it.unit}</td>
+    </tr>`;
+  }).join('');
+
+  const html=`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Memo ${m.camp}</title>
+  <style>
+    @page{size:215.9mm 279.4mm;margin:15mm 15mm;}
+    *{margin:0;padding:0;box-sizing:border-box;}
+    body{font-family:Arial,sans-serif;color:#000;background:#fff;font-size:9pt;}
+    .head{text-align:center;border-bottom:1.5pt solid #000;padding-bottom:4mm;margin-bottom:6mm;}
+    .emp{font-size:18pt;font-weight:bold;letter-spacing:2px;}
+    .uni{font-size:9pt;margin-top:1mm;}
+    .camp{font-size:11pt;font-weight:bold;margin-top:3mm;text-transform:uppercase;}
+    .datos{margin-bottom:6mm;}
+    .datos tr td{padding:1.5mm 0;font-size:9pt;}
+    .lbl{font-weight:bold;text-transform:uppercase;font-size:8pt;width:45mm;color:#333;}
+    .val{border-bottom:0.4pt solid #000;}
+    .tit{font-size:8pt;font-weight:bold;text-transform:uppercase;color:#333;margin-bottom:2mm;}
+    table.mat{width:100%;border-collapse:collapse;margin-bottom:8mm;}
+    table.mat th{background:#eee;border:0.4pt solid #000;padding:1.5mm;font-size:8pt;text-transform:uppercase;}
+    .firmas{display:flex;gap:20mm;margin-top:16mm;}
+    .firma{flex:1;text-align:center;}
+    .firma .linea{border-bottom:0.5pt solid #000;height:14mm;margin-bottom:2mm;}
+    .firma .rol{font-size:8pt;font-weight:bold;text-transform:uppercase;}
+    .firma .nom{font-size:8pt;margin-top:1mm;}
+  </style></head><body>
+    <div class="head">
+      <div class="emp">INNOVA</div>
+      <div class="uni">Servicios Técnicos y Comerciales</div>
+      <div class="camp">Campaña: ${m.camp}</div>
+    </div>
+    <table class="datos" style="width:100%">
+      <tr><td class="lbl">Persona que retira:</td><td class="val">${m.recibe||''}</td></tr>
+      <tr><td class="lbl">Pareja / acompañante:</td><td class="val">${m.pareja||''}</td></tr>
+      <tr><td class="lbl">Vehículo:</td><td class="val">${m.vehiculo||''}</td></tr>
+      <tr><td class="lbl">Fecha de entrega:</td><td class="val">${m.fecha||''}</td></tr>
+    </table>
+    <div class="tit">Material entregado</div>
+    <table class="mat">
+      <tr><th style="text-align:left">Descripción</th><th style="width:25mm">Cantidad</th></tr>
+      ${filas}
+    </table>
+    <div class="firmas">
+      <div class="firma"><div class="linea"></div><div class="rol">Entrega</div><div class="nom">${m.entrega||''}</div></div>
+      <div class="firma"><div class="linea"></div><div class="rol">Recibe</div><div class="nom">${m.recibe||''}</div></div>
+    </div>
+  </body></html>`;
+
+  const w=window.open('','_blank');
+  if(!w){toast('Permite ventanas emergentes para imprimir','error');return;}
+  w.document.write(html);
+  w.document.close();
+  setTimeout(()=>{w.focus();w.print();},400);
+}
+
 function showMemo(salida) {
+  // AMI y Caracterización usan memo propio de INNOVA
+  if (salida.area === 'AMI' || salida.area === 'Caracterizacion') {
+    return showMemoCampana(salida);
+  }
   const memo={
     USUARIO_RESPONSABLE:    safeStr(salida.usuarioResponsable||salida.tecnicoNombre,''),
     EMPRESA_CONTRATISTA:    safeStr(salida.empresaContratista,''),
@@ -1426,425 +1599,4 @@ function imprimirDespacho(memo) {
 
   const v=memo;
   const filas=FILAS_DOC.map(row=>{
-    if(row.header==='col') return '<tr><th class="th">RESERVA</th><th class="th">STOCK</th><th class="th">DESCRIPICIÓN</th><th class="th cant">CANTIDAD</th></tr>';
-    if(row.header==='sec') return `<tr><td class="sec" colspan="4">${row.sap}</td></tr>`;
-    const cant=cantMap[row.sap]||'';
-    return `<tr><td class="code">${row.sap}</td><td class="code">${row.ax}</td><td>${row.desc}</td><td class="cant">${cant}</td></tr>`;
-  }).join('');
-
-  const p1=`<table style="width:196.9mm;border-collapse:collapse;margin-bottom:1.5mm;"><colgroup><col style="width:98mm"><col style="width:98.9mm"></colgroup>
-    <tr><td style="vertical-align:top;padding-right:2mm;border:none;"><div class="empresa">DISTRUIBUIDORA DE ELECTRICIDAD DELSUR S.A. DE C.V.</div><div class="sub">OTC - GERENCIA COMERCIAL</div><div class="sub">DESPACHO/ CARGA DE MATERIALES</div></td><td style="border:none;padding-bottom:1.5mm;"><span class="lbl">TÉCNICO QUE RECIBE:</span><span class="linea">${v.USUARIO_RESPONSABLE}</span></td></tr>
-    <tr><td style="border:none;padding-top:2mm;padding-bottom:1.5mm;"><span class="lbl">EMPRESA CONTRATISTA:</span><span class="linea">${v.EMPRESA_CONTRATISTA}</span></td><td style="border:none;padding-top:2mm;padding-bottom:1.5mm;"><span class="lbl">FIRMA DE RECIBIDO:</span><span class="linea">&nbsp;</span></td></tr>
-    <tr><td style="border:none;padding-bottom:1.5mm;"><span class="lbl">ENTREGADO POR:</span><span class="linea">${v.ENTREGADO_POR}</span></td><td style="border:none;padding-bottom:1.5mm;"><span class="lbl">PLACA DE VEHICULO:</span><span class="linea">${v.PLACA_VEHICULO}</span></td></tr>
-    <tr><td style="border:none;padding-bottom:1.5mm;"><span class="lbl">FIRMA DE ENTREGADO:</span><span class="linea">&nbsp;</span></td><td style="border:none;padding-bottom:1.5mm;"><span class="lbl">FECHA ENTREGA DE MATERIAL:</span><span class="linea">${v.FECHA_ENTREGA}</span></td></tr>
-    <tr><td style="border:none;"><span class="lbl">FECHA DE SOLICITUD</span><span class="linea">${v.FECHA_SOLICITUD}</span></td><td style="border:none;"></td></tr>
-  </table><table class="tm"><colgroup><col class="c-sap"><col class="c-ax"><col class="c-desc"><col class="c-cant"></colgroup>${filas}</table>`;
-
-  function buildHdrTd(b){return `<div class="tb-hdr"><table><tr><td class="cod">${b.ax}<br>${b.sap}</td><td class="nom">${b.nombre}</td></tr></table></div>`;}
-  function buildFilas(b){
-    const serData=serialMap[b.sap]||null;
-    let rows='';
-    if(b.tipo==='sello'){
-      rows+='<tr><td class="nb hc"></td><td class="cc hc">Cantidad</td><td class="ci hc">Inicio</td><td class="cf hc">Fin</td></tr>';
-      for(let i=1;i<=b.filas;i++){let cant='',ini='',fin='';if(serData&&serData.tipo==='rango'&&i===1){cant=cantMap[b.sap]||'';ini=serData.inicio||'';fin=serData.fin||'';}const cls=cant?' class="filled"':'';rows+=`<tr><td class="nb">${i}</td><td class="cc"${cls}>${cant}</td><td class="ci"${cls}>${ini}</td><td class="cf"${cls}>${fin}</td></tr>`;}
-    }else{
-      const sers=serData&&serData.tipo==='individual'?serData.seriales:[];
-      for(let i=1;i<=b.filas;i++){const val=sers[i-1]||'';const cls=val?' class="filled"':'';rows+=`<tr><td class="nb">${i}</td><td${cls}>${val}</td></tr>`;}
-    }
-    return `<div class="tb-body"><table>${rows}</table></div>`;
-  }
-
-  const p2=`<div class="page2"><div class="titulo-p2">Serial de medidores /sellos entregados</div><div class="pg2">
-    <div class="tb" style="left:0;top:0;width:62.6mm;height:166.4mm;">${buildHdrTd(BLOQUES_SERIALES[0])}${buildFilas(BLOQUES_SERIALES[0])}</div>
-    <div class="tb" style="left:69.2mm;top:0;width:62.9mm;height:166.4mm;">${buildHdrTd(BLOQUES_SERIALES[1])}${buildFilas(BLOQUES_SERIALES[1])}</div>
-    <div class="tb" style="left:138.1mm;top:0;width:50.4mm;height:59.7mm;">${buildHdrTd(BLOQUES_SERIALES[2])}${buildFilas(BLOQUES_SERIALES[2])}</div>
-    <div class="tb" style="left:0;top:172.3mm;width:62.6mm;height:36.1mm;">${buildHdrTd(BLOQUES_SERIALES[3])}${buildFilas(BLOQUES_SERIALES[3])}</div>
-    <div class="tb" style="left:69.2mm;top:172.3mm;width:62.9mm;height:36.1mm;">${buildHdrTd(BLOQUES_SERIALES[4])}${buildFilas(BLOQUES_SERIALES[4])}</div>
-    <div class="tb" style="left:0;top:215mm;width:82.3mm;height:36.1mm;">${buildHdrTd(BLOQUES_SERIALES[5])}${buildFilas(BLOQUES_SERIALES[5])}</div>
-  </div></div>`;
-
-  const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Memo Despacho</title><style>${css}</style></head><body>${p1}${p2}</body></html>`;
-  let ifr=document.getElementById('__print_frame');
-  if(ifr)ifr.remove();
-  ifr=document.createElement('iframe');
-  ifr.id='__print_frame';
-  ifr.style.cssText='position:fixed;top:-9999px;left:-9999px;width:216mm;height:280mm;border:none;';
-  document.body.appendChild(ifr);
-  const iDoc=ifr.contentDocument||ifr.contentWindow.document;
-  iDoc.open();iDoc.write(html);iDoc.close();
-  setTimeout(()=>{try{ifr.contentWindow.print();}catch(e){const w=window.open('','_blank');if(w){w.document.write(html);w.document.close();}}},500);
-}
-
-// ── Importar items desde Excel ────────────────────
-function abrirImportar() {
-  const sheet=document.createElement('div');
-  sheet.className='sheet-backdrop open';
-  sheet.innerHTML=`<div class="sheet"><div class="sheet-handle"></div>
-    <div class="sheet-title">Importar items (Excel)</div>
-    <div class="sheet-body">
-      <div class="form-field">
-        <div class="form-label">Campaña destino *</div>
-        <div class="select-row flex-wrap" id="imp-campana">
-          <div class="select-chip active" data-val="CAMBIOS">CAMBIOS</div>
-          <div class="select-chip" data-val="AMI">AMI</div>
-          <div class="select-chip" data-val="Caracterizacion">Caracterización</div>
-        </div>
-      </div>
-      <div style="font-size:11px;color:var(--text-4);line-height:1.6;margin-bottom:14px">
-        El Excel debe tener columnas: <b>Nombre</b>, <b>Unidad</b>, <b>SAP</b>, <b>AX</b>, <b>Stock</b>, <b>Minimo</b>.<br>
-        Si un código SAP o AX ya existe, se <b>suma</b> el stock. Si no, se crea el item.
-      </div>
-      <input type="file" id="imp-file" accept=".xlsx,.xls" style="display:none"/>
-      <button class="btn-primary full bod" id="imp-btn-file">Seleccionar archivo Excel</button>
-      <div id="imp-preview" style="margin-top:14px"></div>
-      <div id="imp-error" class="form-error"></div>
-    </div>
-  </div>`;
-  document.body.appendChild(sheet);
-  sheet.addEventListener('click',e=>{if(e.target===sheet){sheet.remove();renderInventario();}});
-  setupChipsDyn(sheet,'imp-campana');
-
-  let parsedRows=[];
-  const fileInput=sheet.querySelector('#imp-file');
-  sheet.querySelector('#imp-btn-file').addEventListener('click',()=>fileInput.click());
-
-  fileInput.addEventListener('change',async(e)=>{
-    const file=e.target.files[0];
-    if(!file) return;
-    const errEl=sheet.querySelector('#imp-error');
-    errEl.style.display='none';
-    try {
-      const data=await file.arrayBuffer();
-      const wb=XLSX.read(data,{type:'array'});
-      const ws=wb.Sheets[wb.SheetNames[0]];
-      const rows=XLSX.utils.sheet_to_json(ws,{defval:''});
-      if(!rows.length){errEl.textContent='El archivo está vacío.';errEl.style.display='block';return;}
-
-      // Normalizar columnas (tolera variaciones de nombre)
-      parsedRows=rows.map(r=>{
-        const get=(...keys)=>{for(const k of Object.keys(r)){const kn=k.toLowerCase().trim();if(keys.some(x=>kn===x||kn.includes(x)))return r[k];}return '';};
-        return {
-          name:   String(get('nombre','descripcion','descripción','material')).trim(),
-          unit:   String(get('unidad','unit','um')).trim()||'unidades',
-          sapCode:String(get('sap','reserva')).trim(),
-          axCode: String(get('ax','stock code','codigo ax','código ax')).trim(),
-          stock:  safeNum(get('stock','cantidad','existencia')),
-          minStock:safeNum(get('minimo','mínimo','min','stock minimo')),
-        };
-      }).filter(r=>r.name);
-
-      if(!parsedRows.length){errEl.textContent='No se encontraron filas válidas (falta columna Nombre).';errEl.style.display='block';return;}
-
-      sheet.querySelector('#imp-preview').innerHTML=`
-        <div style="padding:12px;background:var(--bod-glass);border:1px solid var(--bod-border);border-radius:12px;margin-bottom:12px">
-          <div style="font-size:13px;font-weight:700;color:var(--bod-light);margin-bottom:4px">${parsedRows.length} items detectados</div>
-          <div style="font-size:11px;color:var(--text-4)">Revisa y confirma la importación</div>
-        </div>
-        <button class="btn-primary full bod" id="imp-confirmar"><span id="imp-lbl">Importar ${parsedRows.length} items</span></button>`;
-
-      sheet.querySelector('#imp-confirmar').addEventListener('click',()=>ejecutarImport(sheet,parsedRows));
-    } catch(err){
-      errEl.textContent='Error al leer el Excel: '+err.message;
-      errEl.style.display='block';
-    }
-  });
-}
-
-async function ejecutarImport(sheet, rows) {
-  const campana=sheet.querySelector('#imp-campana .select-chip.active')?.dataset.val||'CAMBIOS';
-  const errEl=sheet.querySelector('#imp-error');
-  errEl.style.display='none';
-  setLoading('imp-lbl','Importando…',true);
-
-  try {
-    const col=db.collection('kardex').doc('inventario').collection('items');
-    let creados=0, actualizados=0;
-
-    for(const r of rows){
-      // Buscar existente por SAP o AX en la misma campaña
-      const existente=allItems_.find(i=>
-        i.area===campana &&
-        ((r.sapCode && i.sapCode===r.sapCode) || (r.axCode && i.axCode===r.axCode))
-      );
-
-      if(existente){
-        const nuevoStock=safeNum(existente.stock)+safeNum(r.stock);
-        await col.doc(existente.id).update({
-          stock:nuevoStock,
-          name:r.name||existente.name,
-          unit:r.unit||existente.unit,
-          minStock:r.minStock||existente.minStock,
-        });
-        existente.stock=nuevoStock;
-        actualizados++;
-      } else {
-        const nuevo={
-          name:r.name, unit:r.unit,
-          sapCode:r.sapCode, axCode:r.axCode,
-          stock:safeNum(r.stock), minStock:safeNum(r.minStock)||5,
-          requiereSerial:false, area:campana,
-        };
-        const ref=await col.add(nuevo);
-        allItems_.push(normalizeItem({id:ref.id,...nuevo}));
-        creados++;
-      }
-    }
-
-    toast(`Importados: ${creados} nuevos, ${actualizados} actualizados`,'ok');
-    sheet.remove();
-    areaFiltro_=campana;
-    renderInventario();
-  } catch(err){
-    errEl.textContent='Error al importar: '+err.message;
-    errEl.style.display='block';
-    setLoading('imp-lbl','Reintentar',false);
-  }
-}
-
-// ── Nuevo/Editar item ─────────────────────────────
-function abrirNuevoItem(itemId=null) {
-  const item=itemId?allItems_.find(i=>i.id===itemId):null;
-  const sheet=document.createElement('div');
-  sheet.className='sheet-backdrop open';
-  sheet.innerHTML=`<div class="sheet"><div class="sheet-handle"></div>
-    <div class="sheet-title">${item?'Editar item':'Nuevo item'}</div>
-    <div class="sheet-body">
-      <div class="form-field"><div class="form-label">Nombre *</div><input class="form-input" id="ni-nombre" value="${tc(item?.name||'')}" placeholder="Ej. Medidor monofásico"/></div>
-      <div class="form-field"><div class="form-label">Código SAP</div><input class="form-input" id="ni-sap" value="${safeStr(item?.sapCode,'')}" placeholder="SAP"/></div>
-      <div class="form-field"><div class="form-label">Código AX</div><input class="form-input" id="ni-ax" value="${safeStr(item?.axCode,'')}" placeholder="AX"/></div>
-      <div class="form-field"><div class="form-label">Unidad *</div><input class="form-input" id="ni-unit" value="${safeStr(item?.unit,'')}" placeholder="Ej. unidades, metros"/></div>
-      <div class="form-field">
-        <div class="form-label">Área *</div>
-        <div class="select-row" id="ni-area-row">
-          ${['CAMBIOS','AMI','Caracterizacion'].map(a=>`<div class="select-chip ${(item?.area||areaFiltro_)===a?'active':''}" data-val="${a}">${a==='Caracterizacion'?'Caracterización':a}</div>`).join('')}
-        </div>
-      </div>
-      <div class="form-field"><div class="form-label">Stock mínimo</div><input class="form-input" id="ni-minstock" type="number" min="0" value="${item?.minStock??5}"/></div>
-      ${!item?`<div class="form-field"><div class="form-label">Stock inicial</div><input class="form-input" id="ni-stockinit" type="number" min="0" value="0"/></div>`:''}
-      <div class="form-field" style="display:flex;align-items:center;gap:10px">
-        <input type="checkbox" id="ni-serial" ${item?.requiereSerial?'checked':''} style="width:18px;height:18px;cursor:pointer"/>
-        <label for="ni-serial" style="font-size:13px;font-weight:500;cursor:pointer">Requiere control de seriales</label>
-      </div>
-      <div id="ni-error" class="form-error"></div>
-      <button class="btn-primary full bod" id="btn-ni"><span id="btn-ni-lbl">${item?'Guardar cambios':'Crear item'}</span></button>
-    </div>
-  </div>`;
-  document.body.appendChild(sheet);
-  sheet.addEventListener('click',e=>{if(e.target===sheet){sheet.remove();renderInventario();}});
-  setupChipsDyn(sheet,'ni-area-row');
-
-  document.getElementById('btn-ni').addEventListener('click',async()=>{
-    const nombre=document.getElementById('ni-nombre').value.trim();
-    const unit=document.getElementById('ni-unit').value.trim();
-    const area=sheet.querySelector('#ni-area-row .select-chip.active')?.dataset.val;
-    const errEl=document.getElementById('ni-error');
-    errEl.style.display='none';
-    if(!nombre||!unit||!area){errEl.textContent='Nombre, unidad y área son obligatorios.';errEl.style.display='block';return;}
-    setLoading('btn-ni-lbl','Guardando…',true);
-    try{
-      const data={name:nombre,unit,area,sapCode:document.getElementById('ni-sap').value.trim()||null,axCode:document.getElementById('ni-ax').value.trim()||null,minStock:safeNum(document.getElementById('ni-minstock').value),requiereSerial:document.getElementById('ni-serial').checked};
-      if(itemId){
-        await db.collection('kardex').doc('inventario').collection('items').doc(itemId).update(data);
-        const idx=allItems_.findIndex(i=>i.id===itemId);
-        if(idx!==-1) allItems_[idx]=normalizeItem({...allItems_[idx],...data});
-        toast('Item actualizado','ok');
-      }else{
-        const stockInit=safeNum(document.getElementById('ni-stockinit')?.value);
-        const ref=await db.collection('kardex').doc('inventario').collection('items').add({...data,stock:stockInit,creadoEn:firebase.firestore.FieldValue.serverTimestamp(),creadoPor:uid_});
-        allItems_.push(normalizeItem({id:ref.id,...data,stock:stockInit}));
-        toast('Item creado','ok');
-      }
-      sheet.remove();renderInventario();
-    }catch(err){errEl.textContent=`Error: ${err.message}`;errEl.style.display='block';setLoading('btn-ni-lbl',itemId?'Guardar cambios':'Crear item',false);}
-  });
-}
-
-// ── Entrada de material ───────────────────────────
-// Expande seriales según modo (individual o rango). Devuelve array de seriales.
-function expandirSeriales(modo, textoIndividual, inicio, fin) {
-  if (modo === 'rango') {
-    const ini = String(inicio||'').trim();
-    const f   = String(fin||'').trim();
-    if (!ini || !f) return [];
-    const nI = parseInt(ini.replace(/\D/g,''),10);
-    const nF = parseInt(f.replace(/\D/g,''),10);
-    if (isNaN(nI) || isNaN(nF) || nF < nI) return [];
-    const prefix = ini.replace(/\d+$/,'');
-    const digits = String(nF).length;
-    const lista = [];
-    for (let n=nI; n<=nF; n++) lista.push(prefix+String(n).padStart(digits,'0'));
-    return lista;
-  }
-  // individual: uno por línea
-  return String(textoIndividual||'').trim()
-    ? String(textoIndividual).trim().split('\n').map(s=>s.trim()).filter(Boolean)
-    : [];
-}
-
-function abrirEntrada(itemId) {
-  const item=allItems_.find(i=>i.id===itemId);
-  const esSerial = !!item?.requiereSerial;
-  const sheet=document.createElement('div');
-  sheet.className='sheet-backdrop open';
-  sheet.innerHTML=`<div class="sheet"><div class="sheet-handle"></div>
-    <div class="sheet-title">Registrar entrada</div>
-    <div class="sheet-body">
-      <div style="background:var(--glass);border:1px solid var(--border);border-radius:var(--radius-sm);padding:14px;margin-bottom:16px">
-        <div style="font-size:14px;font-weight:700">${tc(item?.name||'—')}</div>
-        <div style="font-size:11px;color:var(--text-4);margin-top:3px">Stock actual: ${item?.stock||0} ${safeStr(item?.unit,'')}</div>
-      </div>
-      ${esSerial?`
-      <div class="form-field">
-        <div class="form-label">Modo de ingreso de seriales</div>
-        <div class="select-row" id="ent-modo">
-          <div class="select-chip active" data-val="individual">Individual</div>
-          <div class="select-chip" data-val="rango">Rango</div>
-        </div>
-      </div>
-      <div id="ent-serial-individual">
-        <div class="form-field">
-          <div class="form-label">Seriales (uno por línea) *</div>
-          <textarea class="form-input" id="ent-sers" rows="5" placeholder="12345001&#10;12345002&#10;..." style="font-family:monospace;font-size:11px;resize:none"></textarea>
-        </div>
-      </div>
-      <div id="ent-serial-rango" style="display:none">
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-          <div class="form-field"><div class="form-label">Serial inicial *</div><input class="form-input" id="ent-sri" type="text" placeholder="12345001" style="font-family:monospace"/></div>
-          <div class="form-field"><div class="form-label">Serial final *</div><input class="form-input" id="ent-srf" type="text" placeholder="12345050" style="font-family:monospace"/></div>
-        </div>
-        <div id="ent-rango-info" style="font-size:11px;color:var(--bod-light);margin-top:-6px;margin-bottom:12px"></div>
-      </div>
-      `:`
-      <div class="form-field"><div class="form-label">Cantidad *</div><input class="form-input" id="ent-cant" type="number" min="1" placeholder="0"/></div>
-      `}
-      <div class="form-field"><div class="form-label">Motivo / Referencia</div><input class="form-input" id="ent-ref" type="text" placeholder="Ej. Compra, Reposición…"/></div>
-      <div id="ent-error" class="form-error"></div>
-      <button class="btn-primary full bod" id="btn-ent"><span id="btn-ent-lbl">Registrar entrada</span></button>
-    </div>
-  </div>`;
-  document.body.appendChild(sheet);
-  sheet.addEventListener('click',e=>{if(e.target===sheet){sheet.remove();renderInventario();}});
-
-  // Toggle de modo serial
-  if (esSerial) {
-    const indBox = sheet.querySelector('#ent-serial-individual');
-    const ranBox = sheet.querySelector('#ent-serial-rango');
-    const infoEl = sheet.querySelector('#ent-rango-info');
-    sheet.querySelectorAll('#ent-modo .select-chip').forEach(chip=>{
-      chip.addEventListener('click',()=>{
-        sheet.querySelectorAll('#ent-modo .select-chip').forEach(c=>c.classList.remove('active'));
-        chip.classList.add('active');
-        const modo=chip.dataset.val;
-        indBox.style.display = modo==='individual'?'':'none';
-        ranBox.style.display = modo==='rango'?'':'none';
-      });
-    });
-    // Info en vivo del rango
-    const actualizarInfo=()=>{
-      const lista=expandirSeriales('rango',null,sheet.querySelector('#ent-sri').value,sheet.querySelector('#ent-srf').value);
-      infoEl.textContent = lista.length ? `Se generarán ${lista.length} seriales` : 'Revisa el rango (inicial y final)';
-    };
-    sheet.querySelector('#ent-sri')?.addEventListener('input',actualizarInfo);
-    sheet.querySelector('#ent-srf')?.addEventListener('input',actualizarInfo);
-  }
-
-  document.getElementById('btn-ent').addEventListener('click',async()=>{
-    const motivo=document.getElementById('ent-ref').value.trim();
-    const errEl=document.getElementById('ent-error');
-    errEl.style.display='none';
-    let cantidad=0, seriales=[];
-
-    if(esSerial){
-      const modo=sheet.querySelector('#ent-modo .select-chip.active')?.dataset.val||'individual';
-      if(modo==='individual'){
-        seriales=expandirSeriales('individual',document.getElementById('ent-sers')?.value);
-      }else{
-        seriales=expandirSeriales('rango',null,document.getElementById('ent-sri')?.value,document.getElementById('ent-srf')?.value);
-      }
-      if(!seriales.length){errEl.textContent=modo==='rango'?'Ingresa un rango válido (serial inicial y final).':'Ingresa al menos un serial.';errEl.style.display='block';return;}
-      // Detectar duplicados dentro del mismo ingreso
-      const dup=seriales.find((s,i)=>seriales.indexOf(s)!==i);
-      if(dup){errEl.textContent=`Serial repetido en la lista: ${dup}`;errEl.style.display='block';return;}
-      cantidad=seriales.length;
-    }else{
-      cantidad=safeNum(document.getElementById('ent-cant').value);
-      if(!cantidad||cantidad<=0){errEl.textContent='Ingresa una cantidad válida.';errEl.style.display='block';return;}
-    }
-
-    setLoading('btn-ent-lbl','Guardando…',true);
-    try{
-      // Validar que los seriales no existan ya en la base
-      if(esSerial && seriales.length){
-        const snapSer=await db.collection('kardex').doc('seriales').collection('items').where('itemId','==',itemId).get();
-        const existentes=new Set(snapSer.docs.map(d=>String(d.data().serial)));
-        const yaExiste=seriales.find(s=>existentes.has(String(s)));
-        if(yaExiste){errEl.textContent=`El serial ${yaExiste} ya existe en el inventario.`;errEl.style.display='block';setLoading('btn-ent-lbl','Registrar entrada',false);return;}
-      }
-      const now=firebase.firestore.Timestamp.now();
-      const nuevoStock=(item?.stock||0)+cantidad;
-      const batch=db.batch();
-      batch.update(db.collection('kardex').doc('inventario').collection('items').doc(itemId),{stock:nuevoStock});
-      const entRef=db.collection('kardex').doc('movimientos').collection('ajustes').doc();
-      batch.set(entRef,{tipo:'entrada',itemId,itemNombre:item?.name,cantidad,motivo:motivo||null,seriales:esSerial?seriales:[],stockAntes:item?.stock||0,stockDespues:nuevoStock,fecha:now,registradoPor:uid_,registradoPorNombre:session_.displayName});
-      if(esSerial&&seriales.length){
-        for(const ser of seriales){
-          const serRef=db.collection('kardex').doc('seriales').collection('items').doc();
-          batch.set(serRef,{sapCode:item.sapCode,axCode:item.axCode,itemId,itemNombre:item.name,serial:ser,estado:'disponible',fechaEntrada:now,registradoPor:uid_});
-        }
-      }
-      await batch.commit();
-      const idx=allItems_.findIndex(i=>i.id===itemId);
-      if(idx!==-1) allItems_[idx].stock=nuevoStock;
-      sheet.remove();renderInventario();
-      toast(`Entrada registrada: +${cantidad} ${safeStr(item?.unit,'')}`, 'ok');
-    }catch(err){errEl.textContent=`Error: ${err.message}`;errEl.style.display='block';setLoading('btn-ent-lbl','Registrar entrada',false);}
-  });
-}
-
-// ── Helpers ───────────────────────────────────────
-function mostrarModalCantidad(item, onAdd) {
-  const m=document.createElement('div');
-  m.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:flex-end;z-index:300;';
-  m.innerHTML=`<div style="background:var(--bg-card);width:100%;border-radius:20px 20px 0 0;padding:20px 20px max(32px,20px)">
-    <div style="width:36px;height:4px;background:rgba(255,255,255,.15);border-radius:2px;margin:0 auto 16px"></div>
-    <div style="font-size:15px;font-weight:700;margin-bottom:4px">${tc(item.name)}</div>
-    <div style="font-size:11px;color:var(--text-4);margin-bottom:20px">${item.stock} ${item.unit} disponibles</div>
-    <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:20px">
-      <button id="mc-dec" class="icon-btn" style="width:56px;height:56px;font-size:24px;font-weight:700">−</button>
-      <div style="flex:1;text-align:center">
-        <input id="mc-cant" type="number" min="1" max="${item.stock}" value="1" style="width:100%;text-align:center;font-size:40px;font-weight:900;color:var(--text);background:transparent;border:none;outline:none;font-family:'Outfit',sans-serif"/>
-        <div style="font-size:12px;color:var(--text-4)">${item.unit}</div>
-      </div>
-      <button id="mc-inc" class="icon-btn" style="width:56px;height:56px;font-size:24px;font-weight:700;color:var(--bod-light);border-color:var(--bod-border);background:var(--bod-glass)">+</button>
-    </div>
-    <div id="mc-err" class="form-error" style="margin-bottom:8px"></div>
-    <button class="btn-primary full bod" id="mc-add">Agregar al despacho</button>
-  </div>`;
-  document.body.appendChild(m);
-  const cantEl=m.querySelector('#mc-cant');
-  setTimeout(()=>{cantEl.focus();cantEl.select();},80);
-  m.addEventListener('click',e=>{if(e.target===m)m.remove();});
-  m.querySelector('#mc-dec').onclick=()=>{const v=safeNum(cantEl.value);if(v>1)cantEl.value=v-1;};
-  m.querySelector('#mc-inc').onclick=()=>{const v=safeNum(cantEl.value);if(v<item.stock)cantEl.value=v+1;};
-  m.querySelector('#mc-add').addEventListener('click',()=>{
-    const cant=safeNum(cantEl.value);
-    const errEl=m.querySelector('#mc-err');
-    if(cant<=0){errEl.textContent='Cantidad inválida.';errEl.style.display='block';return;}
-    if(cant>item.stock){errEl.textContent=`Máximo: ${item.stock}`;errEl.style.display='block';return;}
-    m.remove();onAdd(cant);
-  });
-}
-
-function setupChipsDyn(root,rowId) {
-  root.querySelector(`#${rowId}`)?.querySelectorAll('.select-chip').forEach(chip=>{
-    chip.addEventListener('click',()=>{root.querySelectorAll(`#${rowId} .select-chip`).forEach(c=>c.classList.remove('active'));chip.classList.add('active');});
-  });
-}
-
-function setLoading(labelId,text,loading) {
-  const el=document.getElementById(labelId);
-  if(!el) return;
-  el.innerHTML=loading?'<div class="spinner"></div>':text;
-  const btn=el.closest('button');
-  if(btn) btn.disabled=loading;
-}
+    if(row.header==='col') return '<tr><th class="th">RESERVA<
