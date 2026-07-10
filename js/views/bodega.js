@@ -114,6 +114,7 @@ const CAMPANA_COLORS = {
   'CAMBIOS':         { color:'#2dd4bf', bg:'rgba(45,212,191,.12)', border:'rgba(45,212,191,.4)', label:'CAMBIOS' },
   'AMI':             { color:'#fbbf24', bg:'rgba(251,191,36,.12)', border:'rgba(251,191,36,.4)', label:'AMI' },
   'Caracterizacion': { color:'#a78bfa', bg:'rgba(167,139,250,.12)', border:'rgba(167,139,250,.4)', label:'Caracterización' },
+  'ReclamosSIGET':   { color:'#22d3ee', bg:'rgba(34,211,238,.12)', border:'rgba(34,211,238,.4)', label:'Reclamos SIGET' },
 };
 
 function campanaToggleHTML() {
@@ -250,7 +251,7 @@ function renderMiMaterial() {
     if(!porCampana[camp]) porCampana[camp]=[];
     porCampana[camp].push(e);
   });
-  const campanasOrden = ['CAMBIOS','AMI','Caracterizacion'].filter(c=>porCampana[c]?.length);
+  const campanasOrden = ['CAMBIOS','AMI','Caracterizacion','ReclamosSIGET'].filter(c=>porCampana[c]?.length);
 
   function itemCard(e) {
     const bajo=e.cant>0&&e.cant<=e.item.minStock;
@@ -1115,7 +1116,7 @@ function abrirDevolucion(salida) {
 // ══════════════════════════════════════════════════
 function abrirDespacho(solicitud=null) {
   const campanaDespacho = solicitud?.area || areaFiltro_ || 'CAMBIOS';
-  const esCampanaNueva = (campanaDespacho==='AMI' || campanaDespacho==='Caracterizacion');
+  const esCampanaNueva = (campanaDespacho==='AMI' || campanaDespacho==='Caracterizacion' || campanaDespacho==='ReclamosSIGET');
   const hdr={responsable:solicitud?.usuarioNombre||'',pareja:'',usuarioResp:'',contratista:'INNOVA',instalador:'',placa:'',placaOtro:'',fechaSol:new Date().toISOString().split('T')[0],fechaEnt:new Date().toISOString().split('T')[0]};
   let sel=[];
   if(solicitud?.materiales?.length){
@@ -1592,7 +1593,7 @@ function abrirDespacho(solicitud=null) {
 
 // ── Memo oficial DELSUR ───────────────────────────
 // ── Memo INNOVA para AMI y Caracterización ────────
-const CAMPANA_LABEL = { AMI:'AMI', Caracterizacion:'Caracterización de la Carga' };
+const CAMPANA_LABEL = { AMI:'AMI', Caracterizacion:'Caracterización de la Carga', ReclamosSIGET:'Reclamos SIGET' };
 
 // Expande las series de un item de salida para listarlas explícitas
 function seriesDeItem(it) {
@@ -1630,7 +1631,7 @@ function showMemoCampana(salida) {
     fecha: fechaEnt,
   };
 
-  const AC = salida.area==='AMI' ? '#fbbf24' : '#a78bfa'; // color de acento por campaña
+  const AC = (CAMPANA_COLORS[salida.area]||CAMPANA_COLORS['AMI']).color; // color de acento por campaña
 
   // Filas de material (con series en tabla si aplica)
   const filaMat = (m,i) => {
@@ -1724,7 +1725,7 @@ function showMemoCampana(salida) {
 }
 
 function imprimirCampana(m) {
-  const AC = m.area==='AMI' ? '#c98a00' : '#7c5cd6';
+  const AC = m.area==='AMI' ? '#c98a00' : m.area==='ReclamosSIGET' ? '#0e7490' : '#7c5cd6';
   const filas = m.items.map(it=>{
     const serie = it.requiereSerial && it.series.length
       ? `<tr><td colspan="2" style="border:0.4pt solid #000;border-top:none;padding:1.5mm 2mm;background:#fafafa">
@@ -1796,7 +1797,7 @@ function imprimirCampana(m) {
 
 function showMemo(salida) {
   // AMI y Caracterización usan memo propio de INNOVA
-  if (salida.area === 'AMI' || salida.area === 'Caracterizacion') {
+  if (salida.area === 'AMI' || salida.area === 'Caracterizacion' || salida.area === 'ReclamosSIGET') {
     return showMemoCampana(salida);
   }
   const memo={
@@ -1943,6 +1944,7 @@ function abrirImportar() {
           <div class="select-chip active" data-val="CAMBIOS">CAMBIOS</div>
           <div class="select-chip" data-val="AMI">AMI</div>
           <div class="select-chip" data-val="Caracterizacion">Caracterización</div>
+          <div class="select-chip" data-val="ReclamosSIGET">Reclamos SIGET</div>
         </div>
       </div>
       <div style="font-size:11px;color:var(--text-4);line-height:1.6;margin-bottom:14px">
@@ -2071,7 +2073,7 @@ function abrirNuevoItem(itemId=null) {
       <div class="form-field">
         <div class="form-label">Área *</div>
         <div class="select-row" id="ni-area-row">
-          ${['CAMBIOS','AMI','Caracterizacion'].map(a=>`<div class="select-chip ${(item?.area||areaFiltro_)===a?'active':''}" data-val="${a}">${a==='Caracterizacion'?'Caracterización':a}</div>`).join('')}
+          ${['CAMBIOS','AMI','Caracterizacion','ReclamosSIGET'].map(a=>`<div class="select-chip ${(item?.area||areaFiltro_)===a?'active':''}" data-val="${a}">${a==='Caracterizacion'?'Caracterización':a==='ReclamosSIGET'?'Reclamos SIGET':a}</div>`).join('')}
         </div>
       </div>
       <div class="form-field"><div class="form-label">Stock mínimo</div><input class="form-input" id="ni-minstock" type="number" min="0" value="${item?.minStock??5}"/></div>
