@@ -80,6 +80,7 @@ let container_, session_, role_, area_, destino_, uid_;
 let montadoId_ = 0;  // incrementa cada init; detecta si la vista sigue activa
 let campanaTecnico_ = null;  // campaña elegida por técnico sin área asignada
 let tecnicos_ = [];          // lista de técnicos de la app para despacho
+let serialesCache_ = {};     // itemId -> [seriales disponibles] para validación en vivo
 let allItems_    = [];
 let salidas_     = [];
 let solicitudes_ = [];
@@ -1091,6 +1092,20 @@ function abrirDespacho(solicitud=null) {
   ov.style.cssText='position:fixed;inset:0;z-index:500;background:#0d1117;overflow-y:auto;-webkit-overflow-scrolling:touch;';
   document.body.appendChild(ov);
 
+  // Carga seriales disponibles de un item (para validación en vivo). Cachea.
+  async function cargarSerialesItem(itemId){
+    if(serialesCache_[itemId]) return serialesCache_[itemId];
+    try{
+      const snap=await db.collection('kardex').doc('seriales').collection('items')
+        .where('itemId','==',itemId).where('estado','==','disponible').get();
+      serialesCache_[itemId]=snap.docs.map(d=>String(d.data().serial).trim());
+    }catch(e){
+      console.warn('[bodega] Error cargando seriales:',e);
+      serialesCache_[itemId]=[];
+    }
+    return serialesCache_[itemId];
+  }
+
   function renderStep1(){
     ov.innerHTML=`<div style="padding:20px;max-width:500px;margin:0 auto">
       <div style="display:flex;align-items:center;gap:12px;margin-bottom:24px">
@@ -1268,6 +1283,7 @@ function abrirDespacho(solicitud=null) {
           if(!item||item.stock===0||sel.some(s=>s.itemId===item.id)) return;
           mostrarModalCantidad(item,cant=>{
             sel.push({itemId:item.id,name:item.name,unit:item.unit,stock:item.stock,sapCode:item.sapCode,axCode:item.axCode,cantidad:cant,requiereSerial:item.requiereSerial,modoSerial:'individual',seriales:[],serialInicio:'',serialFin:''});
+            if(item.requiereSerial) cargarSerialesItem(item.id); // precargar para validación
             renderStep2();
           });
         });
@@ -1303,41 +1319,142 @@ function abrirDespacho(solicitud=null) {
     </div>`;
 
     window.__d_smod=(idx,modo)=>{sel[idx].modoSerial=modo;renderStep3();};
-    window.__d_sadd=idx=>{const v=document.getElementById(`si-${idx}`)?.value.trim();if(v&&!sel[idx].seriales.includes(v)){sel[idx].seriales.push(v);renderStep3();}};
+    window.__d_sadd=idx=>{const el=document.getElementById(`si-${idx}`);const v=el?.value.trim();if(v&&!sel[idx].seriales.includes(v)){sel[idx].seriales.push(v);renderStep3();setTimeout(()=>document.getElementById(`si-${idx}`)?.focus(),30);}};
     window.__d_sdel=(idx,i)=>{sel[idx].seriales.splice(i,1);renderStep3();};
-    window.__d_srange=idx=>{sel[idx].serialInicio=document.getElementById(`sri-${idx}`)?.value.trim()||'';sel[idx].serialFin=document.getElementById(`srf-${idx}`)?.value.trim()||'';};
+    window.__d_srange=idx=>{
+      sel[idx].serialInicio=document.getElementById(`sri-${idx}`)?.value.trim()||'';
+      sel[idx].serialFin=document.getElementById(`srf-${idx}`)?.value.trim()||'';
+      // Actualizar solo el estado sin re-render para no perder foco
+      actualizarEstadoSerie(idx);
+    };
+
+    // Actualiza el chip de estado de un item sin re-render completo (para rango en vivo)
+    function actualizarEstadoSerie(idx){
+      // Re-render diferido para mostrar chips validados
+      clearTimeout(window.__rangeTimer);
+      window.__rangeTimer=setTimeout(()=>{ if(step===3) renderStep3(); },600);
+    }
+
 
     ov.querySelector('#back2').onclick=()=>{step=2;renderStep2();};
     ov.querySelector('#btn-des3').addEventListener('click',handleDespacho);
   }
 
+  // Valida las series de un item contra los disponibles en bodega.
+  // Devuelve {series:[{serial,ok}], validos, faltan, invalidos:[], completo}
+  function validarSeriales(s){
+    const disp=serialesCache_[s.itemId]||null; // null = aún cargando
+    let lista=[];
+    if(s.modoSerial==='rango'){
+      lista=expandirSeriales('rango',null,s.serialInicio,s.serialFin);
+    }else{
+      lista=(s.seriales||[]).slice();
+    }
+    const series=lista.map(ser=>{
+      const t=String(ser).trim();
+      let ok=null; // null = no se puede validar aún (cargando)
+      if(disp!==null) ok=disp.includes(t);
+      return {serial:t, ok};
+    });
+    const invalidos=series.filter(x=>x.ok===false).map(x=>x.serial);
+    const validos=series.filter(x=>x.ok===true).length;
+    const completo = lista.length===s.cantidad && invalidos.length===0 && (disp===null || series.every(x=>x.ok===true));
+    return {series, lista, validos, invalidos, cargando:disp===null,
+            faltan:s.cantidad-lista.length, completo};
+  }
+
   function renderSerial(s,idx){
+    const v=validarSeriales(s);
+    // Estado resumen
+    let estado='';
+    if(v.cargando){
+      estado=`<div style="font-size:10px;color:var(--text-4)">Verificando disponibilidad…</div>`;
+    }else if(v.lista.length===0){
+      estado=`<div style="font-size:10px;color:var(--text-4)">Faltan ${s.cantidad} serie${s.cantidad>1?'s':''}</div>`;
+    }else if(v.lista.length!==s.cantidad){
+      const dif=v.lista.length<s.cantidad?`faltan ${s.cantidad-v.lista.length}`:`sobran ${v.lista.length-s.cantidad}`;
+      estado=`<div style="font-size:10px;color:#fbbf24;font-weight:600">${v.lista.length} de ${s.cantidad} · ${dif}</div>`;
+    }else if(v.invalidos.length){
+      estado=`<div style="font-size:10px;color:#ef4444;font-weight:600">${v.invalidos.length} no ${v.invalidos.length>1?'están':'está'} en bodega</div>`;
+    }else{
+      estado=`<div style="font-size:10px;color:#22c55e;font-weight:700">&#10003; ${v.lista.length} serie${v.lista.length>1?'s':''} verificada${v.lista.length>1?'s':''}</div>`;
+    }
+
+    const chipSerie=(ser,ok,delBtn)=>{
+      const col = ok===false?'#ef4444':ok===true?'#22c55e':'var(--text-3)';
+      const bg  = ok===false?'rgba(239,68,68,.08)':ok===true?'rgba(34,197,94,.08)':'var(--glass)';
+      const bd  = ok===false?'rgba(239,68,68,.3)':ok===true?'rgba(34,197,94,.3)':'var(--border)';
+      const ic  = ok===false?'✕':ok===true?'&#10003;':'';
+      return `<div style="display:flex;align-items:center;gap:6px;font-size:11px">
+        <div style="flex:1;background:${bg};border:1px solid ${bd};border-radius:6px;padding:5px 8px;font-family:monospace;color:${col};display:flex;justify-content:space-between;align-items:center">
+          <span>${ser}</span><span style="font-weight:700">${ic}</span>
+        </div>
+        ${delBtn}
+      </div>`;
+    };
+
     return `<div style="background:rgba(139,92,246,.06);border:1px solid rgba(139,92,246,.2);border-radius:10px;padding:10px;margin-top:8px">
-      <div style="font-size:10px;font-weight:700;color:var(--bod-light);text-transform:uppercase;margin-bottom:8px">Seriales</div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <div style="font-size:10px;font-weight:700;color:var(--bod-light);text-transform:uppercase">Seriales a entregar</div>
+        ${estado}
+      </div>
       <div style="display:flex;gap:6px;margin-bottom:8px">
         <div class="select-chip ${s.modoSerial==='individual'?'active':''}" style="font-size:10px" onclick="window.__d_smod(${idx},'individual')">Individual</div>
         <div class="select-chip ${s.modoSerial==='rango'?'active':''}" style="font-size:10px" onclick="window.__d_smod(${idx},'rango')">Rango</div>
       </div>
       ${s.modoSerial==='individual'?`
       <div style="display:flex;gap:6px;margin-bottom:6px">
-        <input class="form-input" id="si-${idx}" type="text" placeholder="Serial…" style="flex:1;padding:8px 10px;font-size:12px"/>
+        <input class="form-input" id="si-${idx}" type="text" placeholder="Escribe o escanea el serial…" style="flex:1;padding:8px 10px;font-size:12px" onkeydown="if(event.key==='Enter'){event.preventDefault();window.__d_sadd(${idx});}"/>
         <button class="icon-btn" style="width:36px;height:36px;color:var(--bod-light);border-color:var(--bod-border);background:var(--bod-glass)" onclick="window.__d_sadd(${idx})">+</button>
       </div>
-      <div class="flex-col gap-4">${s.seriales.map((ser,i)=>`<div style="display:flex;align-items:center;gap:6px;font-size:11px"><div style="flex:1;background:var(--glass);border:1px solid var(--border);border-radius:6px;padding:4px 8px;font-family:monospace">${ser}</div><button class="icon-btn" style="width:24px;height:24px" onclick="window.__d_sdel(${idx},${i})"><svg viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="10" height="10"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>`).join('')}</div>
+      <div class="flex-col gap-4">${v.series.map((x,i)=>chipSerie(x.serial,x.ok,`<button class="icon-btn" style="width:24px;height:24px" onclick="window.__d_sdel(${idx},${i})"><svg viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="10" height="10"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>`)).join('')}</div>
       `:`
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-        <div><div style="font-size:10px;color:var(--text-4);margin-bottom:4px">Inicio</div><input class="form-input" id="sri-${idx}" type="text" value="${s.serialInicio}" placeholder="Primer serial" style="font-size:12px;padding:8px 10px" onblur="window.__d_srange(${idx})"/></div>
-        <div><div style="font-size:10px;color:var(--text-4);margin-bottom:4px">Fin</div><input class="form-input" id="srf-${idx}" type="text" value="${s.serialFin}" placeholder="Último serial" style="font-size:12px;padding:8px 10px" onblur="window.__d_srange(${idx})"/></div>
-      </div>`}
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+        <div><div style="font-size:10px;color:var(--text-4);margin-bottom:4px">Serial inicial</div><input class="form-input" id="sri-${idx}" type="text" value="${s.serialInicio}" placeholder="Ej. 12345001" style="font-size:12px;padding:8px 10px" oninput="window.__d_srange(${idx})"/></div>
+        <div><div style="font-size:10px;color:var(--text-4);margin-bottom:4px">Serial final</div><input class="form-input" id="srf-${idx}" type="text" value="${s.serialFin}" placeholder="Ej. 12345010" style="font-size:12px;padding:8px 10px" oninput="window.__d_srange(${idx})"/></div>
+      </div>
+      ${v.lista.length?`<div class="flex-col gap-4">${v.series.map(x=>chipSerie(x.serial,x.ok,'')).join('')}</div>`:''}
+      `}
     </div>`;
   }
 
   async function handleDespacho(){
     if(!sel.length) return;
-    const errEl=ov.querySelector('#s2-err');
-    const btn=ov.querySelector('#btn-des');
-    errEl.style.display='none'; btn.disabled=true;
-    document.getElementById('btn-des-lbl').innerHTML='<div class="spinner"></div>';
+    // El error puede mostrarse en paso 2 o 3
+    const errEl=ov.querySelector('#s3-err')||ov.querySelector('#s2-err');
+
+    // ── Validación de seriales (obligatoria) ──
+    const conSerial=sel.filter(s=>s.requiereSerial);
+    if(conSerial.length){
+      // Asegurar que los seriales estén cargados
+      for(const s of conSerial){ await cargarSerialesItem(s.itemId); }
+      for(const s of conSerial){
+        const v=validarSeriales(s);
+        if(v.lista.length!==s.cantidad){
+          if(errEl){errEl.textContent=`${tc(s.name)}: indicaste ${v.lista.length} serie(s) pero vas a entregar ${s.cantidad}.`;errEl.style.display='block';}
+          if(step!==3){step=3;renderStep3();}
+          return;
+        }
+        // Duplicados dentro de la misma entrega
+        const dup=v.lista.find((x,i)=>v.lista.indexOf(x)!==i);
+        if(dup){
+          if(errEl){errEl.textContent=`${tc(s.name)}: la serie ${dup} está repetida.`;errEl.style.display='block';}
+          if(step!==3){step=3;renderStep3();}
+          return;
+        }
+        if(v.invalidos.length){
+          if(errEl){errEl.textContent=`${tc(s.name)}: la(s) serie(s) ${v.invalidos.slice(0,3).join(', ')}${v.invalidos.length>3?'…':''} no está(n) disponible(s) en bodega.`;errEl.style.display='block';}
+          if(step!==3){step=3;renderStep3();}
+          return;
+        }
+      }
+    }
+
+    const btn=ov.querySelector('#btn-des3')||ov.querySelector('#btn-des');
+    if(errEl) errEl.style.display='none';
+    if(btn) btn.disabled=true;
+    const lbl=document.getElementById('btn-des-lbl');
+    if(lbl) lbl.innerHTML='<div class="spinner"></div>';
     const placa=hdr.placa==='__otro__'?hdr.placaOtro:hdr.placa;
     try{
       const salidaData={
@@ -1394,15 +1511,19 @@ function abrirDespacho(solicitud=null) {
       }
       salidas_.unshift({id:ref.id,...salidaData,fecha:{seconds:Date.now()/1000}});
 
+      // Limpiar caché de seriales de los items despachados (ya cambiaron)
+      for(const s of sel){ if(s.requiereSerial) delete serialesCache_[s.itemId]; }
+
       ov.remove();
       toast('Salida registrada','ok');
       showMemo({...salidaData,id:ref.id,fecha:new Date()});
       renderSolicitudes();
     }catch(err){
       console.error('[bodega] Error despacho:',err);
-      errEl.textContent=`Error: ${err.message}`;errEl.style.display='block';
-      btn.disabled=false;
-      document.getElementById('btn-des-lbl').textContent=`Registrar salida · ${sel.length} material${sel.length>1?'es':''}`;
+      if(errEl){errEl.textContent=`Error: ${err.message}`;errEl.style.display='block';}
+      if(btn) btn.disabled=false;
+      const lbl2=document.getElementById('btn-des-lbl');
+      if(lbl2) lbl2.textContent=`Registrar salida · ${sel.length} item${sel.length>1?'es':''}`;
     }
   }
 
