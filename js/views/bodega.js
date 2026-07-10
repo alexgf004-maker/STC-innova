@@ -1977,7 +1977,7 @@ function abrirEntrada(itemId) {
 // ── Helpers ───────────────────────────────────────
 function mostrarModalCantidad(item, onAdd) {
   const m=document.createElement('div');
-  m.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:flex-end;z-index:300;';
+  m.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:flex-end;z-index:600;';
   m.innerHTML=`<div style="background:var(--bg-card);width:100%;border-radius:20px 20px 0 0;padding:20px 20px max(32px,20px)">
     <div style="width:36px;height:4px;background:rgba(255,255,255,.15);border-radius:2px;margin:0 auto 16px"></div>
     <div style="font-size:15px;font-weight:700;margin-bottom:4px">${tc(item.name)}</div>
