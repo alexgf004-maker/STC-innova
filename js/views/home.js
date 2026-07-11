@@ -133,9 +133,123 @@ function renderDespachosPendientesTecnico(cont) {
 
   cont.insertBefore(wrap, cont.firstChild);
 
-  // Handlers temporales (Parte 3 los implementa de verdad)
-  window.__despachoPend_aceptar = (id)=>{ alert('La aceptación se activa en la Parte 3'); };
-  window.__despachoPend_rechazar = (id)=>{ alert('El rechazo se activa en la Parte 3'); };
+  window.__despachoPend_aceptar = (id)=>aceptarDespachoPendiente(id);
+  window.__despachoPend_rechazar = (id)=>rechazarDespachoPendiente(id);
+}
+
+// Expande series de un item pendiente (rango o lista)
+function __expandirSeriesPend(m){
+  if (m.modoSerial==='rango' && m.serialInicio){
+    const nI=parseInt(String(m.serialInicio).replace(/\D/g,''),10);
+    const nF=parseInt(String(m.serialFin).replace(/\D/g,''),10);
+    if(isNaN(nI)||isNaN(nF)||nF<nI||(nF-nI)>1000) return [];
+    const prefix=String(m.serialInicio).replace(/\d+$/,'');
+    const digits=String(nF).length;
+    const out=[];
+    for(let n=nI;n<=nF;n++) out.push(prefix+String(n).padStart(digits,'0'));
+    return out;
+  }
+  return (m.seriales||[]).map(s=>String(s).trim()).filter(Boolean);
+}
+
+async function aceptarDespachoPendiente(id){
+  const p = __pendientesTec.find(x=>x.id===id);
+  if(!p) return;
+  const btn = document.querySelector(`#despachos-pend-tec button[onclick*="${id}"]`);
+  if(!confirm('¿Confirmas que recibiste todo este material?')) return;
+
+  // Bloquear botones mientras procesa
+  document.querySelectorAll('#despachos-pend-tec button').forEach(b=>b.disabled=true);
+
+  try{
+    const session = JSON.parse(localStorage.getItem('innova_session'));
+    const now = firebase.firestore.FieldValue.serverTimestamp();
+
+    // 1. Crear la salida definitiva con constancia de aceptación
+    const salidaData = {
+      area: p.area,
+      usuarioResponsable: p.usuarioResponsable,
+      parejaAcompanante: p.parejaAcompanante||'',
+      usuarioRespAsignado: p.usuarioRespAsignado||'',
+      empresaContratista: p.empresaContratista||'INNOVA',
+      placaVehiculo: p.placaVehiculo||'',
+      fechaEntrega: p.fechaEntrega||'',
+      entregadoPor: p.entregadoPor||'',
+      entregadoPorUid: p.entregadoPorUid||null,
+      solicitudId: p.solicitudId||null,
+      items: p.items||[],
+      // Constancia de aceptación
+      aceptadoPorTecnico: session.displayName,
+      aceptadoPorUid: session.uid,
+      fechaAceptacion: now,
+      origenPendiente: id,
+      fecha: now,
+    };
+    const ref = await db.collection('kardex').doc('movimientos').collection('salidas').add(salidaData);
+
+    // 2. Descontar stock
+    const batch = db.batch();
+    for(const m of (p.items||[])){
+      batch.update(db.collection('kardex').doc('inventario').collection('items').doc(m.itemId),
+        {stock: firebase.firestore.FieldValue.increment(-(Number(m.cantidad)||0))});
+    }
+    await batch.commit();
+
+    // 3. Marcar series como despachadas
+    for(const m of (p.items||[])){
+      if(!m.requiereSerial) continue;
+      const lista = __expandirSeriesPend(m);
+      if(!lista.length) continue;
+      try{
+        const snapSer = await db.collection('kardex').doc('seriales').collection('items')
+          .where('itemId','==',m.itemId).where('estado','==','disponible').get();
+        const serSet = new Set(lista);
+        const updates = snapSer.docs.filter(d=>serSet.has(String(d.data().serial).trim()))
+          .map(d=>d.ref.update({estado:'despachado',salidaId:ref.id,fechaSalida:now,usuarioDespacho:p.usuarioResponsable}));
+        await Promise.all(updates);
+      }catch(e){ console.warn('[home] Error marcando series:',e); }
+    }
+
+    // 4. Marcar solicitud como aprobada (si venía de una)
+    if(p.solicitudId){
+      try{ await db.collection('solicitudes_material').doc(p.solicitudId)
+        .update({estado:'aprobado',salidaId:ref.id}); }catch(e){}
+    }
+
+    // 5. Borrar el pendiente
+    await db.collection('despachos_pendientes').doc(id).delete();
+
+    // 6. Actualizar UI
+    __pendientesTec = __pendientesTec.filter(x=>x.id!==id);
+    const card = document.querySelector(`#despachos-pend-tec button[onclick*="${id}"]`)?.closest('div[style*="border-radius:16px"]');
+    if(card) card.remove();
+    if(!__pendientesTec.length) document.getElementById('despachos-pend-tec')?.remove();
+
+    alert('Material aceptado correctamente. Queda registrado en tu historial.');
+  }catch(err){
+    console.error('[home] Error al aceptar despacho:',err);
+    alert('Error al aceptar: '+err.message);
+    document.querySelectorAll('#despachos-pend-tec button').forEach(b=>b.disabled=false);
+  }
+}
+
+async function rechazarDespachoPendiente(id){
+  const p = __pendientesTec.find(x=>x.id===id);
+  if(!p) return;
+  if(!confirm('¿Rechazar este material? Se le notificará a quien te lo entrega para corregir.')) return;
+  document.querySelectorAll('#despachos-pend-tec button').forEach(b=>b.disabled=true);
+  try{
+    await db.collection('despachos_pendientes').doc(id).delete();
+    __pendientesTec = __pendientesTec.filter(x=>x.id!==id);
+    const card = document.querySelector(`#despachos-pend-tec button[onclick*="${id}"]`)?.closest('div[style*="border-radius:16px"]');
+    if(card) card.remove();
+    if(!__pendientesTec.length) document.getElementById('despachos-pend-tec')?.remove();
+    alert('Material rechazado. El despacho fue devuelto.');
+  }catch(err){
+    console.error('[home] Error al rechazar:',err);
+    alert('Error al rechazar: '+err.message);
+    document.querySelectorAll('#despachos-pend-tec button').forEach(b=>b.disabled=false);
+  }
 }
 
 // ── Carga de datos técnico ────────────────────────
