@@ -8,7 +8,7 @@ import { db } from '../firebase.js';
 import { toast } from '../ui.js';
 
 // ── Constantes (iguales al original) ─────────────
-const PLACAS = ['CPT-154','CPT-156','AU-250','AU-200','CNR-163','P568DA','P38DA6'];
+const PLACAS = ['CPT-154','CPT-156','AU-250','AU-200','CNR-163','P568DA','P38DA6','SG-295','SG-297','AEC-240'];
 const RESPONSABLES = ['NALVAR','RGONZA','JPEREZ'];
 const CONTRATISTAS = ['INNOVA'];
 const TIPOS_TRABAJO = ['Servicio nuevo','Cambio de voltaje','Reconexión','Cambio de medidor','Reubicación de medidor','Reubicación de acometida','Otro'];
