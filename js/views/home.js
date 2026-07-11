@@ -16,9 +16,9 @@ export async function init(container, session) {
   const destino = asignacionActual?.destino || null;
 
   if (role === 'tecnico') {
-    if (!area) return renderNoAsignacion(container, session);
-    renderHomeTecnico(container, session, area, destino);
-    cargarDatosTecnico(session, area, destino);
+    if (!area) { renderNoAsignacion(container, session); }
+    else { renderHomeTecnico(container, session, area, destino); cargarDatosTecnico(session, area, destino); }
+    cargarDespachosPendientesTecnico(session);
     return;
   }
   if (role === 'admin')     {
@@ -45,6 +45,80 @@ export async function init(container, session) {
   }
 
   container.innerHTML = `<p style="color:var(--text-3);padding:24px">Rol no reconocido.</p>`;
+}
+
+// ── Despachos pendientes de aceptación (técnico) ──
+async function cargarDespachosPendientesTecnico(session) {
+  try {
+    const snap = await db.collection('despachos_pendientes')
+      .where('tecnicoRecibeUid', '==', session.uid).get();
+    const pendientes = snap.docs.map(d=>({id:d.id,...d.data()}))
+      .sort((a,b)=>(b.fecha?.seconds||0)-(a.fecha?.seconds||0));
+    renderDespachosPendientesTecnico(pendientes);
+  } catch(e) {
+    console.warn('[home] No se pudieron cargar despachos pendientes:', e);
+  }
+}
+
+const CAMP_LABEL_HOME = { AMI:'AMI', Caracterizacion:'Caracterización', ReclamosSIGET:'Reclamos SIGET' };
+const CAMP_COLOR_HOME = { AMI:'#fbbf24', Caracterizacion:'#a78bfa', ReclamosSIGET:'#22d3ee' };
+
+function renderDespachosPendientesTecnico(pendientes) {
+  document.getElementById('despachos-pend-tec')?.remove();
+  if (!pendientes.length) return;
+
+  const cont = document.querySelector('.flex-col.gap-12') || document.body;
+  const wrap = document.createElement('div');
+  wrap.id = 'despachos-pend-tec';
+  wrap.style.cssText = 'margin-bottom:12px';
+
+  wrap.innerHTML = `
+    <div class="flex-col gap-10">
+      ${pendientes.map(p=>{
+        const col = CAMP_COLOR_HOME[p.area] || '#fbbf24';
+        const lbl = CAMP_LABEL_HOME[p.area] || p.area;
+        const totalItems = (p.items||[]).reduce((a,i)=>a+(Number(i.cantidad)||0),0);
+        return `
+        <div style="background:linear-gradient(160deg,${col}18,var(--glass));border:1px solid ${col}55;border-radius:16px;padding:16px;position:relative;overflow:hidden">
+          <div style="position:absolute;top:0;left:0;width:100%;height:3px;background:${col}"></div>
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+            <div style="width:32px;height:32px;border-radius:9px;background:${col}22;display:flex;align-items:center;justify-content:center">
+              <svg viewBox="0 0 24 24" fill="none" stroke="${col}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="17" height="17"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+            </div>
+            <div style="flex:1">
+              <div style="font-size:14px;font-weight:800">Material por recibir</div>
+              <div style="font-size:11px;color:var(--text-4)">${lbl} · te lo entrega ${p.entregadoPor||'bodega'}</div>
+            </div>
+            <div style="font-size:10px;font-weight:700;color:${col};background:${col}1a;border:1px solid ${col}44;padding:3px 10px;border-radius:20px">${totalItems} items</div>
+          </div>
+          <div class="flex-col gap-4" style="margin-bottom:12px">
+            ${(p.items||[]).map(m=>{
+              const series = m.requiereSerial
+                ? (m.modoSerial==='rango' && m.serialInicio
+                    ? `<div style="font-size:10px;color:var(--text-4);font-family:monospace;margin-top:2px">Serie ${m.serialInicio} a ${m.serialFin}</div>`
+                    : (m.seriales&&m.seriales.length ? `<div style="font-size:10px;color:var(--text-4);font-family:monospace;margin-top:2px">${m.seriales.join(', ')}</div>` : ''))
+                : '';
+              return `<div style="padding:7px 0;border-top:1px solid var(--border)">
+                <div style="display:flex;justify-content:space-between;font-size:12px">
+                  <span style="color:var(--text-2)">${(m.nombre||m.name||'—')}</span>
+                  <span style="font-weight:700">${m.cantidad} ${m.unit||''}</span>
+                </div>${series}
+              </div>`;
+            }).join('')}
+          </div>
+          <div style="display:flex;gap:8px">
+            <button style="flex:1;height:44px;border-radius:12px;border:1px solid var(--border);background:transparent;color:#ef4444;font-size:13px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif" onclick="window.__despachoPend_rechazar('${p.id}')">Rechazar</button>
+            <button style="flex:2;height:44px;border-radius:12px;border:none;background:${col};color:#0a1628;font-size:13px;font-weight:800;cursor:pointer;font-family:'Outfit',sans-serif" onclick="window.__despachoPend_aceptar('${p.id}')">Aceptar material</button>
+          </div>
+        </div>`;
+      }).join('')}
+    </div>`;
+
+  cont.insertBefore(wrap, cont.firstChild);
+
+  // Handlers temporales (Parte 3 los implementa de verdad)
+  window.__despachoPend_aceptar = (id)=>{ alert('La aceptación se activa en la Parte 3'); };
+  window.__despachoPend_rechazar = (id)=>{ alert('El rechazo se activa en la Parte 3'); };
 }
 
 // ── Carga de datos técnico ────────────────────────
