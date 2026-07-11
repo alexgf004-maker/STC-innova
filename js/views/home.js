@@ -169,7 +169,9 @@ async function aceptarDespachoPendiente(id){
     const salidaData = {
       area: p.area,
       usuarioResponsable: p.usuarioResponsable,
+      tecnicoRecibeUid: p.tecnicoRecibeUid||null,
       parejaAcompanante: p.parejaAcompanante||'',
+      parejaUid: p.parejaUid||null,
       usuarioRespAsignado: p.usuarioRespAsignado||'',
       empresaContratista: p.empresaContratista||'INNOVA',
       placaVehiculo: p.placaVehiculo||'',
