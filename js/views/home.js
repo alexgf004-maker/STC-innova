@@ -16,6 +16,7 @@ export async function init(container, session) {
   const destino = asignacionActual?.destino || null;
 
   if (role === 'tecnico') {
+    __containerTec = container;
     if (!area) { renderNoAsignacion(container, session); }
     else { renderHomeTecnico(container, session, area, destino); cargarDatosTecnico(session, area, destino); }
     cargarDespachosPendientesTecnico(session);
@@ -48,26 +49,42 @@ export async function init(container, session) {
 }
 
 // ── Despachos pendientes de aceptación (técnico) ──
+let __pendientesTec = [];
+let __containerTec = null;
 async function cargarDespachosPendientesTecnico(session) {
   try {
     const snap = await db.collection('despachos_pendientes')
       .where('tecnicoRecibeUid', '==', session.uid).get();
-    const pendientes = snap.docs.map(d=>({id:d.id,...d.data()}))
+    __pendientesTec = snap.docs.map(d=>({id:d.id,...d.data()}))
       .sort((a,b)=>(b.fecha?.seconds||0)-(a.fecha?.seconds||0));
-    renderDespachosPendientesTecnico(pendientes);
+    intentarPintarPendientes(0);
   } catch(e) {
     console.warn('[home] No se pudieron cargar despachos pendientes:', e);
   }
 }
 
+function intentarPintarPendientes(intento){
+  if (!__pendientesTec.length) return;
+  // Buscar el contenedor donde pintar: el primer .flex-col dentro del container del técnico
+  let cont = null;
+  if (__containerTec) {
+    cont = __containerTec.querySelector('.flex-col') || __containerTec;
+  }
+  if (!cont) {
+    if (intento < 20) return setTimeout(()=>intentarPintarPendientes(intento+1), 100);
+    return;
+  }
+  renderDespachosPendientesTecnico(cont);
+}
+
 const CAMP_LABEL_HOME = { AMI:'AMI', Caracterizacion:'Caracterización', ReclamosSIGET:'Reclamos SIGET' };
 const CAMP_COLOR_HOME = { AMI:'#fbbf24', Caracterizacion:'#a78bfa', ReclamosSIGET:'#22d3ee' };
 
-function renderDespachosPendientesTecnico(pendientes) {
+function renderDespachosPendientesTecnico(cont) {
   document.getElementById('despachos-pend-tec')?.remove();
+  const pendientes = __pendientesTec;
   if (!pendientes.length) return;
 
-  const cont = document.querySelector('.flex-col.gap-12') || document.body;
   const wrap = document.createElement('div');
   wrap.id = 'despachos-pend-tec';
   wrap.style.cssText = 'margin-bottom:12px';
