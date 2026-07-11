@@ -97,7 +97,7 @@ export async function init(container, session) {
   area_      = session.asignacionActual?.area || null;
   destino_   = session.asignacionActual?.destino || null;
   uid_       = session.uid;
-  activeTab_ = role_==='tecnico' ? 'material' : 'inventario';
+  activeTab_ = role_==='tecnico' ? 'recibido' : 'inventario';
   areaFiltro_= area_ || localStorage.getItem('bod_area') || 'CAMBIOS';
 
   const miMontaje = ++montadoId_;
@@ -138,8 +138,8 @@ function renderShell() {
   const isTecnico = role_==='tecnico';
   const tabs = isTecnico
     ? (area_
-        ? [{id:'material',label:'Mi material'},{id:'recibido',label:'Recibido'},{id:'solicitar',label:'Solicitar'},{id:'mis-solic',label:'Pedidos'}]
-        : [{id:'solicitar',label:'Solicitar'},{id:'material',label:'Mi material'},{id:'recibido',label:'Recibido'},{id:'mis-solic',label:'Pedidos'}])
+        ? [{id:'recibido',label:'Material recibido'},{id:'solicitar',label:'Solicitar'},{id:'mis-solic',label:'Pedidos'}]
+        : [{id:'solicitar',label:'Solicitar'},{id:'recibido',label:'Material recibido'},{id:'mis-solic',label:'Pedidos'}])
     : [{id:'inventario',label:'Inventario'},{id:'historial',label:'Historial'},{id:'solicitudes',label:'Solicitudes'}];
 
   container_.innerHTML = `
@@ -306,32 +306,53 @@ function renderMiMaterial() {
 function renderRecibido() {
   const content = document.getElementById('bod-content');
   const usuario = destino_ || session_.displayName;
-  // Despachos donde este técnico es quien recibió
+  const miNombre = safeStr(session_.displayName);
+
+  // Entregas donde el técnico participó: como quien firmó O como pareja.
+  // Se hace match por UID (nuevos) y por nombre (registros antiguos).
   const misEntradas = salidas_
-    .filter(s => (s.usuarioResponsable || s.tecnicoNombre) === usuario)
-    .sort((a,b)=>(b.fecha?.seconds||0)-(a.fecha?.seconds||0));
+    .map(s=>{
+      const firmoUid  = s.tecnicoRecibeUid && s.tecnicoRecibeUid === uid_;
+      const firmoNom  = safeStr(s.usuarioResponsable||s.tecnicoNombre) === usuario
+                     || safeStr(s.usuarioResponsable||s.tecnicoNombre) === miNombre;
+      const parejaUid = s.parejaUid && s.parejaUid === uid_;
+      const parejaNom = safeStr(s.parejaAcompanante) && safeStr(s.parejaAcompanante) === miNombre;
+      const firmo  = firmoUid || firmoNom;
+      const espareja = !firmo && (parejaUid || parejaNom);
+      if(!firmo && !espareja) return null;
+      return { s, firmo };
+    })
+    .filter(Boolean)
+    .sort((a,b)=>(b.s.fecha?.seconds||0)-(a.s.fecha?.seconds||0));
 
   content.innerHTML=`
     <div class="flex-col gap-12">
       <div class="panel-header anim-up">
         <div>
           <div class="section-title">Material recibido</div>
-          <div class="section-sub">${usuario} · ${misEntradas.length} entregas</div>
+          <div class="section-sub">${misEntradas.length} entrega${misEntradas.length===1?'':'s'} · historial de lo entregado</div>
         </div>
       </div>
-      ${!misEntradas.length?`<div class="dev-module anim-up d1"><div class="dev-title">Sin entregas</div><p>Aquí aparecerá el material que bodega te despache.</p></div>`:`
+      ${!misEntradas.length?`<div class="dev-module anim-up d1"><div class="dev-title">Sin entregas</div><p>Aquí aparecerá el material que bodega les despache, a ti o a tu pareja.</p></div>`:`
       <div class="flex-col gap-8 anim-up d1">
-        ${misEntradas.map(s=>{
+        ${misEntradas.map(({s,firmo})=>{
           const camp = s.area || 'CAMBIOS';
           const cc = CAMPANA_COLORS[camp] || CAMPANA_COLORS['CAMBIOS'];
           const totalItems = (s.items||[]).reduce((a,i)=>a+safeNum(i.cantidad),0);
-          return `<div class="bod-solic-card">
+          const quienFirmo = safeStr(s.usuarioResponsable||s.tecnicoNombre,'—');
+          const laPareja   = safeStr(s.parejaAcompanante,'');
+          return `<div class="bod-solic-card"${!firmo?' style="border-color:rgba(255,255,255,.14)"':''}>
             <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:8px">
-              <div>
+              <div style="min-width:0">
                 <div style="font-size:12px;font-weight:700">${fmtDate(s.fecha)}</div>
                 <div style="font-size:10px;color:var(--text-4)">${totalItems} items · entregó ${safeStr(s.registradoPorNombre||s.entregadoPor,'—')}</div>
               </div>
-              <div class="bod-badge" style="color:${cc.color};border-color:${cc.color}33;background:${cc.color}11">${cc.label}</div>
+              <div class="bod-badge" style="color:${cc.color};border-color:${cc.color}33;background:${cc.color}11;flex-shrink:0">${cc.label}</div>
+            </div>
+            <div style="font-size:10px;color:${firmo?'var(--ok)':'var(--text-4)'};font-weight:600;margin-bottom:8px">
+              ${firmo
+                ? `Lo recibiste tú${laPareja?` · con ${laPareja}`:''}`
+                : `Recibido por ${quienFirmo} (tu pareja)`}
             </div>
             <div class="flex-col gap-3">
               ${(s.items||[]).map(m=>{
@@ -1660,12 +1681,13 @@ function abrirDespacho(solicitud=null) {
       try{
         // Buscar el UID del técnico que recibe (para que le llegue en su sesión)
         const tecRecibe=tecnicos_.find(t=>safeStr(t.displayName)===hdr.responsable);
+        const tecPareja=tecnicos_.find(t=>safeStr(t.displayName)===hdr.pareja);
         const pendData={
           area:areaDespacho,
           estado:'pendiente_aceptacion',
           usuarioResponsable:hdr.responsable,
           tecnicoRecibeUid:tecRecibe?.id||null,
-          parejaAcompanante:hdr.pareja||'',usuarioRespAsignado:hdr.usuarioResp||'',empresaContratista:hdr.contratista,
+          parejaAcompanante:hdr.pareja||'',parejaUid:tecPareja?.id||null,usuarioRespAsignado:hdr.usuarioResp||'',empresaContratista:hdr.contratista,
           placaVehiculo:placa,fechaEntrega:hdr.fechaEnt,
           entregadoPor:session_.displayName,entregadoPorUid:uid_,
           solicitudId:solicitud?.id||null,
@@ -1687,9 +1709,13 @@ function abrirDespacho(solicitud=null) {
 
     // ── CAMBIOS/OTC: flujo normal (descuenta stock de una vez) ──
     try{
+      const tecR=tecnicos_.find(t=>safeStr(t.displayName)===hdr.responsable);
+      const tecP=tecnicos_.find(t=>safeStr(t.displayName)===hdr.pareja);
       const salidaData={
         area:solicitud?.area||areaFiltro_,
-        usuarioResponsable:hdr.responsable,parejaAcompanante:hdr.pareja||'',usuarioRespAsignado:hdr.usuarioResp||'',empresaContratista:hdr.contratista,
+        usuarioResponsable:hdr.responsable,tecnicoRecibeUid:tecR?.id||null,
+        parejaAcompanante:hdr.pareja||'',parejaUid:tecP?.id||null,
+        usuarioRespAsignado:hdr.usuarioResp||'',empresaContratista:hdr.contratista,
         instaladorResponsable:hdr.instalador,placaVehiculo:placa,
         fechaSolicitud:hdr.fechaSol,fechaEntrega:hdr.fechaEnt,
         entregadoPor:session_.displayName,entregadoPorUid:uid_,
