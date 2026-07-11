@@ -572,7 +572,8 @@ function renderFormSolicitar() {
   }
 
   const misItems = getItems(campanaEfectiva);
-  let sel=[], busq='';
+  const esCampanaNueva = (campanaEfectiva==='AMI'||campanaEfectiva==='Caracterizacion'||campanaEfectiva==='ReclamosSIGET');
+  let sel=[], busq='', pareja='', placa='', placaOtro='';
 
   function render() {
     const cc = CAMPANA_COLORS[campanaEfectiva] || CAMPANA_COLORS['CAMBIOS'];
@@ -580,8 +581,29 @@ function renderFormSolicitar() {
       <div class="flex-col gap-12">
         <div class="panel-header anim-up">
           <div class="section-title">Solicitar material</div>
-          ${!area_ ? `<div onclick="window.__bodega.cambiarCampanaTecnico()" style="cursor:pointer;font-size:11px;font-weight:700;padding:5px 12px;border-radius:20px;color:${cc.color};background:${cc.bg};border:1px solid ${cc.border}">${cc.label} ▾</div>` : ''}
+          ${!area_ ? `<div onclick="window.__bodega.cambiarCampanaTecnico()" style="cursor:pointer;font-size:11px;font-weight:700;padding:5px 12px;border-radius:20px;color:${cc.color};background:${cc.bg};border:1px solid ${cc.border}">${cc.label} &#9662;</div>` : ''}
         </div>
+
+        ${esCampanaNueva?`
+        <div class="anim-up d1" style="background:var(--glass);border:1px solid var(--border);border-radius:14px;padding:14px">
+          <div class="section-label" style="margin-bottom:10px">Datos de la salida</div>
+          <div class="form-field">
+            <div class="form-label">Pareja / acompañante *</div>
+            <div style="position:relative">
+              <input class="form-input" id="sol-pareja" value="${pareja}" placeholder="Escribe para buscar…" autocomplete="off"/>
+              <div id="sol-pareja-lista" style="display:none;position:absolute;top:100%;left:0;right:0;z-index:20;margin-top:4px;background:var(--bg-2,#1a2332);border:1px solid var(--border);border-radius:12px;max-height:180px;overflow-y:auto;box-shadow:0 8px 24px rgba(0,0,0,.4)"></div>
+            </div>
+          </div>
+          <div class="form-field" style="margin-bottom:0">
+            <div class="form-label">Vehículo *</div>
+            <div class="select-row flex-wrap" id="sol-placa">
+              ${PLACAS.map(p=>`<div class="select-chip ${placa===p?'active':''}" data-val="${p}">${p}</div>`).join('')}
+              <div class="select-chip ${placa==='__otro__'?'active':''}" data-val="__otro__">Otra</div>
+            </div>
+            <input class="form-input" id="sol-placa-otro" style="margin-top:8px;display:${placa==='__otro__'?'':'none'}" placeholder="Ingresa la placa" value="${placaOtro}"/>
+          </div>
+        </div>`:''}
+
         ${sel.length?`
         <div class="anim-up d1">
           <div class="section-label" style="margin-bottom:8px">Tu pedido · ${sel.length} material${sel.length>1?'es':''}</div>
@@ -618,6 +640,39 @@ function renderFormSolicitar() {
     });
     document.getElementById('sol-buscar')?.addEventListener('input',e=>{busq=e.target.value;renderLista();});
     document.getElementById('sol-submit')?.addEventListener('click',handleEnviar);
+
+    // Campos de salida (solo campañas nuevas)
+    if (esCampanaNueva) {
+      // Autocompletado de pareja
+      const pInput = document.getElementById('sol-pareja');
+      const pLista = document.getElementById('sol-pareja-lista');
+      function renderPareja(filtro){
+        const q = safeStr(filtro,'').toLowerCase().trim();
+        const matches = tecnicos_.filter(t => safeStr(t.displayName).toLowerCase().includes(q) && safeStr(t.displayName)!==session_.displayName);
+        if(!matches.length){ pLista.style.display='none'; return; }
+        pLista.innerHTML = matches.map(t=>`<div class="ac-opt" data-nombre="${safeStr(t.displayName)}" style="padding:11px 14px;font-size:13px;cursor:pointer;border-bottom:1px solid var(--border)">${safeStr(t.displayName)}</div>`).join('');
+        pLista.style.display='block';
+        pLista.querySelectorAll('.ac-opt').forEach(opt=>{
+          opt.addEventListener('click',()=>{ pInput.value=opt.dataset.nombre; pareja=opt.dataset.nombre; pLista.style.display='none'; });
+        });
+      }
+      pInput?.addEventListener('focus',()=>renderPareja(pInput.value));
+      pInput?.addEventListener('input',()=>{ pareja=pInput.value.trim(); renderPareja(pInput.value); });
+      document.addEventListener('click',(e)=>{ if(pInput && !pInput.contains(e.target) && !pLista?.contains(e.target)) pLista.style.display='none'; });
+
+      // Selector de placa
+      document.getElementById('sol-placa')?.querySelectorAll('.select-chip').forEach(c=>{
+        c.addEventListener('click',()=>{
+          document.querySelectorAll('#sol-placa .select-chip').forEach(x=>x.classList.remove('active'));
+          c.classList.add('active');
+          placa=c.dataset.val;
+          const otroEl=document.getElementById('sol-placa-otro');
+          if(otroEl) otroEl.style.display = placa==='__otro__'?'':'none';
+        });
+      });
+      document.getElementById('sol-placa-otro')?.addEventListener('input',e=>{placaOtro=e.target.value.trim();});
+    }
+
     renderLista();
   }
 
@@ -647,16 +702,31 @@ function renderFormSolicitar() {
     if(!sel.length) return;
     const errEl=document.getElementById('sol-error');
     errEl.style.display='none';
+
+    // Validar campos obligatorios en campañas nuevas
+    let placaFinal='';
+    if(esCampanaNueva){
+      if(!pareja){
+        errEl.textContent='Indica con qué pareja/acompañante andas.';errEl.style.display='block';return;
+      }
+      placaFinal = placa==='__otro__' ? placaOtro : placa;
+      if(!placaFinal){
+        errEl.textContent='Indica el vehículo en el que andas.';errEl.style.display='block';return;
+      }
+    }
+
     setLoading('sol-btn-lbl','Enviando…',true);
     try {
       const data={
         usuarioUid:uid_,usuarioNombre:session_.displayName,usuarioOperativo:destino_,
         area:campanaEfectiva,materiales:sel.map(s=>({itemId:s.itemId,nombre:s.name,unit:s.unit,cantidad:s.cantidad})),
         estado:'pendiente',fecha:firebase.firestore.Timestamp.now(),notas:'',
+        parejaAcompanante: esCampanaNueva ? pareja : '',
+        placaVehiculo: esCampanaNueva ? placaFinal : '',
       };
       const ref=await db.collection('solicitudes_material').add(data);
       solicitudes_.unshift({id:ref.id,...data});
-      sel=[];render();
+      sel=[];pareja='';placa='';placaOtro='';render();
       toast('Solicitud enviada','ok');
     } catch(err){errEl.textContent=`Error: ${err.message}`;errEl.style.display='block';setLoading('sol-btn-lbl','Enviar solicitud',false);}
   }
@@ -1171,7 +1241,17 @@ function abrirDevolucion(salida) {
 function abrirDespacho(solicitud=null) {
   const campanaDespacho = solicitud?.area || areaFiltro_ || 'CAMBIOS';
   const esCampanaNueva = (campanaDespacho==='AMI' || campanaDespacho==='Caracterizacion' || campanaDespacho==='ReclamosSIGET');
-  const hdr={responsable:solicitud?.usuarioNombre||'',pareja:'',usuarioResp:'',contratista:'INNOVA',instalador:'',placa:'',placaOtro:'',fechaSol:new Date().toISOString().split('T')[0],fechaEnt:new Date().toISOString().split('T')[0]};
+  const hdr={
+    responsable:solicitud?.usuarioNombre||'',
+    pareja:solicitud?.parejaAcompanante||'',
+    usuarioResp:'',
+    contratista:'INNOVA',
+    instalador:'',
+    placa:solicitud?.placaVehiculo&&PLACAS.includes(solicitud.placaVehiculo)?solicitud.placaVehiculo:(solicitud?.placaVehiculo?'__otro__':''),
+    placaOtro:solicitud?.placaVehiculo&&!PLACAS.includes(solicitud.placaVehiculo)?solicitud.placaVehiculo:'',
+    fechaSol:new Date().toISOString().split('T')[0],
+    fechaEnt:new Date().toISOString().split('T')[0]
+  };
   let sel=[];
   if(solicitud?.materiales?.length){
     sel=solicitud.materiales.map(m=>{
