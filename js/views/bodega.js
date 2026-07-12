@@ -1824,6 +1824,10 @@ function showMemoCampana(salida) {
     vehiculo: safeStr(salida.placaVehiculo,''),
     entrega: safeStr(salida.entregadoPor||salida.registradoPorNombre,''),
     fecha: fechaEnt,
+    // Sellos digitales
+    selloEntregaFecha: salida.fecha ? fmtDate(salida.fecha) : '',
+    selloRecibeNombre: safeStr(salida.aceptadoPorTecnico,''),
+    selloRecibeFecha:  salida.fechaAceptacion ? fmtDate(salida.fechaAceptacion) : '',
   };
 
   const AC = (CAMPANA_COLORS[salida.area]||CAMPANA_COLORS['AMI']).color; // color de acento por campaña
@@ -1851,12 +1855,27 @@ function showMemoCampana(salida) {
       <div style="font-weight:600;font-size:12px;flex:1;border-bottom:1px dashed var(--border-md);padding-bottom:3px">${v||'—'}</div>
     </div>`;
 
-  const firma = (rol,nom) => `
-    <div style="flex:1;text-align:center">
-      <div style="height:38px;border-bottom:1.5px solid var(--text-3);margin-bottom:6px"></div>
-      <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:${AC}">${rol}</div>
-      <div style="font-size:11px;font-weight:600;margin-top:2px">${nom||'—'}</div>
+  // Sello digital: si hay fecha, se muestra como comprobante; si no, línea de firma
+  const sello = (rol, nom, texto, fecha) => {
+    if (!fecha) {
+      return `<div style="flex:1;text-align:center">
+        <div style="height:38px;border-bottom:1.5px solid var(--text-3);margin-bottom:6px"></div>
+        <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:${AC}">${rol}</div>
+        <div style="font-size:11px;font-weight:600;margin-top:2px">${nom||'—'}</div>
+      </div>`;
+    }
+    return `<div style="flex:1;text-align:center">
+      <div style="border:1.5px solid ${AC};border-radius:10px;padding:8px 6px;background:${AC}0f;position:relative">
+        <div style="display:flex;align-items:center;justify-content:center;gap:4px;margin-bottom:3px">
+          <svg viewBox="0 0 24 24" fill="none" stroke="${AC}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" width="11" height="11"><polyline points="20 6 9 17 4 12"/></svg>
+          <span style="font-size:8px;font-weight:900;text-transform:uppercase;letter-spacing:.06em;color:${AC}">${texto}</span>
+        </div>
+        <div style="font-size:11px;font-weight:700;line-height:1.2">${nom||'—'}</div>
+        <div style="font-size:8.5px;color:var(--text-4);margin-top:2px">${fecha}</div>
+      </div>
+      <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:var(--text-4);margin-top:5px">${rol}</div>
     </div>`;
+  };
 
   const sheet=document.createElement('div');
   sheet.className='sheet-backdrop open';
@@ -1876,10 +1895,10 @@ function showMemoCampana(salida) {
         <div style="display:inline-block;margin-top:8px;font-size:11px;font-weight:800;color:${AC};text-transform:uppercase;letter-spacing:.06em;background:${AC}1a;border:1px solid ${AC}44;padding:3px 14px;border-radius:20px">${camp}</div>
       </div>
 
-      <!-- Firmas ARRIBA -->
-      <div style="display:flex;gap:20px;padding:16px 8px 18px">
-        ${firma('Entrega', memoData.entrega)}
-        ${firma('Recibe', memoData.recibe)}
+      <!-- Sellos de entrega y aceptación -->
+      <div style="display:flex;gap:14px;padding:16px 4px 18px">
+        ${sello('Entrega', memoData.entrega, 'Entregado digitalmente', memoData.selloEntregaFecha)}
+        ${sello('Recibe', memoData.selloRecibeNombre || memoData.recibe, 'Aceptado digitalmente', memoData.selloRecibeFecha)}
       </div>
 
       <!-- Datos -->
@@ -1957,6 +1976,10 @@ function imprimirCampana(m) {
     .tit{font-size:8pt;font-weight:bold;text-transform:uppercase;color:#333;margin-bottom:2mm;letter-spacing:.5px;}
     table.mat{width:100%;border-collapse:collapse;}
     table.mat th{background:${AC}22;border:0.4pt solid #000;padding:1.5mm 2mm;font-size:7.5pt;text-transform:uppercase;letter-spacing:.5px;}
+    .sello{border:1pt solid ${AC};border-radius:2mm;padding:2.5mm 2mm;background:#fbfbfb;text-align:center;margin-bottom:1.5mm;}
+    .sello-tit{font-size:7pt;font-weight:bold;text-transform:uppercase;letter-spacing:.4px;color:${AC};margin-bottom:1mm;}
+    .sello-nom{font-size:9pt;font-weight:bold;}
+    .sello-fec{font-size:7pt;color:#555;margin-top:0.5mm;}
   </style></head><body>
     <div class="head">
       <div class="emp">INNOVA</div>
@@ -1965,8 +1988,12 @@ function imprimirCampana(m) {
     </div>
 
     <div class="firmas">
-      <div class="firma"><div class="linea"></div><div class="rol">Entrega</div><div class="nom">${m.entrega||''}</div></div>
-      <div class="firma"><div class="linea"></div><div class="rol">Recibe</div><div class="nom">${m.recibe||''}</div></div>
+      ${m.selloEntregaFecha
+        ? `<div class="firma"><div class="sello"><div class="sello-tit">&#10003; Entregado digitalmente</div><div class="sello-nom">${m.entrega||''}</div><div class="sello-fec">${m.selloEntregaFecha}</div></div><div class="rol">Entrega</div></div>`
+        : `<div class="firma"><div class="linea"></div><div class="rol">Entrega</div><div class="nom">${m.entrega||''}</div></div>`}
+      ${m.selloRecibeFecha
+        ? `<div class="firma"><div class="sello"><div class="sello-tit">&#10003; Aceptado digitalmente</div><div class="sello-nom">${m.selloRecibeNombre||m.recibe||''}</div><div class="sello-fec">${m.selloRecibeFecha}</div></div><div class="rol">Recibe</div></div>`
+        : `<div class="firma"><div class="linea"></div><div class="rol">Recibe</div><div class="nom">${m.recibe||''}</div></div>`}
     </div>
 
     <table class="datos">
