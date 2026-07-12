@@ -349,6 +349,13 @@ async function crearUsuario() {
       createdBy:     session_.uid,
     });
 
+    // Índice público username -> uid (sin secretos). Lo usa el login.
+    await db.collection('usernames').doc(user).set({
+      uid,
+      email,
+      username: user,
+    });
+
     // Actualizar lista local
     usuarios.push({
       id: uid, uid, username: user, displayName: name,
@@ -569,6 +576,10 @@ async function guardarCredenciales() {
 
   setLoading('btn-cred-label', 'Guardando…', true);
   try {
+    const actual         = usuarios.find(u => u.id === credUid_);
+    const usernameViejo  = actual?.username || null;
+    const cambioUsername = usernameViejo && usernameViejo !== username;
+
     const update = { username };
 
     if (pin) {
@@ -579,6 +590,16 @@ async function guardarCredenciales() {
     }
 
     await db.collection('users').doc(credUid_).update(update);
+
+    // Mantener sincronizado el índice `usernames` que usa el login.
+    // OJO: el correo interno de Firebase Auth NO cambia — se conserva el original.
+    if (cambioUsername) {
+      const doc   = await db.collection('users').doc(credUid_).get();
+      const email = doc.data()?.internalEmail || `${usernameViejo}@innova-stc.internal`;
+      await db.collection('usernames').doc(username).set({ uid: credUid_, email, username });
+      await db.collection('usernames').doc(usernameViejo).delete().catch(() => {});
+    }
+
     const idx = usuarios.findIndex(u => u.id === credUid_);
     if (idx !== -1) usuarios[idx] = { ...usuarios[idx], ...update };
     closeSheet('sheet-credenciales');
