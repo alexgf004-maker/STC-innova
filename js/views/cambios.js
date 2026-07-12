@@ -37,6 +37,7 @@ const PAREJA_COLORS = {
 
 let container_, session_, role_, pareja_;
 let ordenes = [], calendario = [];
+let asignaciones_ = {};   // { 'Pareja 1': ['Juan','Pedro'], ... } — solo parejas con técnicos en campo hoy
 let filtroSinActualizar_ = 'todas';
 let activeTab = 'panel'; // 'panel' | 'ordenes'
 let selectedOrden = null;
@@ -50,13 +51,36 @@ export async function init(container, session) {
   activeTab  = role_ === 'tecnico' ? 'resumen' : 'panel';
 
   renderShell();
-  await Promise.all([loadCalendario(), loadOrdenes()]);
+  await Promise.all([loadCalendario(), loadOrdenes(), loadAsignaciones()]);
 
   // Escuchar actualizaciones desde el mapa
   window.addEventListener('cambios:updated', () => {
     invalidateOrdenes();
     loadOrdenes();
   });
+}
+
+// ── Asignaciones activas (qué técnicos andan en qué pareja hoy) ──
+async function loadAsignaciones() {
+  if (role_ === 'tecnico') return;   // solo lo necesita el panel de gestión
+  try {
+    const snap = await db.collection('users')
+      .where('role', '==', 'tecnico')
+      .where('active', '==', true).get();
+    const mapa = {};
+    snap.docs.forEach(d => {
+      const u = d.data();
+      const destino = u.asignacionActual?.destino;
+      const area    = u.asignacionActual?.area;
+      if (!destino || area !== 'CAMBIOS') return;   // solo los que andan en Cambios hoy
+      if (!mapa[destino]) mapa[destino] = [];
+      mapa[destino].push(u.displayName || '—');
+    });
+    asignaciones_ = mapa;
+    if (activeTab === 'panel') renderPanel();
+  } catch (err) {
+    console.warn('[cambios] No se pudieron cargar asignaciones:', err);
+  }
 }
 
 // ── Shell ─────────────────────────────────────────
@@ -596,14 +620,8 @@ function renderPanel() {
   const total          = ordenes.length;
   const pct = total ? Math.round((todasAprobadas.length / total) * 100) : 0;
 
-  // Hechas HOY (equipo completo)
+  // Fecha de hoy (para el desglose por pareja)
   const hoy0 = new Date(); hoy0.setHours(0,0,0,0);
-  const hechasHoyEquipo = ordenes.filter(o => {
-    if (o.estadoCampo !== 'hecha' && o.estadoCampo !== 'aprobada') return false;
-    const f = o.fechaHecha?.toDate ? o.fechaHecha.toDate() : null;
-    return f && f >= hoy0;
-  }).length;
-  const parejasActivas = [...new Set(ordenes.map(o => o.pareja).filter(Boolean))].length;
   const fechaHoyLbl = new Date().toLocaleDateString('es-SV', { weekday:'long', day:'numeric', month:'long' });
 
   content.innerHTML = `
@@ -627,19 +645,59 @@ function renderPanel() {
         </div>
       </div>
 
-      <!-- Órdenes hechas HOY (equipo) -->
-      <div class="anim-up" style="padding:18px 18px 16px;background:linear-gradient(150deg,rgba(45,212,191,.14),rgba(45,212,191,.03));border:1px solid rgba(45,212,191,.3);border-radius:16px">
-        <div style="display:flex;align-items:center;justify-content:space-between">
-          <div>
-            <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--text-4)">Órdenes hechas hoy</div>
-            <div style="font-size:11px;color:var(--text-4);margin-top:3px">${fechaHoyLbl.charAt(0).toUpperCase() + fechaHoyLbl.slice(1)}</div>
+      <!-- Cambios hechos HOY por pareja en campo -->
+      ${(() => {
+        const enCampo = Object.keys(asignaciones_).sort();
+        if (!enCampo.length) return `
+          <div class="anim-up" style="padding:14px 16px;background:var(--glass);border:1px solid var(--border);border-radius:14px">
+            <div style="font-size:12px;font-weight:700;color:var(--text-3)">Sin parejas asignadas hoy</div>
+            <div style="font-size:11px;color:var(--text-4);margin-top:3px">Asigna técnicos a una pareja para ver su avance del día.</div>
+          </div>`;
+        const hechasHoyDe = (p) => ordenes.filter(o => {
+          if (o.pareja !== p) return false;
+          if (o.estadoCampo !== 'hecha' && o.estadoCampo !== 'aprobada') return false;
+          const f = o.fechaHecha?.toDate ? o.fechaHecha.toDate() : null;
+          return f && f >= hoy0;
+        }).length;
+        const totalCampo = enCampo.reduce((a,p)=>a+hechasHoyDe(p),0);
+        return `
+        <div class="anim-up" style="padding:16px;background:linear-gradient(150deg,rgba(45,212,191,.10),rgba(45,212,191,.02));border:1px solid rgba(45,212,191,.28);border-radius:16px">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+            <div>
+              <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--text-3)">Cambios hechos hoy</div>
+              <div style="font-size:10px;color:var(--text-4);margin-top:2px">${fechaHoyLbl.charAt(0).toUpperCase() + fechaHoyLbl.slice(1)}</div>
+            </div>
+            <div style="display:flex;align-items:baseline;gap:5px;background:rgba(45,212,191,.14);border:1px solid rgba(45,212,191,.3);padding:5px 12px;border-radius:20px">
+              <span style="font-size:17px;font-weight:900;color:var(--cm-light)">${totalCampo}</span>
+              <span style="font-size:10px;color:var(--text-4);font-weight:600">total</span>
+            </div>
           </div>
-          <div style="text-align:right;line-height:1">
-            <div style="font-size:38px;font-weight:900;color:var(--cm-light)">${hechasHoyEquipo}</div>
-            <div style="font-size:10px;color:var(--text-4);font-weight:600;margin-top:2px">${parejasActivas} pareja${parejasActivas===1?'':'s'}</div>
+          <div class="flex-col gap-6">
+            ${enCampo.map(p => {
+              const c = PAREJA_COLORS[p] || PAREJA_COLORS['Pareja 1'];
+              const n = hechasHoyDe(p);
+              const miembros = (asignaciones_[p] || []).join(' · ');
+              const barra = Math.min(100, Math.round((n / 15) * 100));
+              return `
+              <div style="background:${c.glass};border:1px solid ${c.border};border-radius:12px;padding:10px 12px">
+                <div style="display:flex;align-items:center;gap:10px">
+                  <div style="flex:1;min-width:0">
+                    <div style="font-size:13px;font-weight:800;color:${c.accent}">${p}</div>
+                    <div style="font-size:10px;color:var(--text-4);margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${miembros || 'Sin técnicos'}</div>
+                  </div>
+                  <div style="text-align:right;flex-shrink:0;line-height:1">
+                    <div style="font-size:26px;font-weight:900;color:${c.accent}">${n}</div>
+                    <div style="font-size:9px;color:var(--text-4);font-weight:600">hoy</div>
+                  </div>
+                </div>
+                <div class="progress-bar-bg" style="margin-top:8px;height:4px">
+                  <div class="progress-bar-fill" style="width:${barra}%;background:${c.accent}"></div>
+                </div>
+              </div>`;
+            }).join('')}
           </div>
-        </div>
-      </div>
+        </div>`;
+      })()}
 
       ${yaCambiadas.length ? `
       <div onclick="window.__cambios.openYaCambiadas()" style="padding:14px 16px;background:rgba(249,115,22,.1);border:1px solid rgba(249,115,22,.35);border-radius:14px;display:flex;align-items:center;gap:12px;cursor:pointer" class="anim-up">
