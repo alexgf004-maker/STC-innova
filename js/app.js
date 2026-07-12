@@ -63,7 +63,7 @@ function abrirCambioPin(obligatorio) {
           <div style="font-size:19px;font-weight:800">${obligatorio ? 'Crea tu PIN personal' : 'Cambiar PIN'}</div>
           <div style="font-size:12px;color:var(--text-3);margin-top:6px;line-height:1.5">
             ${obligatorio
-              ? 'Todos comparten el mismo PIN de las pruebas. Define uno propio antes de continuar: con él confirmas la recepción de material.'
+              ? 'Tu PIN es tu firma dentro del sistema. Define uno propio, que solo tú conozcas, para continuar.'
               : 'Elige un PIN nuevo. Solo tú debes conocerlo.'}
           </div>
         </div>
