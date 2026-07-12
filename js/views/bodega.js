@@ -115,7 +115,7 @@ const CAMPANA_COLORS = {
   'CAMBIOS':         { color:'#2dd4bf', bg:'rgba(45,212,191,.12)', border:'rgba(45,212,191,.4)', label:'CAMBIOS' },
   'AMI':             { color:'#fbbf24', bg:'rgba(251,191,36,.12)', border:'rgba(251,191,36,.4)', label:'AMI' },
   'Caracterizacion': { color:'#a78bfa', bg:'rgba(167,139,250,.12)', border:'rgba(167,139,250,.4)', label:'Caracterización' },
-  'ReclamosSIGET':   { color:'#22d3ee', bg:'rgba(34,211,238,.12)', border:'rgba(34,211,238,.4)', label:'Reclamos SIGET' },
+  'ReclamosSIGET':   { color:'#f472b6', bg:'rgba(244,114,182,.12)', border:'rgba(244,114,182,.4)', label:'Reclamos SIGET' },
 };
 
 function campanaToggleHTML() {
@@ -1939,7 +1939,7 @@ function showMemoCampana(salida) {
 }
 
 function imprimirCampana(m) {
-  const AC = m.area==='AMI' ? '#c98a00' : m.area==='ReclamosSIGET' ? '#0e7490' : '#7c5cd6';
+  const AC = m.area==='AMI' ? '#c98a00' : m.area==='ReclamosSIGET' ? '#be185d' : '#7c5cd6';
   const filas = m.items.map(it=>{
     const serie = it.requiereSerial && it.series.length
       ? `<tr><td colspan="2" style="border:0.4pt solid #000;border-top:none;padding:1.5mm 2mm;background:#fafafa">
