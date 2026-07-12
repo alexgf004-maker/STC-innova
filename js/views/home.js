@@ -383,7 +383,7 @@ function renderIndicadorCorte(sinActualizar) {
         <div style="font-size:13px;color:var(--text-3);font-weight:500">día${diasFaltan !== 1 ? 's' : ''} restantes</div>
         ${sinActualizar === null ? `<div style="margin-left:auto;font-size:11px;color:var(--text-4)">Calculando…</div>`
           : sinActualizar > 0 ? `<div style="margin-left:auto;font-size:12px;font-weight:700;color:${diasFaltan < 4 ? '#ef4444' : '#fbbf24'}">${sinActualizar} sin actualizar</div>`
-          : `<div style="margin-left:auto;font-size:12px;font-weight:600;color:var(--ok)">✓ Todo actualizado</div>`}
+          : `<div style="margin-left:auto;font-size:12px;font-weight:600;color:var(--ok)">&#10003; Todo actualizado</div>`}
       </div>
     </div>
   `;
