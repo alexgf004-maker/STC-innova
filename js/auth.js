@@ -81,28 +81,60 @@ async function doLogin() {
   clearError();
 
   try {
-    // PASO 1 — Buscar usuario en Firestore
-    const snap = await db.collection('users')
-      .where('username', '==', username)
-      .where('active', '==', true)
-      .limit(1)
-      .get();
+    // PASO 1 — Resolver username -> uid usando la colección `usernames`
+    // (solo contiene uid y correo interno, ningún secreto)
+    let uid = null, email = null;
 
-    if (snap.empty) {
-      showError('Usuario no encontrado o desactivado');
+    try {
+      const uDoc = await db.collection('usernames').doc(username).get();
+      if (uDoc.exists) {
+        const d = uDoc.data();
+        uid   = d.uid || null;
+        email = d.email || `${username}@innova-stc.internal`;
+      }
+    } catch (e) {
+      console.warn('[auth] No se pudo leer usernames, usando método anterior:', e);
+    }
+
+    // RESPALDO — si no está en `usernames`, usar el método anterior
+    if (!uid) {
+      const snap = await db.collection('users')
+        .where('username', '==', username)
+        .where('active', '==', true)
+        .limit(1)
+        .get();
+
+      if (snap.empty) {
+        showError('Usuario no encontrado o desactivado');
+        setLoading(false);
+        return;
+      }
+      uid   = snap.docs[0].id;
+      email = snap.docs[0].data().internalEmail || `${username}@innova-stc.internal`;
+    }
+
+    // PASO 2 — Firebase Auth con contraseña derivada
+    const password = await derivePassword(uid, SEED);
+    await auth.signInWithEmailAndPassword(email, password);
+
+    // PASO 3 — Ya autenticado: leer el perfil completo
+    const doc = await db.collection('users').doc(uid).get();
+    if (!doc.exists) {
+      await auth.signOut();
+      showError('Usuario no encontrado');
+      setLoading(false);
+      return;
+    }
+    const data = doc.data();
+
+    if (data.active === false) {
+      await auth.signOut();
+      showError('Usuario desactivado');
       setLoading(false);
       return;
     }
 
-    const docRef = snap.docs[0];
-    const data   = docRef.data();
-
-    // PASO 2 — Firebase Auth con contraseña derivada
-    const email    = `${username}@innova-stc.internal`;
-    const password = await derivePassword(docRef.id, SEED);
-    await auth.signInWithEmailAndPassword(email, password);
-
-    // PASO 3 — Verificar PIN: hashPin(salt, pin)
+    // PASO 4 — Verificar PIN: hashPin(salt, pin)
     const hash = await hashPin(data.pinSalt || '', pin);
     if (hash !== data.pinHash) {
       await auth.signOut();
@@ -111,9 +143,9 @@ async function doLogin() {
       return;
     }
 
-    // ✅ Acceso concedido
+    // Acceso concedido
     const session = {
-      uid:         docRef.id,
+      uid:         uid,
       username:    data.username,
       displayName: data.displayName,
       role:        data.role,
@@ -136,6 +168,8 @@ async function doLogin() {
       showError('Sin conexión. Verifica tu internet.');
     } else if (err.code === 'auth/too-many-requests') {
       showError('Demasiados intentos. Espera un momento.');
+    } else if (err.code === 'auth/wrong-password' || err.code === 'auth/user-not-found' || err.code === 'auth/invalid-credential') {
+      showError('Usuario o PIN incorrecto');
     } else {
       showError('Error al iniciar sesión. Intenta de nuevo.');
     }
