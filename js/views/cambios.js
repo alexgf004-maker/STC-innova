@@ -487,7 +487,7 @@ function renderResumenTecnico() {
         </div>
         <div style="font-size:11px;color:var(--text-4);margin-top:6px">
           ${hechasHoy.length >= META_DIARIA
-            ? '✅ Meta alcanzada'
+            ? 'Meta alcanzada'
             : `${META_DIARIA - hechasHoy.length} cambios para llegar a la meta`}
         </div>
       </div>
@@ -511,16 +511,10 @@ function renderResumenTecnico() {
         </div>
       </div>
 
-      ${sinActualizar.length ? `
-      <div class="otc-alert-card warn anim-up d2">
-        <div class="otc-alert-header">⚠ ${sinActualizar.length} sin actualizar en DELSUR</div>
-        ${sinActualizar.map(o => '<div class="orden-visita-panel" onclick="window.__cambios.verOrden(\'' + o.id + '\')" style="margin-top:6px"><div class="status-dot warn pulse"></div><div><div style="font-size:12px;font-weight:700">WO ' + (o.wo || '—') + '</div><div style="font-size:10px;color:var(--text-3)">' + (o.cliente || '—') + '</div></div></div>').join('')}
-      </div>` : ''}
-
       ${hechasHoy.length ? `
       <div class="section-label anim-up d3">Realizadas hoy</div>
       <div class="flex-col gap-6 anim-up d3">
-        ${hechasHoy.map(o => '<div class="orden-visita-panel" onclick="window.__cambios.verOrden(\'' + o.id + '\')" style="cursor:pointer"><div class="status-dot" style="background:' + (o.actualizadaDelsur ? '#22c55e' : '#f59e0b') + '"></div><div style="flex:1;min-width:0"><div style="font-size:12px;font-weight:700">WO ' + (o.wo || '—') + '</div><div style="font-size:10px;color:var(--text-3)">' + (o.cliente || '—') + ' · ' + (o.direccion || '') + '</div></div><div style="font-size:10px;font-weight:600;color:' + (o.actualizadaDelsur ? '#22c55e' : '#f59e0b') + ';flex-shrink:0">' + (o.actualizadaDelsur ? '✓ Actualizada' : 'Sin actualizar') + '</div></div>').join('')}
+        ${hechasHoy.map(o => '<div class="orden-visita-panel" onclick="window.__cambios.verOrden(\'' + o.id + '\')" style="cursor:pointer"><div class="status-dot" style="background:' + (o.actualizadaDelsur ? '#22c55e' : '#f59e0b') + '"></div><div style="flex:1;min-width:0"><div style="font-size:12px;font-weight:700">WO ' + (o.wo || '—') + '</div><div style="font-size:10px;color:var(--text-3)">' + (o.cliente || '—') + ' · ' + (o.direccion || '') + '</div></div><div style="font-size:10px;font-weight:600;color:' + (o.actualizadaDelsur ? '#22c55e' : '#f59e0b') + ';flex-shrink:0">' + (o.actualizadaDelsur ? '&#10003; Actualizada' : 'Sin actualizar') + '</div></div>').join('')}
       </div>` : ''}
 
       ${visitasHoy.length ? `
@@ -529,9 +523,21 @@ function renderResumenTecnico() {
         ${visitasHoy.map(o => '<div class="orden-visita-panel" onclick="window.__cambios.verOrden(\'' + o.id + '\')" style="cursor:pointer"><div class="status-dot" style="background:#6b7280"></div><div style="flex:1;min-width:0"><div style="font-size:12px;font-weight:700">WO ' + (o.wo || '—') + '</div><div style="font-size:10px;color:var(--text-3)">' + (o.cliente || '—') + ' · ' + (o.motivoVisita || '') + '</div></div><div style="font-size:10px;font-weight:600;color:#6b7280;flex-shrink:0">Visita</div></div>').join('')}
       </div>` : ''}
 
+      ${sinActualizar.length ? `
+      <div class="anim-up d3" id="sin-act-wrap" style="background:rgba(245,158,11,.05);border:1px solid rgba(245,158,11,.2);border-radius:12px;overflow:hidden">
+        <div id="sin-act-head" style="display:flex;align-items:center;gap:10px;padding:11px 13px;cursor:pointer">
+          <div class="status-dot warn" style="flex-shrink:0"></div>
+          <div style="flex:1;font-size:12px;font-weight:700;color:#fbbf24">${sinActualizar.length} sin actualizar en DELSUR</div>
+          <svg id="sin-act-chev" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="14" height="14" style="flex-shrink:0;transition:transform .2s"><polyline points="9 18 15 12 9 6"/></svg>
+        </div>
+        <div id="sin-act-body" style="display:none;padding:0 13px 11px">
+          ${sinActualizar.map(o => '<div class="orden-visita-panel" onclick="window.__cambios.verOrden(\'' + o.id + '\')" style="margin-top:6px;cursor:pointer"><div class="status-dot warn"></div><div><div style="font-size:12px;font-weight:700">WO ' + (o.wo || '—') + '</div><div style="font-size:10px;color:var(--text-3)">' + (o.cliente || '—') + '</div></div></div>').join('')}
+        </div>
+      </div>` : ''}
+
       ${bloqueadas.length ? `
       <div class="otc-alert-card warn-soft anim-up d3">
-        <div class="otc-alert-header">🔒 ${bloqueadas.length} bloqueadas por lectura</div>
+        <div class="otc-alert-header">${bloqueadas.length} bloqueadas por lectura</div>
         ${bloqueadas.map(o => '<div class="orden-visita-panel" style="margin-top:6px"><div class="status-dot muted"></div><div><div style="font-size:12px;font-weight:700">WO ' + (o.wo || '—') + '</div><div style="font-size:10px;color:var(--text-4)">' + (o.unidadLectura || '—') + '</div></div></div>').join('')}
       </div>` : ''}
 
@@ -543,6 +549,18 @@ function renderResumenTecnico() {
 
     </div>
   `;
+
+  // Acordeón de "sin actualizar"
+  const saHead = document.getElementById('sin-act-head');
+  const saBody = document.getElementById('sin-act-body');
+  const saChev = document.getElementById('sin-act-chev');
+  if (saHead && saBody) {
+    saHead.addEventListener('click', () => {
+      const abierto = saBody.style.display === 'block';
+      saBody.style.display = abierto ? 'none' : 'block';
+      if (saChev) saChev.style.transform = abierto ? '' : 'rotate(90deg)';
+    });
+  }
 }
 
 // ── Mapa dentro de Cambios ────────────────────────
@@ -578,6 +596,16 @@ function renderPanel() {
   const total          = ordenes.length;
   const pct = total ? Math.round((todasAprobadas.length / total) * 100) : 0;
 
+  // Hechas HOY (equipo completo)
+  const hoy0 = new Date(); hoy0.setHours(0,0,0,0);
+  const hechasHoyEquipo = ordenes.filter(o => {
+    if (o.estadoCampo !== 'hecha' && o.estadoCampo !== 'aprobada') return false;
+    const f = o.fechaHecha?.toDate ? o.fechaHecha.toDate() : null;
+    return f && f >= hoy0;
+  }).length;
+  const parejasActivas = [...new Set(ordenes.map(o => o.pareja).filter(Boolean))].length;
+  const fechaHoyLbl = new Date().toLocaleDateString('es-SV', { weekday:'long', day:'numeric', month:'long' });
+
   content.innerHTML = `
     <div class="flex-col gap-12">
 
@@ -596,6 +624,20 @@ function renderPanel() {
               <circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/>
             </svg>
           </button>
+        </div>
+      </div>
+
+      <!-- Órdenes hechas HOY (equipo) -->
+      <div class="anim-up" style="padding:18px 18px 16px;background:linear-gradient(150deg,rgba(45,212,191,.14),rgba(45,212,191,.03));border:1px solid rgba(45,212,191,.3);border-radius:16px">
+        <div style="display:flex;align-items:center;justify-content:space-between">
+          <div>
+            <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--text-4)">Órdenes hechas hoy</div>
+            <div style="font-size:11px;color:var(--text-4);margin-top:3px">${fechaHoyLbl.charAt(0).toUpperCase() + fechaHoyLbl.slice(1)}</div>
+          </div>
+          <div style="text-align:right;line-height:1">
+            <div style="font-size:38px;font-weight:900;color:var(--cm-light)">${hechasHoyEquipo}</div>
+            <div style="font-size:10px;color:var(--text-4);font-weight:600;margin-top:2px">${parejasActivas} pareja${parejasActivas===1?'':'s'}</div>
+          </div>
         </div>
       </div>
 
@@ -751,7 +793,7 @@ function renderAcordeonPareja(pareja) {
           `).join('')}
         </div>` : `
         <div style="text-align:center;padding:12px 0;font-size:12px;color:var(--text-4)">
-          ${aprobadas.length ? '✓ Todas confirmadas' : 'Sin órdenes realizadas aún'}
+          ${aprobadas.length ? 'Todas confirmadas' : 'Sin órdenes realizadas aún'}
         </div>`}
 
         <!-- Visitas -->
@@ -773,8 +815,8 @@ function renderOrdenVerificacion(o, c) {
         <div class="orden-wo" style="font-size:12px">WO ${o.wo || '—'}</div>
         <div class="orden-cliente" style="font-size:10px">${o.cliente || '—'}</div>
         ${o.actualizadaDelsur
-          ? '<div style="font-size:9px;color:var(--ok);margin-top:2px">✓ Actualizada en DELSUR</div>'
-          : '<div style="font-size:9px;color:#fbbf24;margin-top:2px">⚠ Pendiente actualizar DELSUR</div>'}
+          ? '<div style="font-size:9px;color:var(--ok);margin-top:2px">&#10003; Actualizada en DELSUR</div>'
+          : '<div style="font-size:9px;color:#fbbf24;margin-top:2px">Pendiente actualizar DELSUR</div>'}
       </div>
       <button class="btn-confirmar-orden" onclick="window.__cambios.aprobar('${o.id}')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="14" height="14">
@@ -880,6 +922,13 @@ function renderParejaCard(pareja) {
   const lista = ordenes.filter(o => o.pareja === pareja);
   if (!lista.length) return '';
 
+  const hoy0 = new Date(); hoy0.setHours(0,0,0,0);
+  const hechasHoy = lista.filter(o => {
+    if (o.estadoCampo !== 'hecha' && o.estadoCampo !== 'aprobada') return false;
+    const f = o.fechaHecha?.toDate ? o.fechaHecha.toDate() : null;
+    return f && f >= hoy0;
+  }).length;
+
   const hechas     = lista.filter(o => o.estadoCampo === 'hecha').length;
   const sinActual  = lista.filter(o => (o.estadoCampo === 'hecha' || o.estadoCampo === 'aprobada') && !o.actualizadaDelsur).length;
   const visitas    = lista.filter(o => o.estadoCampo === 'visita').length;
@@ -891,13 +940,16 @@ function renderParejaCard(pareja) {
     <div class="pareja-card" style="border-color:${c.border};background:${c.glass}">
       <div class="pareja-card-header">
         <div class="pareja-name" style="color:${c.accent}">${pareja}</div>
-        <div class="pareja-pct" style="color:${c.accent}">${pct}%</div>
+        <div style="display:flex;align-items:baseline;gap:4px">
+          <div style="font-size:24px;font-weight:900;color:${c.accent};line-height:1">${hechasHoy}</div>
+          <div style="font-size:10px;color:var(--text-4);font-weight:600">hoy</div>
+        </div>
       </div>
       <div class="progress-bar-bg" style="margin:8px 0">
         <div class="progress-bar-fill" style="width:${pct}%;background:${c.accent}"></div>
       </div>
       <div class="pareja-stats">
-        <span>${hechas}/${total} hechas</span>
+        <span>${hechas}/${total} hechas (${pct}%)</span>
         ${sinActual ? `<span style="color:#f87171">· ${sinActual} sin actualizar</span>` : ''}
         ${visitas   ? `<span style="color:#fbbf24">· ${visitas} visitas</span>` : ''}
         ${pendientes? `<span style="color:var(--text-4)">· ${pendientes} pendientes</span>` : ''}
@@ -945,7 +997,7 @@ function renderOrdenes() {
       ${sinActualizar.length ? `
       <div class="anim-up d1">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-          <div class="section-label" style="color:#f87171">⚠ Sin actualizar en DELSUR (${sinActualizar.length})</div>
+          <div class="section-label" style="color:#f87171">Sin actualizar en DELSUR (${sinActualizar.length})</div>
         </div>
         <!-- Filtro por fecha -->
         <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px" id="filtro-sin-actualizar">
@@ -977,7 +1029,7 @@ function renderOrdenes() {
       ${hechas.length ? renderGrupo('Realizadas', hechas, 'hecha', 'd3') : ''}
 
       <!-- Bloqueadas -->
-      ${bloqueadas.length ? renderGrupo('🔒 Bloqueadas por lectura', bloqueadas, 'bloqueada', 'd4') : ''}
+      ${bloqueadas.length ? renderGrupo('Bloqueadas por lectura', bloqueadas, 'bloqueada', 'd4') : ''}
 
     </div>
   `;
@@ -1029,8 +1081,8 @@ function renderOrdenCard(o, tipo) {
         ` : ''}
         ${(tipo === 'sin-actualizar' || tipo === 'hecha') && !isTecnico ? `
           <div style="display:flex;gap:4px">
-            <button class="action-chip ok" onclick="event.stopPropagation();window.__cambios.aprobar('${o.id}')">✓</button>
-            <button class="action-chip danger" onclick="event.stopPropagation();window.__cambios.rechazar('${o.id}')">✕</button>
+            <button class="action-chip ok" onclick="event.stopPropagation();window.__cambios.aprobar('${o.id}')">&#10003;</button>
+            <button class="action-chip danger" onclick="event.stopPropagation();window.__cambios.rechazar('${o.id}')">&#10007;</button>
           </div>
         ` : ''}
       </div>
@@ -1058,8 +1110,8 @@ function verOrden(id) {
         ${o.estadoCampo === 'hecha'  ? `<div class="estado-badge ok">Realizada</div>` : ''}
         ${o.estadoCampo === 'visita' ? `<div class="estado-badge warn">Visita registrada</div>` : ''}
         ${!o.estadoCampo             ? `<div class="estado-badge muted">Pendiente</div>` : ''}
-        ${blocked                    ? `<div class="estado-badge crit">🔒 Bloqueada</div>` : ''}
-        ${o.actualizadaDelsur        ? `<div class="estado-badge ok-outline">✓ Actualizada DELSUR</div>` : ''}
+        ${blocked                    ? `<div class="estado-badge crit">Bloqueada</div>` : ''}
+        ${o.actualizadaDelsur        ? `<div class="estado-badge ok-outline">&#10003; Actualizada DELSUR</div>` : ''}
         ${o.pareja ? `<div class="estado-badge" style="color:${c.accent};border-color:${c.border};background:${c.glass}">${o.pareja}</div>` : ''}
       </div>
 
@@ -1464,7 +1516,7 @@ function onBuscarInput(e) {
     const estado = o.estadoCampo === 'aprobada' ? 'Confirmada'
       : o.estadoCampo === 'hecha'   ? 'Realizada'
       : o.estadoCampo === 'visita'  ? 'Visita'
-      : isBlocked(o) ? '🔒 Bloqueada' : 'Pendiente';
+      : isBlocked(o) ? 'Bloqueada' : 'Pendiente';
     const color = o.estadoCampo === 'aprobada' ? '#22c55e'
       : o.estadoCampo === 'hecha'  ? '#2dd4bf'
       : o.estadoCampo === 'visita' ? '#fbbf24'
@@ -1874,7 +1926,7 @@ async function confirmarImport() {
     const pendientes = omitidas.length - hechas;
 
     const msg = nuevas.length > 0
-      ? `✅ ${nuevas.length} órdenes nuevas importadas${hechas ? ` · ${hechas} ya realizadas` : ''}${pendientes ? ` · ${pendientes} ya existían` : ''}`
+      ? `${nuevas.length} órdenes nuevas importadas${hechas ? ` · ${hechas} ya realizadas` : ''}${pendientes ? ` · ${pendientes} ya existían` : ''}`
       : `Sin órdenes nuevas — ${hechas ? `${hechas} ya realizadas` : ''}${hechas && pendientes ? ' · ' : ''}${pendientes ? `${pendientes} pendientes ya existían` : ''}(${omitidas.length} total)`;
 
     toast(msg, 'ok');
