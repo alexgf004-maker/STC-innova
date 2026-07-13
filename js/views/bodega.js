@@ -54,7 +54,9 @@ const FILAS_DOC = [
 // ── Helpers ───────────────────────────────────────
 const safeNum = v => { const n = Number(v); return isNaN(n) ? 0 : n; };
 const safeStr = (v, fb='—') => (v!==undefined&&v!==null&&String(v).trim()) ? String(v).trim() : fb;
-const tc = str => safeStr(str,'').toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
+// Muestra el nombre tal cual se escribió (antes forzaba Title Case y
+// destrozaba siglas y códigos: AWG -> Awg, 3x220 -> 3X220)
+const tc = str => safeStr(str,'');
 const fmtDate = ts => {
   if (!ts) return '—';
   try { const d=ts.toDate?ts.toDate():new Date(ts); return d.toLocaleDateString('es-SV',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}); } catch { return '—'; }
