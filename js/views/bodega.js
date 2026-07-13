@@ -1176,15 +1176,33 @@ async function verSeriales(itemId) {
 
 // ── Devolución ────────────────────────────────────
 function abrirDevolucion(salida) {
-  let selDev={};
-  (salida.items||[]).forEach(i=>{selDev[i.itemId]={cantidad:0,nombre:i.nombre||i.name,unit:i.unit,cantMax:i.cantidad,requiereSerial:!!i.requiereSerial,seriales:[],modoSerial:'individual',serialInicio:'',serialFin:''};});
+  // Series que salieron en esta entrega (soporta registros viejos por rango)
+  const seriesDeItem = (i) => {
+    if (i.seriales && i.seriales.length) return i.seriales.slice();
+    if (i.serialInicio) return expandirSeriales('rango', null, i.serialInicio, i.serialFin);
+    return [];
+  };
+
+  let selDev = {};
+  (salida.items||[]).forEach(i=>{
+    selDev[i.itemId] = {
+      nombre: i.nombre||i.name, unit: i.unit, cantMax: i.cantidad,
+      requiereSerial: !!i.requiereSerial,
+      disponibles: seriesDeItem(i),   // series que se entregaron
+      seriales: [],                   // series que se devuelven
+      cantidad: 0,
+      activo: false,
+    };
+  });
 
   const sheet=document.createElement('div');
   sheet.className='sheet-backdrop open';
   sheet.innerHTML=`<div class="sheet"><div class="sheet-handle"></div>
     <div class="sheet-title">Devolución — ${safeStr(salida.usuarioResponsable)}</div>
     <div class="sheet-body">
-      ${(salida.items||[]).map(i=>`
+      ${(salida.items||[]).map(i=>{
+        const d = selDev[i.itemId];
+        return `
         <div style="margin-bottom:16px;padding-bottom:16px;border-bottom:1px solid var(--border)">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
             <div style="font-size:13px;font-weight:600">${tc(i.nombre||i.name||'—')}</div>
@@ -1194,14 +1212,25 @@ function abrirDevolucion(salida) {
             </label>
           </div>
           <div id="dev-campos-${i.itemId}" style="display:none">
-            ${!i.requiereSerial?`
-            <div class="form-label" style="margin-bottom:6px">Cantidad (máx ${i.cantidad})</div>
-            <input class="form-input" id="dev-cant-${i.itemId}" type="number" min="1" max="${i.cantidad}" value="1" style="text-align:center"/>
-            `:`
-            <div class="form-label" style="margin-bottom:6px">Seriales a devolver</div>
-            <textarea class="form-input" id="dev-sers-${i.itemId}" rows="3" placeholder="Un serial por línea…" style="font-family:monospace;font-size:11px"></textarea>`}
+            ${!i.requiereSerial ? `
+              <div class="form-label" style="margin-bottom:6px">Cantidad (máx ${i.cantidad})</div>
+              <input class="form-input" id="dev-cant-${i.itemId}" type="number" min="1" max="${i.cantidad}" value="1" style="text-align:center"/>
+            ` : (d.disponibles.length ? `
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+                <div class="form-label" style="margin:0">Toca las series que regresan</div>
+                <div id="dev-est-${i.itemId}" style="font-size:11px;font-weight:700;color:var(--text-4)">0 de ${d.disponibles.length}</div>
+              </div>
+              <div style="display:flex;gap:6px;margin-bottom:8px">
+                <div class="select-chip" style="font-size:10px;cursor:pointer" onclick="window.__dev_todas('${i.itemId}')">Todas</div>
+                <div class="select-chip" style="font-size:10px;cursor:pointer" onclick="window.__dev_ninguna('${i.itemId}')">Ninguna</div>
+              </div>
+              <div id="dev-chips-${i.itemId}"></div>
+            ` : `
+              <div style="font-size:11px;color:var(--text-4)">Esta entrega no registró series.</div>
+            `)}
           </div>
-        </div>`).join('')}
+        </div>`;
+      }).join('')}
       <div class="form-label" style="margin-bottom:8px">Motivo (opcional)</div>
       <input class="form-input" id="dev-motivo" type="text" placeholder="Ej. Material sobrante…" style="margin-bottom:16px"/>
       <div id="dev-error" class="form-error"></div>
@@ -1211,9 +1240,43 @@ function abrirDevolucion(salida) {
   document.body.appendChild(sheet);
   sheet.addEventListener('click',e=>{if(e.target===sheet)sheet.remove();});
 
+  function pintarDev(itemId){
+    const d = selDev[itemId];
+    if(!d || !d.requiereSerial) return;
+    const chipsEl = document.getElementById(`dev-chips-${itemId}`);
+    const estEl   = document.getElementById(`dev-est-${itemId}`);
+    if(estEl){
+      const n = d.seriales.length;
+      estEl.textContent = `${n} de ${d.disponibles.length}`;
+      estEl.style.color = n ? '#22c55e' : 'var(--text-4)';
+    }
+    if(!chipsEl) return;
+    const set = new Set(d.seriales);
+    chipsEl.innerHTML = `
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(88px,1fr));gap:5px">
+        ${d.disponibles.map(ser=>{
+          const on = set.has(ser);
+          return `<div onclick="window.__dev_pick('${itemId}','${ser}')" style="cursor:pointer;background:${on?'rgba(34,197,94,.1)':'var(--glass)'};border:1px solid ${on?'rgba(34,197,94,.4)':'var(--border)'};border-radius:7px;padding:7px 4px;text-align:center;font-family:monospace;font-size:11px;font-weight:${on?'700':'500'};color:${on?'#22c55e':'var(--text-3)'};display:flex;align-items:center;justify-content:center;gap:3px">
+            ${on?'<span style="font-size:10px">&#10003;</span>':''}<span>${ser}</span>
+          </div>`;
+        }).join('')}
+      </div>`;
+  }
+
   window.__dev_toggle=(id,checked)=>{
-    document.getElementById(`dev-campos-${id}`).style.display=checked?'':'none';
+    selDev[id].activo = checked;
+    const el = document.getElementById(`dev-campos-${id}`);
+    if(el) el.style.display = checked ? '' : 'none';
+    if(checked) pintarDev(id);
   };
+  window.__dev_pick=(id,ser)=>{
+    const d = selDev[id];
+    const i = d.seriales.indexOf(ser);
+    if(i===-1) d.seriales.push(ser); else d.seriales.splice(i,1);
+    pintarDev(id);
+  };
+  window.__dev_todas=(id)=>{ selDev[id].seriales = selDev[id].disponibles.slice(); pintarDev(id); };
+  window.__dev_ninguna=(id)=>{ selDev[id].seriales = []; pintarDev(id); };
 
   document.getElementById('btn-dev').addEventListener('click',async()=>{
     const errEl=document.getElementById('dev-error');
@@ -1224,15 +1287,17 @@ function abrirDevolucion(salida) {
     for(const i of (salida.items||[])){
       const chk=document.getElementById(`dev-chk-${i.itemId}`);
       if(!chk?.checked) continue;
-      let cant=0,seriales=[];
-      if(!i.requiereSerial){
-        cant=safeNum(document.getElementById(`dev-cant-${i.itemId}`)?.value);
-        if(!cant||cant>i.cantidad){errEl.textContent=`Cantidad inválida para ${tc(i.nombre||i.name)}`;errEl.style.display='block';return;}
+      const d=selDev[i.itemId];
+
+      let cant=0, seriales=[];
+      if(i.requiereSerial){
+        seriales = d.seriales.slice();
+        cant = seriales.length;
+        if(!cant){errEl.textContent=`Selecciona las series a devolver de ${tc(i.nombre||i.name)}`;errEl.style.display='block';return;}
       } else {
-        const raw=(document.getElementById(`dev-sers-${i.itemId}`)?.value||'').trim();
-        seriales=raw?raw.split('\n').map(s=>s.trim()).filter(Boolean):[];
-        cant=seriales.length;
-        if(!cant){errEl.textContent=`Ingresa seriales para ${tc(i.nombre||i.name)}`;errEl.style.display='block';return;}
+        cant = safeNum(document.getElementById(`dev-cant-${i.itemId}`)?.value);
+        if(!cant || cant<1){errEl.textContent=`Ingresa la cantidad de ${tc(i.nombre||i.name)}`;errEl.style.display='block';return;}
+        if(cant>i.cantidad){errEl.textContent=`${tc(i.nombre||i.name)}: no puedes devolver más de ${i.cantidad}.`;errEl.style.display='block';return;}
       }
       devItems.push({itemId:i.itemId,nombre:i.nombre||i.name,unit:i.unit,cantidad:cant,seriales});
     }
@@ -1250,12 +1315,35 @@ function abrirDevolucion(salida) {
       const ajRef=db.collection('kardex').doc('movimientos').collection('ajustes').doc();
       batch.set(ajRef,{tipo:'devolucion',salidaOrigen:salida.id,usuarioResponsable:safeStr(salida.usuarioResponsable),items:devItems,motivo:motivo||'Sin motivo',registradoPor:uid_,registradoPorNombre:session_.displayName,fecha:firebase.firestore.FieldValue.serverTimestamp()});
       await batch.commit();
+
+      // LIBERAR LAS SERIES: vuelven a quedar disponibles en bodega
+      for(const d of devItems){
+        if(!d.seriales.length) continue;
+        try{
+          const snapSer=await db.collection('kardex').doc('seriales').collection('items')
+            .where('itemId','==',d.itemId).where('estado','==','despachado').get();
+          const set=new Set(d.seriales);
+          const updates=snapSer.docs
+            .filter(doc=>set.has(doc.data().serial))
+            .map(doc=>doc.ref.update({
+              estado:'disponible',
+              salidaId:null,
+              fechaSalida:null,
+              usuarioDespacho:null,
+              devueltoEn:firebase.firestore.FieldValue.serverTimestamp(),
+              devueltoPor:session_.displayName,
+            }));
+          await Promise.all(updates);
+          // Refrescar caché para que vuelvan a aparecer al despachar
+          if(serialesCache_[d.itemId]) delete serialesCache_[d.itemId];
+        }catch(e){console.warn('[bodega] No se pudieron liberar seriales:',e);}
+      }
+
       sheet.remove(); renderHistorial();
       toast('Devolución registrada','ok');
     }catch(err){errEl.textContent=`Error: ${err.message}`;errEl.style.display='block';setLoading('btn-dev-lbl','Registrar devolución',false);}
   });
 }
-
 // ══════════════════════════════════════════════════
 // FORMULARIO DESPACHO — 2 pasos
 // ══════════════════════════════════════════════════
