@@ -51,16 +51,44 @@ export async function init(container, session) {
 // ── Despachos pendientes de aceptación (técnico) ──
 let __pendientesTec = [];
 let __containerTec = null;
-async function cargarDespachosPendientesTecnico(session) {
+let __unsubPendientes = null;   // cierra el listener al salir del home
+
+// Escucha en TIEMPO REAL los despachos pendientes de este técnico.
+// Así, cuando la asistente envía el despacho, la tarjeta aparece sola
+// en el teléfono del técnico sin que él recargue nada.
+function cargarDespachosPendientesTecnico(session) {
+  // Cerrar un listener anterior si lo hubiera (evita duplicados y lecturas de más)
+  if (__unsubPendientes) { try { __unsubPendientes(); } catch {} __unsubPendientes = null; }
+
   try {
-    const snap = await db.collection('despachos_pendientes')
-      .where('tecnicoRecibeUid', '==', session.uid).get();
-    __pendientesTec = snap.docs.map(d=>({id:d.id,...d.data()}))
-      .sort((a,b)=>(b.fecha?.seconds||0)-(a.fecha?.seconds||0));
-    intentarPintarPendientes(0);
+    __unsubPendientes = db.collection('despachos_pendientes')
+      .where('tecnicoRecibeUid', '==', session.uid)
+      .onSnapshot(
+        (snap) => {
+          const antes = __pendientesTec.length;
+          __pendientesTec = snap.docs.map(d=>({id:d.id,...d.data()}))
+            .sort((a,b)=>(b.fecha?.seconds||0)-(a.fecha?.seconds||0));
+
+          // Si llegó uno nuevo estando la app abierta, avisar
+          if (__pendientesTec.length > antes && antes >= 0 && !snap.metadata.hasPendingWrites) {
+            try { navigator.vibrate?.(200); } catch {}
+          }
+
+          if (__pendientesTec.length) intentarPintarPendientes(0);
+          else document.getElementById('despachos-pend-tec')?.remove();
+        },
+        (err) => {
+          console.warn('[home] Listener de despachos pendientes falló:', err);
+        }
+      );
   } catch(e) {
     console.warn('[home] No se pudieron cargar despachos pendientes:', e);
   }
+}
+
+// El router llama a esto al salir de la vista
+export function cleanup() {
+  if (__unsubPendientes) { try { __unsubPendientes(); } catch {} __unsubPendientes = null; }
 }
 
 function intentarPintarPendientes(intento){
