@@ -48,7 +48,7 @@ export async function init(container, session) {
   container.innerHTML = `<p style="color:var(--text-3);padding:24px">Rol no reconocido.</p>`;
 }
 
-// ── Despachos pendientes de aceptación (técnico) ──
+// ── Despachos pendientes de aceptación (técnico) ──-
 let __pendientesTec = [];
 let __containerTec = null;
 let __unsubPendientes = null;   // cierra el listener al salir del home
