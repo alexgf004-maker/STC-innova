@@ -1490,6 +1490,16 @@ function abrirDespacho(solicitud=null) {
     }
   }
 
+  // Ordena series de forma natural (por el número final)
+  function ordenarSeries(arr){
+    return arr.slice().sort((a,b)=>{
+      const na=parseInt(String(a).replace(/\D/g,''),10);
+      const nb=parseInt(String(b).replace(/\D/g,''),10);
+      if(!isNaN(na)&&!isNaN(nb)&&na!==nb) return na-nb;
+      return String(a).localeCompare(String(b));
+    });
+  }
+
   function renderStep3(){
     const conSerial=sel.filter(s=>s.requiereSerial);
     ov.innerHTML=`
@@ -1498,118 +1508,181 @@ function abrirDespacho(solicitud=null) {
         <button class="icon-btn" id="back2"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><polyline points="15 18 9 12 15 6"/></svg></button>
         <div style="flex:1">
           <div class="section-title">Seriales</div>
-          <div style="font-size:11px;color:var(--text-4)">Paso 3 de 3 · indica qué series entregas</div>
+          <div style="font-size:11px;color:var(--text-4)">Paso 3 de 3 · toca las series que entregas</div>
         </div>
       </div>
+
       <div style="padding:16px 20px;flex:1" class="flex-col gap-16">
         ${conSerial.map(s=>{const idx=sel.indexOf(s);return `
           <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:14px;padding:14px">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
               <div style="font-size:14px;font-weight:700">${tc(s.name)}</div>
-              <div style="font-size:11px;font-weight:700;color:var(--bod-light);background:var(--bod-glass);border:1px solid var(--bod-border);padding:3px 10px;border-radius:20px">${s.cantidad} ${s.unit}</div>
+              <div id="est-${idx}"></div>
             </div>
-            <div style="background:rgba(139,92,246,.06);border:1px solid rgba(139,92,246,.2);border-radius:10px;padding:10px">
-              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-                <div style="font-size:10px;font-weight:700;color:var(--bod-light);text-transform:uppercase">Seriales a entregar</div>
-                <div id="est-${idx}"></div>
-              </div>
-              <div style="display:flex;gap:6px;margin-bottom:8px">
-                <div class="select-chip ${s.modoSerial==='individual'?'active':''}" style="font-size:10px" onclick="window.__d_smod(${idx},'individual')">Individual</div>
-                <div class="select-chip ${s.modoSerial==='rango'?'active':''}" style="font-size:10px" onclick="window.__d_smod(${idx},'rango')">Rango</div>
-              </div>
-              ${s.modoSerial==='individual'?`
-              <div style="display:flex;gap:6px;margin-bottom:8px">
-                <input class="form-input" id="si-${idx}" type="text" inputmode="numeric" placeholder="Escribe o escanea el serial…" style="flex:1;padding:8px 10px;font-size:12px" onkeydown="if(event.key==='Enter'){event.preventDefault();window.__d_sadd(${idx});}"/>
-                <button class="icon-btn" style="width:36px;height:36px;color:var(--bod-light);border-color:var(--bod-border);background:var(--bod-glass)" onclick="window.__d_sadd(${idx})">+</button>
-              </div>
-              <div class="flex-col gap-4" id="chips-${idx}"></div>
-              `:`
-              <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
-                <div><div style="font-size:10px;color:var(--text-4);margin-bottom:4px">Serial inicial</div><input class="form-input" id="sri-${idx}" type="text" value="${s.serialInicio}" placeholder="Ej. 12345001" style="font-size:12px;padding:8px 10px"/></div>
-                <div><div style="font-size:10px;color:var(--text-4);margin-bottom:4px">Serial final</div><input class="form-input" id="srf-${idx}" type="text" value="${s.serialFin}" placeholder="Ej. 12345010" style="font-size:12px;padding:8px 10px"/></div>
-              </div>
-              <div class="flex-col gap-4" id="chips-${idx}"></div>
-              `}
+
+            <div style="display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap">
+              <div class="select-chip" style="font-size:10px;cursor:pointer" onclick="window.__d_first(${idx})">Tomar las primeras ${s.cantidad}</div>
+              <div class="select-chip" id="rg-${idx}" style="font-size:10px;cursor:pointer" onclick="window.__d_range(${idx})">Rango</div>
+              <div class="select-chip" style="font-size:10px;cursor:pointer" onclick="window.__d_clear(${idx})">Limpiar</div>
             </div>
+
+            <div class="buscar-wrap" style="margin-bottom:8px">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="13" height="13" style="color:var(--text-4);flex-shrink:0"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              <input class="buscar-input" id="bus-${idx}" placeholder="Buscar serie…" autocomplete="off" inputmode="numeric" style="font-size:12px"/>
+            </div>
+
+            <div id="hint-${idx}" style="font-size:10px;color:#fbbf24;margin-bottom:6px;display:none"></div>
+            <div id="chips-${idx}"></div>
           </div>`;}).join('')}
       </div>
+
       <div style="padding:14px 20px;border-top:1px solid var(--border);background:var(--bg);position:sticky;bottom:0">
         <div id="s3-err" class="form-error" style="margin-bottom:8px"></div>
         <button class="btn-primary full bod" id="btn-des3"><span id="btn-des-lbl">${esCampanaNueva?'Enviar para aceptación':`Registrar salida · ${sel.length} item${sel.length>1?'s':''}`}</span></button>
       </div>
     </div>`;
 
-    window.__d_smod=(idx,modo)=>{sel[idx].modoSerial=modo;renderStep3();};
-    window.__d_sadd=idx=>{
-      const el=document.getElementById(`si-${idx}`);
-      const v=el?.value.trim();
-      if(v&&!sel[idx].seriales.includes(v)){
-        sel[idx].seriales.push(v);
-        if(el) el.value='';
-        pintarSerial(idx);        // solo actualiza chips+estado, no re-render
-        el?.focus();              // mantener foco/teclado
+    window.__d_pick=(idx,serial)=>{
+      const s=sel[idx];
+      const disp=ordenarSeries(serialesCache_[s.itemId]||[]);
+      if(s._rango){
+        if(!s._ancla){ s._ancla=serial; }
+        else {
+          const a=disp.indexOf(s._ancla), b=disp.indexOf(serial);
+          if(a!==-1&&b!==-1){
+            const ini=a<=b?a:b, fin=a<=b?b:a;
+            const set=new Set(s.seriales);
+            disp.slice(ini,fin+1).forEach(x=>set.add(x));
+            s.seriales=ordenarSeries([...set]);
+          }
+          s._ancla=null;
+        }
+      } else {
+        const i=s.seriales.indexOf(serial);
+        if(i===-1) s.seriales.push(serial);
+        else s.seriales.splice(i,1);
+        s.seriales=ordenarSeries(s.seriales);
       }
+      pintarSerial(idx);
     };
-    window.__d_sdel=(idx,i)=>{sel[idx].seriales.splice(i,1);pintarSerial(idx);};
+
+    window.__d_first=idx=>{
+      const s=sel[idx];
+      const disp=ordenarSeries(serialesCache_[s.itemId]||[]);
+      s.seriales=disp.slice(0,s.cantidad);
+      s._ancla=null;
+      pintarSerial(idx);
+    };
+
+    window.__d_clear=idx=>{
+      sel[idx].seriales=[];
+      sel[idx]._ancla=null;
+      pintarSerial(idx);
+    };
+
+    window.__d_range=idx=>{
+      const s=sel[idx];
+      s._rango=!s._rango;
+      s._ancla=null;
+      const btn=document.getElementById(`rg-${idx}`);
+      if(btn) btn.classList.toggle('active',!!s._rango);
+      pintarSerial(idx);
+    };
+
+    window.__d_more=idx=>{
+      sel[idx]._limite=(sel[idx]._limite||60)+120;
+      pintarSerial(idx);
+    };
 
     ov.querySelector('#back2').onclick=()=>{step=2;renderStep2();};
     ov.querySelector('#btn-des3').addEventListener('click',handleDespacho);
 
-    // Listeners de rango: actualizan estado SIN re-render (debounce ligero)
     conSerial.forEach(s=>{
       const idx=sel.indexOf(s);
-      if(s.modoSerial==='rango'){
-        const sri=document.getElementById(`sri-${idx}`);
-        const srf=document.getElementById(`srf-${idx}`);
-        const upd=()=>{
-          sel[idx].serialInicio=sri?.value.trim()||'';
-          sel[idx].serialFin=srf?.value.trim()||'';
-          clearTimeout(window['__rt'+idx]);
-          window['__rt'+idx]=setTimeout(()=>pintarSerial(idx),400);
-        };
-        sri?.addEventListener('input',upd);
-        srf?.addEventListener('input',upd);
+      const bus=document.getElementById(`bus-${idx}`);
+      bus?.addEventListener('input',()=>{
+        sel[idx]._filtro=bus.value.trim();
+        sel[idx]._limite=60;
+        pintarSerial(idx);
+      });
+      if(!serialesCache_[s.itemId]){
+        cargarSerialesItem(s.itemId).then(()=>{ if(step===3) pintarSerial(idx); });
       }
-      pintarSerial(idx); // pintar estado inicial
+      pintarSerial(idx);
     });
   }
 
-  // Actualiza SOLO el estado y los chips de un item, sin tocar los inputs
+  // Repinta SOLO el contador y la cuadrícula de chips (no toca el buscador)
   function pintarSerial(idx){
     const s=sel[idx];
     if(!s) return;
-    const v=validarSeriales(s);
-    const estEl=document.getElementById(`est-${idx}`);
-    const chipsEl=document.getElementById(`chips-${idx}`);
-    if(estEl) estEl.innerHTML=estadoHTML(s,v);
-    if(chipsEl){
-      const conDel=s.modoSerial==='individual';
-      chipsEl.innerHTML=v.series.map((x,i)=>chipSerieHTML(x.serial,x.ok,conDel?idx:null,i)).join('');
+    const estEl   = document.getElementById(`est-${idx}`);
+    const chipsEl = document.getElementById(`chips-${idx}`);
+    const hintEl  = document.getElementById(`hint-${idx}`);
+    const cache   = serialesCache_[s.itemId];
+
+    if(estEl) estEl.innerHTML = estadoHTML(s, cache);
+
+    if(hintEl){
+      if(s._rango){
+        hintEl.style.display='block';
+        hintEl.textContent = s._ancla
+          ? `Desde ${s._ancla} — ahora toca la serie final`
+          : 'Toca la serie inicial y luego la final';
+      } else hintEl.style.display='none';
     }
+
+    if(!chipsEl) return;
+
+    if(!cache){
+      chipsEl.innerHTML=`<div style="font-size:11px;color:var(--text-4);padding:10px 0">Cargando series disponibles…</div>`;
+      return;
+    }
+    if(!cache.length){
+      chipsEl.innerHTML=`<div style="font-size:11px;color:#ef4444;padding:10px 0">No hay series registradas para este medidor en bodega.</div>`;
+      return;
+    }
+
+    const elegidas = new Set(s.seriales);
+    const filtro   = (s._filtro||'').trim();
+    const limite   = s._limite||60;
+    const todas    = ordenarSeries(cache);
+    const filtra   = filtro ? todas.filter(x=>String(x).includes(filtro)) : todas;
+    const visibles = filtra.slice(0, limite);
+    const resto    = filtra.length - visibles.length;
+
+    if(!filtra.length){
+      chipsEl.innerHTML=`<div style="font-size:11px;color:var(--text-4);padding:10px 0">Sin coincidencias.</div>`;
+      return;
+    }
+
+    chipsEl.innerHTML=`
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(88px,1fr));gap:5px">
+        ${visibles.map(ser=>{
+          const on   = elegidas.has(ser);
+          const esAn = s._ancla===ser;
+          const bg   = on?'var(--bod-glass)':esAn?'rgba(251,191,36,.1)':'var(--glass)';
+          const bd   = on?'var(--bod-border)':esAn?'rgba(251,191,36,.5)':'var(--border)';
+          const col  = on?'var(--bod-light)':esAn?'#fbbf24':'var(--text-3)';
+          return `<div onclick="window.__d_pick(${idx},'${ser}')" style="cursor:pointer;background:${bg};border:1px solid ${bd};border-radius:7px;padding:7px 4px;text-align:center;font-family:monospace;font-size:11px;font-weight:${on?'700':'500'};color:${col};display:flex;align-items:center;justify-content:center;gap:3px">
+            ${on?'<span style="font-size:10px">&#10003;</span>':''}<span>${ser}</span>
+          </div>`;
+        }).join('')}
+      </div>
+      ${resto>0?`<div onclick="window.__d_more(${idx})" style="cursor:pointer;text-align:center;font-size:11px;font-weight:600;color:var(--bod-light);padding:9px;margin-top:6px;border:1px dashed var(--bod-border);border-radius:8px">Ver ${resto} más</div>`:''}`;
   }
 
-  function estadoHTML(s,v){
-    if(v.cargando) return `<div style="font-size:10px;color:var(--text-4)">Verificando…</div>`;
-    if(v.lista.length===0) return `<div style="font-size:10px;color:var(--text-4)">Faltan ${s.cantidad}</div>`;
-    if(v.lista.length!==s.cantidad){
-      const dif=v.lista.length<s.cantidad?`faltan ${s.cantidad-v.lista.length}`:`sobran ${v.lista.length-s.cantidad}`;
-      return `<div style="font-size:10px;color:#fbbf24;font-weight:600">${v.lista.length}/${s.cantidad} · ${dif}</div>`;
+  function estadoHTML(s, cache){
+    const n = s.seriales.length;
+    if(!cache) return `<div style="font-size:11px;color:var(--text-4)">Cargando…</div>`;
+    if(cache.length < s.cantidad){
+      return `<div style="font-size:11px;font-weight:700;color:#ef4444">Solo hay ${cache.length} en bodega</div>`;
     }
-    if(v.invalidos.length) return `<div style="font-size:10px;color:#ef4444;font-weight:600">${v.invalidos.length} no en bodega</div>`;
-    return `<div style="font-size:10px;color:#22c55e;font-weight:700">&#10003; ${v.lista.length} verificada${v.lista.length>1?'s':''}</div>`;
-  }
-
-  function chipSerieHTML(ser,ok,idxDel,i){
-    const col = ok===false?'#ef4444':ok===true?'#22c55e':'var(--text-3)';
-    const bg  = ok===false?'rgba(239,68,68,.08)':ok===true?'rgba(34,197,94,.08)':'var(--glass)';
-    const bd  = ok===false?'rgba(239,68,68,.3)':ok===true?'rgba(34,197,94,.3)':'var(--border)';
-    const ic  = ok===false?'&#10007;':ok===true?'&#10003;':'';
-    const del = idxDel!==null?`<button class="icon-btn" style="width:24px;height:24px" onclick="window.__d_sdel(${idxDel},${i})"><svg viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="10" height="10"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>`:'';
-    return `<div style="display:flex;align-items:center;gap:6px;font-size:11px">
-      <div style="flex:1;background:${bg};border:1px solid ${bd};border-radius:6px;padding:5px 8px;font-family:monospace;color:${col};display:flex;justify-content:space-between;align-items:center">
-        <span>${ser}</span><span style="font-weight:700">${ic}</span>
-      </div>${del}
-    </div>`;
+    const base = `${n} de ${s.cantidad}`;
+    if(n === s.cantidad) return `<div style="font-size:11px;font-weight:700;color:#22c55e">&#10003; ${base} seleccionadas</div>`;
+    if(n > s.cantidad)   return `<div style="font-size:11px;font-weight:700;color:#ef4444">${base} · sobran ${n-s.cantidad}</div>`;
+    return `<div style="font-size:11px;font-weight:600;color:#fbbf24">${base} seleccionadas</div>`;
   }
 
   // Valida las series de un item contra los disponibles en bodega.
