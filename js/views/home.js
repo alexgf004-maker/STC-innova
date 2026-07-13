@@ -48,7 +48,7 @@ export async function init(container, session) {
   container.innerHTML = `<p style="color:var(--text-3);padding:24px">Rol no reconocido.</p>`;
 }
 
-// ── Despachos pendientes de aceptación (técnico) ──-
+// ── Despachos pendientes de aceptación (técnico) ──
 let __pendientesTec = [];
 let __containerTec = null;
 let __unsubPendientes = null;   // cierra el listener al salir del home
@@ -190,14 +190,26 @@ async function aceptarDespachoPendiente(id){
   document.querySelectorAll('#despachos-pend-tec button').forEach(b=>b.disabled=true);
 
   try{
-    const session = JSON.parse(localStorage.getItem('innova_session'));
+    const session = JSON.parse(localStorage.getItem('innova_session') || '{}');
     const now = firebase.firestore.FieldValue.serverTimestamp();
+
+    // Resolver quién acepta. Si la sesión guardada viene incompleta,
+    // lo sacamos de Firebase Auth / Firestore para no guardar undefined.
+    let uidTec    = session.uid || firebase.auth().currentUser?.uid || p.tecnicoRecibeUid || null;
+    let nombreTec = session.displayName || '';
+    if (!nombreTec && uidTec) {
+      try {
+        const uDoc = await db.collection('users').doc(uidTec).get();
+        nombreTec = uDoc.data()?.displayName || '';
+      } catch {}
+    }
+    if (!nombreTec) nombreTec = p.usuarioResponsable || 'Técnico';
 
     // 1. Crear la salida definitiva con constancia de aceptación
     const salidaData = {
-      area: p.area,
-      usuarioResponsable: p.usuarioResponsable,
-      tecnicoRecibeUid: p.tecnicoRecibeUid||null,
+      area: p.area || '',
+      usuarioResponsable: p.usuarioResponsable || nombreTec,
+      tecnicoRecibeUid: p.tecnicoRecibeUid || uidTec || null,
       parejaAcompanante: p.parejaAcompanante||'',
       parejaUid: p.parejaUid||null,
       usuarioRespAsignado: p.usuarioRespAsignado||'',
@@ -209,12 +221,16 @@ async function aceptarDespachoPendiente(id){
       solicitudId: p.solicitudId||null,
       items: p.items||[],
       // Constancia de aceptación
-      aceptadoPorTecnico: session.displayName,
-      aceptadoPorUid: session.uid,
+      aceptadoPorTecnico: nombreTec,
+      aceptadoPorUid: uidTec,
       fechaAceptacion: now,
       origenPendiente: id,
       fecha: now,
     };
+
+    // Red de seguridad: Firestore rechaza cualquier campo undefined
+    Object.keys(salidaData).forEach(k=>{ if(salidaData[k]===undefined) salidaData[k]=null; });
+
     const ref = await db.collection('kardex').doc('movimientos').collection('salidas').add(salidaData);
 
     // 2. Descontar stock
@@ -235,7 +251,7 @@ async function aceptarDespachoPendiente(id){
           .where('itemId','==',m.itemId).where('estado','==','disponible').get();
         const serSet = new Set(lista);
         const updates = snapSer.docs.filter(d=>serSet.has(String(d.data().serial).trim()))
-          .map(d=>d.ref.update({estado:'despachado',salidaId:ref.id,fechaSalida:now,usuarioDespacho:p.usuarioResponsable}));
+          .map(d=>d.ref.update({estado:'despachado',salidaId:ref.id,fechaSalida:now,usuarioDespacho:p.usuarioResponsable||nombreTec||''}));
         await Promise.all(updates);
       }catch(e){ console.warn('[home] Error marcando series:',e); }
     }
