@@ -105,8 +105,8 @@ function intentarPintarPendientes(intento){
   renderDespachosPendientesTecnico(cont);
 }
 
-const CAMP_LABEL_HOME = { AMI:'AMI', Caracterizacion:'Caracterización', ReclamosSIGET:'Reclamos SIGET' };
-const CAMP_COLOR_HOME = { AMI:'#fbbf24', Caracterizacion:'#a78bfa', ReclamosSIGET:'#f472b6' };
+const CAMP_LABEL_HOME = { CAMBIOS:'Cambio de Medidores', AMI:'AMI', Caracterizacion:'Caracterización', ReclamosSIGET:'Reclamos SIGET' };
+const CAMP_COLOR_HOME = { CAMBIOS:'#2dd4bf', AMI:'#fbbf24', Caracterizacion:'#a78bfa', ReclamosSIGET:'#f472b6' };
 
 function renderDespachosPendientesTecnico(cont) {
   document.getElementById('despachos-pend-tec')?.remove();
