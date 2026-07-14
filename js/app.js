@@ -316,19 +316,30 @@ window.addEventListener('DOMContentLoaded', async () => {
     const doc = await db.collection('users').doc(session.uid).get();
     if (doc.exists) {
       const fresh = doc.data();
-      session.role             = fresh.role;
-      session.displayName      = fresh.displayName;
+      // OJO: solo sobrescribir si el dato viene bien. Si Firestore devuelve
+      // algo incompleto, NO pisamos la sesión buena con undefined.
+      if (fresh.role)        session.role        = fresh.role;
+      if (fresh.displayName) session.displayName = fresh.displayName;
       session.asignacionActual = fresh.asignacionActual || null;
       session.pinChanged       = fresh.pinChanged === true;
-      // Actualizar localStorage con datos frescos
       localStorage.setItem(SESSION_KEY, JSON.stringify(session));
 
       // Nunca ha personalizado su PIN -> obligarlo
       debeCambiarPin = fresh.pinChanged !== true;
     }
   } catch (err) {
-    // Sin conexión — usar sesión cacheada, no bloquear el acceso
-    console.warn('[app] Sin conexión, usando sesión cacheada');
+    // Sin conexión o cuota agotada — usar sesión cacheada, no bloquear el acceso
+    console.warn('[app] No se pudo refrescar el usuario, usando sesión cacheada');
+  }
+
+  // ── Sesión válida o nada ──────────────────────────
+  // Sin un rol conocido la app NO arranca. Antes caía al menú de asistente
+  // y un técnico terminaba viendo pantallas que no le tocaban.
+  const ROLES_VALIDOS = ['admin', 'asistente', 'tecnico'];
+  if (!session.uid || !ROLES_VALIDOS.includes(session.role)) {
+    console.error('[app] Sesión inválida (rol:', session.role, ') — cerrando sesión');
+    await cerrarSesion();
+    return;
   }
 
   splash.classList.add('hidden');
