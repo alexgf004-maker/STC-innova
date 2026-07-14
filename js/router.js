@@ -117,7 +117,7 @@ export async function navigateTo(tabId) {
       // Mostrar toast de offline
       const t = document.createElement('div');
       t.style.cssText = 'position:fixed;bottom:90px;left:50%;transform:translateX(-50%);background:#1f2937;color:#9ca3af;border:1px solid #374151;padding:10px 20px;border-radius:20px;font-size:12px;font-weight:600;z-index:9999;font-family:Outfit,sans-serif;white-space:nowrap';
-      t.textContent = '📵 Sin señal — usando datos guardados';
+      t.textContent = 'Sin señal — usando datos guardados';
       document.body.appendChild(t);
       setTimeout(() => t.remove(), 3000);
       return;
@@ -144,7 +144,16 @@ function buildNavbar(session) {
               : 'tecnico_none';
   }
 
-  const items = NAV_CONFIGS[configKey] || NAV_CONFIGS.asistente;
+  // NUNCA caer al menú de asistente si el rol es desconocido.
+  // Antes: NAV_CONFIGS[configKey] || NAV_CONFIGS.asistente  -> un técnico con
+  // la sesión incompleta terminaba viendo las pantallas de asistente.
+  const items = NAV_CONFIGS[configKey];
+  if (!items) {
+    console.error('[router] Rol desconocido:', role, '— cerrando sesión');
+    localStorage.removeItem('innova_session');
+    window.location.replace('/STC-innova/login.html');
+    return;
+  }
 
   navbar.innerHTML = items.map(item => `
     <div class="nav-item${item.color ? ' ' + item.color : ''}"
