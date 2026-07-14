@@ -1586,6 +1586,8 @@ function abrirDespacho(solicitud=null) {
   }
 
   // Ordena series de forma natural (por el número final)
+  // Ordena series de forma natural (por el número final)
+  // Ordena series de forma natural (por el número final)
   function ordenarSeries(arr){
     return arr.slice().sort((a,b)=>{
       const na=parseInt(String(a).replace(/\D/g,''),10);
@@ -1593,6 +1595,22 @@ function abrirDespacho(solicitud=null) {
       if(!isNaN(na)&&!isNaN(nb)&&na!==nb) return na-nb;
       return String(a).localeCompare(String(b));
     });
+  }
+
+  // Busca una serie disponible a partir de lo que se escribió.
+  // Acepta dígitos parciales (ej. "087" encuentra "12345087").
+  // Devuelve {serial} | {error}
+  function resolverSerie(texto, disponibles, yaMarcadas){
+    const t = String(texto||'').trim();
+    if(!t) return {error:'vacío'};
+    const exacta = disponibles.find(x=>String(x)===t);
+    if(exacta) return {serial:exacta};
+    const cand = disponibles.filter(x=>String(x).includes(t));
+    if(cand.length===1) return {serial:cand[0]};
+    if(cand.length>1)  return {error:`La serie ${t} coincide con ${cand.length}. Escribe más dígitos.`};
+    const marcada = (yaMarcadas||[]).some(x=>String(x).includes(t));
+    if(marcada) return {error:`La serie ${t} ya la marcaste.`};
+    return {error:`La serie ${t} no está disponible en bodega.`};
   }
 
   function renderStep3(){
@@ -1603,7 +1621,7 @@ function abrirDespacho(solicitud=null) {
         <button class="icon-btn" id="back2"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><polyline points="15 18 9 12 15 6"/></svg></button>
         <div style="flex:1">
           <div class="section-title">Seriales</div>
-          <div style="font-size:11px;color:var(--text-4)">Paso 3 de 3 · toca las series que entregas</div>
+          <div style="font-size:11px;color:var(--text-4)">Paso 3 de 3</div>
         </div>
       </div>
 
@@ -1616,19 +1634,34 @@ function abrirDespacho(solicitud=null) {
               <div id="est-${idx}"></div>
             </div>
 
-            <div style="display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap">
-              <div class="select-chip" style="font-size:10px;cursor:pointer" onclick="window.__d_first(${idx})">Tomar las primeras ${s.cantidad}</div>
-              <div class="select-chip" id="rg-${idx}" style="font-size:10px;cursor:pointer" onclick="window.__d_range(${idx})">Rango</div>
-              <div class="select-chip" style="font-size:10px;cursor:pointer" onclick="window.__d_clear(${idx})">Limpiar</div>
+            <!-- Series marcadas -->
+            <div id="marc-${idx}"></div>
+
+            <!-- BLOQUE 1: rango -->
+            <div style="background:rgba(139,92,246,.05);border:1px solid rgba(139,92,246,.18);border-radius:10px;padding:10px;margin-bottom:8px">
+              <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:var(--bod-light);margin-bottom:7px">Tomé un bloque seguido</div>
+              <div style="display:flex;gap:6px;align-items:center">
+                <input class="form-input" id="rd-${idx}" inputmode="numeric" autocomplete="off" placeholder="Del…" style="flex:1;padding:9px 10px;font-size:13px;font-family:monospace;text-align:center"/>
+                <span style="font-size:11px;color:var(--text-4)">al</span>
+                <input class="form-input" id="rh-${idx}" inputmode="numeric" autocomplete="off" placeholder="…al" style="flex:1;padding:9px 10px;font-size:13px;font-family:monospace;text-align:center"/>
+                <button class="icon-btn" id="brg-${idx}" style="width:38px;height:38px;flex-shrink:0;color:var(--bod-light);border-color:var(--bod-border);background:var(--bod-glass);font-size:18px">+</button>
+              </div>
             </div>
 
-            <div class="buscar-wrap" style="margin-bottom:8px">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="13" height="13" style="color:var(--text-4);flex-shrink:0"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-              <input class="buscar-input" id="bus-${idx}" placeholder="Buscar serie…" autocomplete="off" inputmode="numeric" style="font-size:12px"/>
+            <!-- BLOQUE 2: suelta -->
+            <div style="background:rgba(255,255,255,.02);border:1px solid var(--border);border-radius:10px;padding:10px;margin-bottom:8px">
+              <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:var(--text-3);margin-bottom:7px">Agregar una suelta</div>
+              <div style="display:flex;gap:6px">
+                <input class="form-input" id="su-${idx}" inputmode="numeric" autocomplete="off" placeholder="Número del medidor" style="flex:1;padding:9px 10px;font-size:13px;font-family:monospace"/>
+                <button class="icon-btn" id="bsu-${idx}" style="width:38px;height:38px;flex-shrink:0;color:var(--bod-light);border-color:var(--bod-border);background:var(--bod-glass);font-size:18px">+</button>
+              </div>
             </div>
 
-            <div id="hint-${idx}" style="font-size:10px;color:#fbbf24;margin-bottom:6px;display:none"></div>
-            <div id="chips-${idx}"></div>
+            <!-- Mensaje de resultado -->
+            <div id="msg-${idx}" style="font-size:11px;font-weight:600;margin-bottom:8px;display:none"></div>
+
+            <!-- Atajos -->
+            <div id="acc-${idx}" style="display:flex;gap:6px;flex-wrap:wrap"></div>
           </div>`;}).join('')}
       </div>
 
@@ -1638,69 +1671,66 @@ function abrirDespacho(solicitud=null) {
       </div>
     </div>`;
 
-    window.__d_pick=(idx,serial)=>{
+    const msg=(idx,texto,color)=>{
+      const el=document.getElementById(`msg-${idx}`);
+      if(!el) return;
+      if(!texto){ el.style.display='none'; return; }
+      el.textContent=texto; el.style.color=color; el.style.display='block';
+    };
+
+    // Agregar un RANGO
+    window.__d_rango=idx=>{
       const s=sel[idx];
-      const disp=ordenarSeries(serialesCache_[s.itemId]||[]);
-      if(s._rango){
-        if(!s._ancla){ s._ancla=serial; }
-        else {
-          const a=disp.indexOf(s._ancla), b=disp.indexOf(serial);
-          if(a!==-1&&b!==-1){
-            const ini=a<=b?a:b, fin=a<=b?b:a;
-            const set=new Set(s.seriales);
-            disp.slice(ini,fin+1).forEach(x=>set.add(x));
-            s.seriales=ordenarSeries([...set]);
-          }
-          s._ancla=null;
-        }
-      } else {
-        const i=s.seriales.indexOf(serial);
-        if(i===-1) s.seriales.push(serial);
-        else s.seriales.splice(i,1);
-        s.seriales=ordenarSeries(s.seriales);
-      }
+      const disp=ordenarSeries(serialesCache_[s.itemId]||[]).filter(x=>!s.seriales.includes(x));
+      const elD=document.getElementById(`rd-${idx}`), elH=document.getElementById(`rh-${idx}`);
+      const a=resolverSerie(elD?.value, disp, s.seriales);
+      if(a.error){ msg(idx, a.error==='vacío'?'Escribe la serie inicial.':a.error, '#ef4444'); return; }
+      const b=resolverSerie(elH?.value, disp, s.seriales);
+      if(b.error){ msg(idx, b.error==='vacío'?'Escribe la serie final.':b.error, '#ef4444'); return; }
+
+      const i=disp.indexOf(a.serial), j=disp.indexOf(b.serial);
+      const [ini,fin] = i<=j ? [i,j] : [j,i];
+      const tramo=disp.slice(ini,fin+1);
+      s.seriales=ordenarSeries([...s.seriales, ...tramo]);
+      if(elD) elD.value=''; if(elH) elH.value='';
+      msg(idx, `Se agregaron ${tramo.length}: de la ${tramo[0]} a la ${tramo[tramo.length-1]}.`, '#22c55e');
       pintarSerial(idx);
     };
 
+    // Agregar una SUELTA
+    window.__d_suelta=idx=>{
+      const s=sel[idx];
+      const disp=ordenarSeries(serialesCache_[s.itemId]||[]).filter(x=>!s.seriales.includes(x));
+      const el=document.getElementById(`su-${idx}`);
+      const r=resolverSerie(el?.value, disp, s.seriales);
+      if(r.error){ msg(idx, r.error==='vacío'?'Escribe el número del medidor.':r.error, '#ef4444'); return; }
+      s.seriales=ordenarSeries([...s.seriales, r.serial]);
+      if(el){ el.value=''; el.focus(); }
+      msg(idx, `Se agregó la ${r.serial}.`, '#22c55e');
+      pintarSerial(idx);
+    };
+
+    window.__d_del=(idx,serial)=>{
+      sel[idx].seriales=sel[idx].seriales.filter(x=>x!==serial);
+      msg(idx,'',''); pintarSerial(idx);
+    };
     window.__d_first=idx=>{
       const s=sel[idx];
-      const disp=ordenarSeries(serialesCache_[s.itemId]||[]);
-      s.seriales=disp.slice(0,s.cantidad);
-      s._ancla=null;
+      s.seriales=ordenarSeries(serialesCache_[s.itemId]||[]).slice(0,s.cantidad);
+      msg(idx, `Se agregaron las primeras ${s.seriales.length}.`, '#22c55e');
       pintarSerial(idx);
     };
-
-    window.__d_clear=idx=>{
-      sel[idx].seriales=[];
-      sel[idx]._ancla=null;
-      pintarSerial(idx);
-    };
-
-    window.__d_range=idx=>{
-      const s=sel[idx];
-      s._rango=!s._rango;
-      s._ancla=null;
-      const btn=document.getElementById(`rg-${idx}`);
-      if(btn) btn.classList.toggle('active',!!s._rango);
-      pintarSerial(idx);
-    };
-
-    window.__d_more=idx=>{
-      sel[idx]._limite=(sel[idx]._limite||60)+120;
-      pintarSerial(idx);
-    };
+    window.__d_clear=idx=>{ sel[idx].seriales=[]; msg(idx,'',''); pintarSerial(idx); };
 
     ov.querySelector('#back2').onclick=()=>{step=2;renderStep2();};
     ov.querySelector('#btn-des3').addEventListener('click',handleDespacho);
 
     conSerial.forEach(s=>{
       const idx=sel.indexOf(s);
-      const bus=document.getElementById(`bus-${idx}`);
-      bus?.addEventListener('input',()=>{
-        sel[idx]._filtro=bus.value.trim();
-        sel[idx]._limite=60;
-        pintarSerial(idx);
-      });
+      document.getElementById(`brg-${idx}`)?.addEventListener('click',()=>window.__d_rango(idx));
+      document.getElementById(`bsu-${idx}`)?.addEventListener('click',()=>window.__d_suelta(idx));
+      document.getElementById(`rh-${idx}`)?.addEventListener('keydown',e=>{ if(e.key==='Enter'){e.preventDefault();window.__d_rango(idx);} });
+      document.getElementById(`su-${idx}`)?.addEventListener('keydown',e=>{ if(e.key==='Enter'){e.preventDefault();window.__d_suelta(idx);} });
       if(!serialesCache_[s.itemId]){
         cargarSerialesItem(s.itemId).then(()=>{ if(step===3) pintarSerial(idx); });
       }
@@ -1708,78 +1738,48 @@ function abrirDespacho(solicitud=null) {
     });
   }
 
-  // Repinta SOLO el contador y la cuadrícula de chips (no toca el buscador)
+  // Repinta contador, marcadas y atajos (nunca los inputs)
   function pintarSerial(idx){
     const s=sel[idx];
     if(!s) return;
-    const estEl   = document.getElementById(`est-${idx}`);
-    const chipsEl = document.getElementById(`chips-${idx}`);
-    const hintEl  = document.getElementById(`hint-${idx}`);
-    const cache   = serialesCache_[s.itemId];
+    const estEl  = document.getElementById(`est-${idx}`);
+    const marcEl = document.getElementById(`marc-${idx}`);
+    const accEl  = document.getElementById(`acc-${idx}`);
+    const cache  = serialesCache_[s.itemId];
 
     if(estEl) estEl.innerHTML = estadoHTML(s, cache);
 
-    if(hintEl){
-      if(s._rango){
-        hintEl.style.display='block';
-        hintEl.textContent = s._ancla
-          ? `Desde ${s._ancla} — ahora toca la serie final`
-          : 'Toca la serie inicial y luego la final';
-      } else hintEl.style.display='none';
+    if(marcEl){
+      marcEl.innerHTML = s.seriales.length ? `
+        <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:10px">
+          ${s.seriales.map(ser=>`
+            <div onclick="window.__d_del(${idx},'${ser}')" style="cursor:pointer;display:flex;align-items:center;gap:6px;background:rgba(34,197,94,.1);border:1px solid rgba(34,197,94,.4);border-radius:7px;padding:6px 9px;font-family:monospace;font-size:11px;font-weight:700;color:#22c55e">
+              <span>${ser}</span><span style="color:#ef4444;font-size:12px">&#10007;</span>
+            </div>`).join('')}
+        </div>`
+        : `<div style="font-size:11px;color:var(--text-4);margin-bottom:10px">${cache ? `${cache.length} series disponibles en bodega.` : 'Cargando series…'}</div>`;
     }
 
-    if(!chipsEl) return;
-
-    if(!cache){
-      chipsEl.innerHTML=`<div style="font-size:11px;color:var(--text-4);padding:10px 0">Cargando series disponibles…</div>`;
-      return;
+    if(accEl){
+      const b=[];
+      if(cache && cache.length>=s.cantidad && !s.seriales.length)
+        b.push(`<div class="select-chip" style="font-size:10px;cursor:pointer" onclick="window.__d_first(${idx})">Tomar las primeras ${s.cantidad}</div>`);
+      if(s.seriales.length)
+        b.push(`<div class="select-chip" style="font-size:10px;cursor:pointer" onclick="window.__d_clear(${idx})">Limpiar</div>`);
+      accEl.innerHTML=b.join('');
     }
-    if(!cache.length){
-      chipsEl.innerHTML=`<div style="font-size:11px;color:#ef4444;padding:10px 0">No hay series registradas para este medidor en bodega.</div>`;
-      return;
-    }
-
-    const elegidas = new Set(s.seriales);
-    const filtro   = (s._filtro||'').trim();
-    const limite   = s._limite||60;
-    const todas    = ordenarSeries(cache);
-    const filtra   = filtro ? todas.filter(x=>String(x).includes(filtro)) : todas;
-    const visibles = filtra.slice(0, limite);
-    const resto    = filtra.length - visibles.length;
-
-    if(!filtra.length){
-      chipsEl.innerHTML=`<div style="font-size:11px;color:var(--text-4);padding:10px 0">Sin coincidencias.</div>`;
-      return;
-    }
-
-    chipsEl.innerHTML=`
-      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(88px,1fr));gap:5px">
-        ${visibles.map(ser=>{
-          const on   = elegidas.has(ser);
-          const esAn = s._ancla===ser;
-          const bg   = on?'var(--bod-glass)':esAn?'rgba(251,191,36,.1)':'var(--glass)';
-          const bd   = on?'var(--bod-border)':esAn?'rgba(251,191,36,.5)':'var(--border)';
-          const col  = on?'var(--bod-light)':esAn?'#fbbf24':'var(--text-3)';
-          return `<div onclick="window.__d_pick(${idx},'${ser}')" style="cursor:pointer;background:${bg};border:1px solid ${bd};border-radius:7px;padding:7px 4px;text-align:center;font-family:monospace;font-size:11px;font-weight:${on?'700':'500'};color:${col};display:flex;align-items:center;justify-content:center;gap:3px">
-            ${on?'<span style="font-size:10px">&#10003;</span>':''}<span>${ser}</span>
-          </div>`;
-        }).join('')}
-      </div>
-      ${resto>0?`<div onclick="window.__d_more(${idx})" style="cursor:pointer;text-align:center;font-size:11px;font-weight:600;color:var(--bod-light);padding:9px;margin-top:6px;border:1px dashed var(--bod-border);border-radius:8px">Ver ${resto} más</div>`:''}`;
   }
 
   function estadoHTML(s, cache){
     const n = s.seriales.length;
     if(!cache) return `<div style="font-size:11px;color:var(--text-4)">Cargando…</div>`;
-    if(cache.length < s.cantidad){
+    if(cache.length < s.cantidad)
       return `<div style="font-size:11px;font-weight:700;color:#ef4444">Solo hay ${cache.length} en bodega</div>`;
-    }
     const base = `${n} de ${s.cantidad}`;
-    if(n === s.cantidad) return `<div style="font-size:11px;font-weight:700;color:#22c55e">&#10003; ${base} seleccionadas</div>`;
+    if(n === s.cantidad) return `<div style="font-size:11px;font-weight:700;color:#22c55e">&#10003; ${base}</div>`;
     if(n > s.cantidad)   return `<div style="font-size:11px;font-weight:700;color:#ef4444">${base} · sobran ${n-s.cantidad}</div>`;
-    return `<div style="font-size:11px;font-weight:600;color:#fbbf24">${base} seleccionadas</div>`;
+    return `<div style="font-size:11px;font-weight:600;color:#fbbf24">${base}</div>`;
   }
-
   // Valida las series de un item contra los disponibles en bodega.
   function validarSeriales(s){
     const disp=serialesCache_[s.itemId]||null;
