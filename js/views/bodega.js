@@ -80,7 +80,8 @@ const esValido = i => safeStr(i.name,'')!=='' && safeStr(i.unit,'')!=='';
 // ── Estado del módulo ─────────────────────────────
 let container_, session_, role_, area_, destino_, uid_;
 let montadoId_ = 0;  // incrementa cada init; detecta si la vista sigue activa
-let campanaTecnico_ = null;  // campaña elegida por técnico sin área asignada
+let campanaTecnico_ = null;  // campaña que el técnico está viendo (arranca en la asignada)
+let pickerCampana_  = false; // true = mostrar el selector de campaña al técnico
 let tecnicos_ = [];          // lista de técnicos de la app para despacho
 let serialesCache_ = {};     // itemId -> [seriales disponibles] para validación en vivo
 let allItems_    = [];
@@ -101,6 +102,8 @@ export async function init(container, session) {
   uid_       = session.uid;
   activeTab_ = role_==='tecnico' ? 'recibido' : 'inventario';
   areaFiltro_= area_ || localStorage.getItem('bod_area') || 'CAMBIOS';
+  // El técnico arranca en su campaña asignada, pero puede moverse a cualquiera
+  campanaTecnico_ = area_ || null;
 
   const miMontaje = ++montadoId_;
   renderShell();
@@ -569,10 +572,11 @@ function renderFormSolicitar() {
   const content  = document.getElementById('bod-content');
 
   // Campaña efectiva: la asignada, o la que el técnico elija si no tiene área
-  const campanaEfectiva = area_ || campanaTecnico_;
+  // El técnico puede moverse entre campañas; su asignación solo define la inicial
+  const campanaEfectiva = campanaTecnico_ || area_;
 
-  // Si el técnico no tiene área asignada y no ha elegido campaña, mostrar selector
-  if (!campanaEfectiva) {
+  // Mostrar el selector si el técnico lo pidió, o si no tiene ninguna campaña
+  if (pickerCampana_ || !campanaEfectiva) {
     content.innerHTML = `
       <div class="flex-col gap-12">
         <div class="panel-header anim-up"><div class="section-title">Solicitar material</div></div>
@@ -595,7 +599,7 @@ function renderFormSolicitar() {
   }
 
   const misItems = getItems(campanaEfectiva);
-  const esCampanaNueva = (campanaEfectiva==='AMI'||campanaEfectiva==='Caracterizacion'||campanaEfectiva==='ReclamosSIGET');
+  const esCampanaNueva = (campanaEfectiva==='CAMBIOS'||campanaEfectiva==='AMI'||campanaEfectiva==='Caracterizacion'||campanaEfectiva==='ReclamosSIGET');
   let sel=[], busq='', pareja='', placa='', placaOtro='';
 
   function render() {
@@ -604,7 +608,7 @@ function renderFormSolicitar() {
       <div class="flex-col gap-12">
         <div class="panel-header anim-up">
           <div class="section-title">Solicitar material</div>
-          ${!area_ ? `<div onclick="window.__bodega.cambiarCampanaTecnico()" style="cursor:pointer;font-size:11px;font-weight:700;padding:5px 12px;border-radius:20px;color:${cc.color};background:${cc.bg};border:1px solid ${cc.border}">${cc.label} &#9662;</div>` : ''}
+          <div onclick="window.__bodega.cambiarCampanaTecnico()" style="cursor:pointer;font-size:11px;font-weight:700;padding:5px 12px;border-radius:20px;color:${cc.color};background:${cc.bg};border:1px solid ${cc.border}">${cc.label} &#9662;</div>
         </div>
 
         ${esCampanaNueva?`
@@ -863,11 +867,12 @@ function setCampana(area) {
 
 function elegirCampanaTecnico(area) {
   campanaTecnico_ = area;
+  pickerCampana_  = false;
   renderFormSolicitar();
 }
 
 function cambiarCampanaTecnico() {
-  campanaTecnico_ = null;
+  pickerCampana_ = true;
   renderFormSolicitar();
 }
 
@@ -1351,7 +1356,7 @@ function abrirDevolucion(salida) {
 // ══════════════════════════════════════════════════
 function abrirDespacho(solicitud=null) {
   const campanaDespacho = solicitud?.area || areaFiltro_ || 'CAMBIOS';
-  const esCampanaNueva = (campanaDespacho==='AMI' || campanaDespacho==='Caracterizacion' || campanaDespacho==='ReclamosSIGET');
+  const esCampanaNueva = (campanaDespacho==='CAMBIOS' || campanaDespacho==='AMI' || campanaDespacho==='Caracterizacion' || campanaDespacho==='ReclamosSIGET');
   const hdr={
     responsable:solicitud?.usuarioNombre||'',
     pareja:solicitud?.parejaAcompanante||'',
@@ -1837,7 +1842,7 @@ function abrirDespacho(solicitud=null) {
     const placa=hdr.placa==='__otro__'?hdr.placaOtro:hdr.placa;
 
     const areaDespacho=solicitud?.area||areaFiltro_;
-    const esCampanaNueva=(areaDespacho==='AMI'||areaDespacho==='Caracterizacion'||areaDespacho==='ReclamosSIGET');
+    const esCampanaNueva=(areaDespacho==='CAMBIOS'||areaDespacho==='AMI'||areaDespacho==='Caracterizacion'||areaDespacho==='ReclamosSIGET');
 
     // ── Campañas nuevas: crear despacho PENDIENTE (no descuenta stock aún) ──
     if(esCampanaNueva){
@@ -1951,7 +1956,7 @@ function abrirDespacho(solicitud=null) {
 
 // ── Memo oficial DELSUR ───────────────────────────
 // ── Memo INNOVA para AMI y Caracterización ────────
-const CAMPANA_LABEL = { AMI:'AMI', Caracterizacion:'Caracterización de la Carga', ReclamosSIGET:'Reclamos SIGET' };
+const CAMPANA_LABEL = { CAMBIOS:'Cambio de Medidores', AMI:'AMI', Caracterizacion:'Caracterización de la Carga', ReclamosSIGET:'Reclamos SIGET' };
 
 // Expande las series de un item de salida para listarlas explícitas
 function seriesDeItem(it) {
@@ -2102,7 +2107,7 @@ function showMemoCampana(salida) {
 }
 
 function imprimirCampana(m) {
-  const AC = m.area==='AMI' ? '#c98a00' : m.area==='ReclamosSIGET' ? '#be185d' : '#7c5cd6';
+  const AC = m.area==='AMI' ? '#c98a00' : m.area==='ReclamosSIGET' ? '#be185d' : m.area==='CAMBIOS' ? '#0d9488' : '#7c5cd6';
   const filas = m.items.map(it=>{
     const serie = it.requiereSerial && it.series.length
       ? `<tr><td colspan="2" style="border:0.4pt solid #000;border-top:none;padding:1.5mm 2mm;background:#fafafa">
@@ -2182,7 +2187,7 @@ function imprimirCampana(m) {
 
 function showMemo(salida) {
   // AMI y Caracterización usan memo propio de INNOVA
-  if (salida.area === 'AMI' || salida.area === 'Caracterizacion' || salida.area === 'ReclamosSIGET') {
+  if (salida.area === 'CAMBIOS' || salida.area === 'AMI' || salida.area === 'Caracterizacion' || salida.area === 'ReclamosSIGET') {
     return showMemoCampana(salida);
   }
   const memo={
