@@ -2446,11 +2446,27 @@ async function ejecutarImport(sheet, rows) {
     let creados=0, actualizados=0;
 
     for(const r of rows){
-      // Buscar existente por SAP o AX en la misma campaña
-      const existente=allItems_.find(i=>
-        i.area===campana &&
-        ((r.sapCode && i.sapCode===r.sapCode) || (r.axCode && i.axCode===r.axCode))
-      );
+      const rSap  = safeStr(r.sapCode,'').trim();
+      const rAx   = safeStr(r.axCode,'').trim();
+      const rName = safeStr(r.name,'').trim().toLowerCase();
+
+      // Buscar el material existente en la misma campaña.
+      // 1) Por código SAP o AX si el Excel los trae.
+      // 2) Si no hay códigos, por NOMBRE (así no se duplica cuando el
+      //    material no tiene SAP/AX, que es el caso de varias campañas).
+      const existente = allItems_.find(i => {
+        if (i.area !== campana) return false;
+        const iSap = safeStr(i.sapCode,'').trim();
+        const iAx  = safeStr(i.axCode,'').trim();
+        if (rSap && iSap && iSap === rSap) return true;
+        if (rAx  && iAx  && iAx  === rAx ) return true;
+        // Sin coincidencia de código: comparar por nombre solo si NINGUNO
+        // de los dos lados aporta un código que debiera haber coincidido.
+        if (!rSap && !rAx) {
+          return safeStr(i.name,'').trim().toLowerCase() === rName;
+        }
+        return false;
+      });
 
       if(existente){
         const nuevoStock=safeNum(existente.stock)+safeNum(r.stock);
