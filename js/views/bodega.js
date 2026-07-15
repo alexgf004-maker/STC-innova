@@ -165,7 +165,7 @@ function renderShell() {
     });
   });
 
-  window.__bodega = { setCampana, elegirCampanaTecnico, cambiarCampanaTecnico, abrirDespacho, abrirNuevoItem, abrirEntrada, abrirImportar, aprobarSolicitud, rechazarSolicitud, verSeriales };
+  window.__bodega = { setCampana, elegirCampanaTecnico, cambiarCampanaTecnico, abrirDespacho, abrirNuevoItem, abrirEntrada, abrirImportar, exportarInventario, aprobarSolicitud, rechazarSolicitud, verSeriales };
 }
 
 // ── Cargar datos ──────────────────────────────────
@@ -803,6 +803,9 @@ function renderInventario() {
       <div class="panel-header anim-up">
         <div><div class="section-title">Inventario</div><div class="section-sub">${items.length} items · ${agotados} agotados · ${bajos} bajo mínimo</div></div>
         <div style="display:flex;gap:8px">
+          <button class="icon-btn bod" onclick="window.__bodega.exportarInventario()" title="Exportar a Excel">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          </button>
           <button class="icon-btn bod" onclick="window.__bodega.abrirImportar()" title="Importar Excel">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
           </button>
@@ -2322,6 +2325,35 @@ function imprimirDespacho(memo) {
 }
 
 // ── Importar items desde Excel ────────────────────
+function exportarInventario() {
+  const campana = areaFiltro_;
+  const items = allItems_.filter(i => i.area === campana).sort((a,b)=>safeStr(a.name).localeCompare(safeStr(b.name)));
+  if (!items.length) { toast('No hay materiales en esta campaña', 'error'); return; }
+
+  // Encabezados que el importador reconoce. La columna "Stock" (la que suma
+  // al importar) va VACÍA para que se escriba lo que entra. "Stock actual"
+  // es solo informativa — el importador la ignora.
+  const filas = items.map(i => ({
+    Nombre:        safeStr(i.name,''),
+    Unidad:        safeStr(i.unit,''),
+    SAP:           safeStr(i.sapCode,''),
+    AX:            safeStr(i.axCode,''),
+    Stock:         '',                       // <- aquí escribes lo que llega
+    Minimo:        safeNum(i.minStock)||5,
+    'Stock actual':safeNum(i.stock),         // informativa
+  }));
+
+  const ws = XLSX.utils.json_to_sheet(filas, { header:['Nombre','Unidad','SAP','AX','Stock','Minimo','Stock actual'] });
+  ws['!cols'] = [{wch:38},{wch:10},{wch:14},{wch:14},{wch:10},{wch:8},{wch:12}];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, campana.substring(0,28));
+
+  const label = (CAMPANA_COLORS[campana]?.label || campana).replace(/[^\w]/g,'_');
+  const hoy = new Date().toISOString().split('T')[0];
+  XLSX.writeFile(wb, `Inventario_${label}_${hoy}.xlsx`);
+  toast('Excel exportado', 'ok');
+}
+
 function abrirImportar() {
   const sheet=document.createElement('div');
   sheet.className='sheet-backdrop open';
