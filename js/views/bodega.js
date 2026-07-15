@@ -2330,21 +2330,20 @@ function exportarInventario() {
   const items = allItems_.filter(i => i.area === campana).sort((a,b)=>safeStr(a.name).localeCompare(safeStr(b.name)));
   if (!items.length) { toast('No hay materiales en esta campaña', 'error'); return; }
 
-  // Encabezados que el importador reconoce. La columna "Stock" (la que suma
-  // al importar) va VACÍA para que se escriba lo que entra. "Stock actual"
-  // es solo informativa — el importador la ignora.
+  // Encabezados EXACTOS que el importador reconoce. La columna Stock va vacía
+  // para escribir lo que entra. NO se agregan columnas extra: el importador
+  // busca por inclusión ("stock", "ax") y una columna de más rompe el mapeo.
   const filas = items.map(i => ({
-    Nombre:        safeStr(i.name,''),
-    Unidad:        safeStr(i.unit,''),
-    SAP:           safeStr(i.sapCode,''),
-    AX:            safeStr(i.axCode,''),
-    Stock:         '',                       // <- aquí escribes lo que llega
-    Minimo:        safeNum(i.minStock)||5,
-    'Stock actual':safeNum(i.stock),         // informativa
+    Nombre:  safeStr(i.name,''),
+    Unidad:  safeStr(i.unit,''),
+    SAP:     safeStr(i.sapCode,''),
+    AX:      safeStr(i.axCode,''),
+    Stock:   '',                       // <- escribe aquí lo que llega
+    Minimo:  safeNum(i.minStock)||5,
   }));
 
-  const ws = XLSX.utils.json_to_sheet(filas, { header:['Nombre','Unidad','SAP','AX','Stock','Minimo','Stock actual'] });
-  ws['!cols'] = [{wch:38},{wch:10},{wch:14},{wch:14},{wch:10},{wch:8},{wch:12}];
+  const ws = XLSX.utils.json_to_sheet(filas, { header:['Nombre','Unidad','SAP','AX','Stock','Minimo'] });
+  ws['!cols'] = [{wch:40},{wch:10},{wch:14},{wch:14},{wch:10},{wch:8}];
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, campana.substring(0,28));
 
@@ -2401,7 +2400,14 @@ function abrirImportar() {
 
       // Normalizar columnas (tolera variaciones de nombre)
       parsedRows=rows.map(r=>{
-        const get=(...keys)=>{for(const k of Object.keys(r)){const kn=k.toLowerCase().trim();if(keys.some(x=>kn===x||kn.includes(x)))return r[k];}return '';};
+        // Coincidencia EXACTA primero; si no, por inclusión. Evita que
+        // "stock actual" sea confundida con "stock", etc.
+        const get=(...keys)=>{
+          const cols=Object.keys(r);
+          for(const k of cols){ const kn=k.toLowerCase().trim(); if(keys.includes(kn)) return r[k]; }
+          for(const k of cols){ const kn=k.toLowerCase().trim(); if(keys.some(x=>kn.includes(x))) return r[k]; }
+          return '';
+        };
         return {
           name:   String(get('nombre','descripcion','descripción','material')).trim(),
           unit:   String(get('unidad','unit','um')).trim()||'unidades',
