@@ -6,7 +6,7 @@
 
 import { db } from '../firebase.js';
 import { leerStats, recalcularStats } from '../stats.js';
-import { setupRefreshBtn } from '../ui.js';
+import { setupRefreshBtn, toast } from '../ui.js';
 
 const META_DIARIA = 15;
 
@@ -524,6 +524,16 @@ function renderHomeTecnico(container, session, area, destino) {
           <div class="qc-sub">Material asignado</div>
         </div>
 
+        <div class="quick-card" onclick="window.__abrirDevolucion()">
+          <div class="qc-icon" style="background:rgba(45,212,191,.15)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="#2dd4bf" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="9 10 4 15 9 20"/><path d="M20 4v7a4 4 0 01-4 4H4"/>
+            </svg>
+          </div>
+          <div class="qc-title">Devolver material</div>
+          <div class="qc-sub">Reintegrar a bodega</div>
+        </div>
+
         ${!isCambios ? `
         <div class="quick-card" style="border-color:rgba(239,68,68,.25);background:rgba(239,68,68,.05)" onclick="window.__router.navigateTo('otc')">
           <div class="qc-icon" style="background:rgba(239,68,68,.12)">
@@ -746,3 +756,296 @@ function renderHomeAsistente(container, session) {
   renderIndicadorCorte(null);
   cargarPersonalHoy();
 }
+
+// ══════════════════════════════════════════════════════════════
+//  DEVOLUCIÓN DE MATERIAL (lado técnico)
+//  El técnico declara qué devuelve; queda PENDIENTE hasta que la
+//  asistente lo apruebe. No suma a bodega aquí.
+// ══════════════════════════════════════════════════════════════
+
+const CAMP_DEVOL = {
+  CAMBIOS:       { label:'Cambio de Medidores', color:'#2dd4bf' },
+  AMI:           { label:'AMI',                 color:'#fbbf24' },
+  Caracterizacion:{ label:'Caracterización',    color:'#a78bfa' },
+  ReclamosSIGET: { label:'Reclamos SIGET',      color:'#f472b6' },
+};
+
+// Series consecutivas por rango
+function _devExpandirRango(ini, fin){
+  const a=String(ini||'').trim(), b=String(fin||'').trim();
+  if(!a||!b) return [];
+  const na=parseInt(a.replace(/\D/g,''),10), nb=parseInt(b.replace(/\D/g,''),10);
+  if(isNaN(na)||isNaN(nb)||nb<na||nb-na>5000) return [];
+  const pref=a.replace(/\d+$/,''), dig=a.replace(/\D/g,'').length;
+  const out=[]; for(let n=na;n<=nb;n++) out.push(pref+String(n).padStart(dig,'0'));
+  return out;
+}
+// Caja: desde + cantidad, quitando faltantes (seriales completos)
+function _devExpandirCaja(desde, cant, faltan){
+  const ini=String(desde||'').trim(), c=parseInt(cant,10);
+  if(!ini||!c||c<=0||c>1000) return {error:'Revisa los datos de la caja.'};
+  const nIni=parseInt(ini.replace(/\D/g,''),10);
+  if(isNaN(nIni)) return {error:'El primer serial debe tener números.'};
+  const pref=ini.replace(/\d+$/,''), dig=ini.replace(/\D/g,'').length;
+  const todos=[]; for(let k=0;k<c;k++) todos.push(pref+String(nIni+k).padStart(dig,'0'));
+  const setT=new Set(todos), falt=[], noEnc=[];
+  String(faltan||'').split(/[\s,;]+/).map(t=>t.trim()).filter(Boolean).forEach(t=>{
+    const limpio=t.replace(/\D/g,''); if(!limpio) return;
+    let s=null;
+    if(setT.has(t)) s=t;
+    else if(setT.has(pref+limpio)) s=pref+limpio;
+    else { const nT=parseInt(limpio,10); const cand=todos.find(x=>parseInt(x.replace(/\D/g,''),10)===nT); if(cand) s=cand; }
+    if(s) falt.push(s); else noEnc.push(t);
+  });
+  if(noEnc.length) return {error:`No caen en la caja: ${noEnc.join(', ')}`};
+  const setF=new Set(falt);
+  return {seriales:todos.filter(x=>!setF.has(x)), faltantes:falt};
+}
+
+window.__abrirDevolucion = async function(){
+  const session = JSON.parse(localStorage.getItem('innova_session') || '{}');
+
+  const ov = document.createElement('div');
+  ov.style.cssText='position:fixed;inset:0;z-index:800;background:var(--bg);overflow-y:auto';
+  ov.innerHTML = `
+    <div style="max-width:520px;margin:0 auto;min-height:100vh;display:flex;flex-direction:column">
+      <div style="padding:14px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px;position:sticky;top:0;background:var(--bg);z-index:10">
+        <button class="icon-btn" id="dev-back"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><polyline points="15 18 9 12 15 6"/></svg></button>
+        <div style="flex:1">
+          <div class="section-title">Devolver material</div>
+          <div style="font-size:11px;color:var(--text-4)">Reintegrar material a bodega</div>
+        </div>
+      </div>
+      <div style="padding:16px 20px;flex:1" id="dev-body">
+        <div class="form-label" style="margin-bottom:8px">¿De qué campaña es el material?</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px" id="dev-camp"></div>
+        <div id="dev-lista" style="margin-top:16px"></div>
+      </div>
+      <div style="padding:14px 20px;border-top:1px solid var(--border);background:var(--bg);position:sticky;bottom:0" id="dev-footer" style="display:none">
+        <div id="dev-err" class="form-error" style="margin-bottom:8px"></div>
+        <button class="btn-primary full" id="dev-enviar" style="display:none"><span id="dev-enviar-lbl">Enviar devolución</span></button>
+      </div>
+    </div>`;
+  document.body.appendChild(ov);
+  ov.querySelector('#dev-back').onclick=()=>ov.remove();
+
+  // Estado
+  let campana=null, materiales=[], seleccion={};  // itemId -> {item, cantidad, seriales}
+
+  // Pintar chips de campaña
+  const campWrap=ov.querySelector('#dev-camp');
+  campWrap.innerHTML=Object.entries(CAMP_DEVOL).map(([k,v])=>`
+    <div class="dev-camp-chip" data-camp="${k}" style="cursor:pointer;padding:12px;border-radius:12px;border:1px solid var(--border);background:var(--glass);text-align:center;font-size:13px;font-weight:700;color:${v.color}">${v.label}</div>
+  `).join('');
+  campWrap.querySelectorAll('.dev-camp-chip').forEach(chip=>{
+    chip.onclick=()=>{
+      campWrap.querySelectorAll('.dev-camp-chip').forEach(c=>{c.style.borderColor='var(--border)';c.style.background='var(--glass)';});
+      const col=CAMP_DEVOL[chip.dataset.camp].color;
+      chip.style.borderColor=col; chip.style.background=col+'22';
+      campana=chip.dataset.camp; seleccion={};
+      cargarMateriales();
+    };
+  });
+
+  async function cargarMateriales(){
+    const lista=ov.querySelector('#dev-lista');
+    lista.innerHTML=`<div style="text-align:center;padding:20px;color:var(--text-4);font-size:12px">Cargando materiales…</div>`;
+    try{
+      const snap=await db.collection('kardex').doc('inventario').collection('items').where('area','==',campana).get();
+      materiales=snap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>String(a.name||'').localeCompare(String(b.name||'')));
+      if(!materiales.length){ lista.innerHTML=`<div style="text-align:center;padding:20px;color:var(--text-4);font-size:12px">No hay materiales en esta campaña.</div>`; return; }
+      pintarLista('');
+    }catch(e){
+      lista.innerHTML=`<div style="text-align:center;padding:20px;color:#ef4444;font-size:12px">Error cargando: ${e.message}</div>`;
+    }
+  }
+
+  function pintarLista(filtro){
+    const lista=ov.querySelector('#dev-lista');
+    const f=(filtro||'').toLowerCase();
+    const items=materiales.filter(m=>String(m.name||'').toLowerCase().includes(f));
+    lista.innerHTML=`
+      <div class="buscar-wrap" style="margin-bottom:12px">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14" style="color:var(--text-4);flex-shrink:0"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input class="buscar-input" id="dev-buscar" placeholder="Buscar material…" autocomplete="off" value="${filtro||''}"/>
+      </div>
+      <div class="flex-col gap-8">
+        ${items.map(m=>{
+          const sel=seleccion[m.id];
+          const on=!!sel;
+          return `<div style="background:var(--bg-card);border:1px solid ${on?'rgba(45,212,191,.4)':'var(--border)'};border-radius:12px;padding:12px">
+            <div style="display:flex;align-items:center;gap:10px">
+              <div style="flex:1">
+                <div style="font-size:13px;font-weight:600">${m.name||'—'}</div>
+                <div style="font-size:10px;color:var(--text-4)">${m.requiereSerial?'Con serie':m.unit||'unidades'}</div>
+              </div>
+              <button class="dev-toggle" data-id="${m.id}" style="cursor:pointer;padding:7px 14px;border-radius:20px;border:1px solid ${on?'rgba(45,212,191,.5)':'var(--border)'};background:${on?'rgba(45,212,191,.15)':'var(--glass)'};color:${on?'#2dd4bf':'var(--text-3)'};font-size:11px;font-weight:700">${on?'Quitar':'Devolver'}</button>
+            </div>
+            <div class="dev-detalle" data-id="${m.id}" style="display:${on?'block':'none'};margin-top:10px"></div>
+          </div>`;
+        }).join('')}
+      </div>`;
+    // Buscador
+    const bus=ov.querySelector('#dev-buscar');
+    bus?.addEventListener('input',()=>pintarLista(bus.value));
+    // Toggles
+    ov.querySelectorAll('.dev-toggle').forEach(btn=>{
+      btn.onclick=()=>{
+        const id=btn.dataset.id;
+        const m=materiales.find(x=>x.id===id);
+        if(seleccion[id]) delete seleccion[id];
+        else seleccion[id]={item:m,cantidad:m.requiereSerial?0:1,seriales:[]};
+        pintarLista(bus?.value||'');
+        actualizarFooter();
+      };
+    });
+    // Detalles de los seleccionados
+    Object.keys(seleccion).forEach(id=>pintarDetalle(id));
+    actualizarFooter();
+  }
+
+  function pintarDetalle(id){
+    const cont=ov.querySelector(`.dev-detalle[data-id="${id}"]`);
+    if(!cont) return;
+    const sel=seleccion[id];
+    const m=sel.item;
+    if(!m.requiereSerial){
+      cont.innerHTML=`
+        <div class="form-label" style="margin-bottom:6px">Cantidad a devolver</div>
+        <input class="form-input dev-cant" data-id="${id}" type="number" min="1" value="${sel.cantidad}" style="text-align:center"/>`;
+      cont.querySelector('.dev-cant').addEventListener('input',e=>{ sel.cantidad=Math.max(0,parseInt(e.target.value,10)||0); actualizarFooter(); });
+    }else{
+      cont.innerHTML=`
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <div class="form-label" style="margin:0">Seriales que devuelves</div>
+          <div style="font-size:11px;font-weight:700;color:${sel.seriales.length?'#22c55e':'var(--text-4)'}" class="dev-est" data-id="${id}">${sel.seriales.length} seriales</div>
+        </div>
+        <div style="display:flex;gap:6px;margin-bottom:8px" class="dev-modo" data-id="${id}">
+          <div class="select-chip active" data-modo="caja" style="font-size:10px;cursor:pointer">Caja</div>
+          <div class="select-chip" data-modo="rango" style="font-size:10px;cursor:pointer">Rango</div>
+          <div class="select-chip" data-modo="individual" style="font-size:10px;cursor:pointer">Individual</div>
+        </div>
+        <div class="dev-modo-caja" data-id="${id}">
+          <div style="display:grid;grid-template-columns:1.3fr 1fr;gap:8px;margin-bottom:6px">
+            <input class="form-input dev-cj-desde" data-id="${id}" inputmode="numeric" placeholder="Primer serial" style="font-family:monospace;font-size:12px"/>
+            <input class="form-input dev-cj-cant" data-id="${id}" type="number" min="1" placeholder="Cantidad" style="text-align:center;font-size:12px"/>
+          </div>
+          <input class="form-input dev-cj-faltan" data-id="${id}" inputmode="numeric" placeholder="Faltan (ej. 1657809, 1657817)" style="font-family:monospace;font-size:12px"/>
+        </div>
+        <div class="dev-modo-rango" data-id="${id}" style="display:none">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+            <input class="form-input dev-ri" data-id="${id}" inputmode="numeric" placeholder="Del…" style="font-family:monospace;font-size:12px"/>
+            <input class="form-input dev-rf" data-id="${id}" inputmode="numeric" placeholder="…al" style="font-family:monospace;font-size:12px"/>
+          </div>
+        </div>
+        <div class="dev-modo-individual" data-id="${id}" style="display:none">
+          <textarea class="form-input dev-ind" data-id="${id}" rows="4" placeholder="Un serial por línea" style="font-family:monospace;font-size:11px;resize:none"></textarea>
+        </div>
+        <button class="dev-aplicar" data-id="${id}" style="width:100%;margin-top:8px;padding:9px;border-radius:10px;border:1px solid rgba(45,212,191,.4);background:rgba(45,212,191,.12);color:#2dd4bf;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">Agregar seriales</button>
+        <div class="dev-msg" data-id="${id}" style="font-size:11px;font-weight:600;margin-top:8px;display:none"></div>
+        <div class="dev-chips" data-id="${id}" style="margin-top:8px"></div>`;
+
+      // Toggle de modo
+      cont.querySelectorAll(`.dev-modo[data-id="${id}"] .select-chip`).forEach(chip=>{
+        chip.onclick=()=>{
+          cont.querySelectorAll(`.dev-modo[data-id="${id}"] .select-chip`).forEach(c=>c.classList.remove('active'));
+          chip.classList.add('active');
+          const modo=chip.dataset.modo;
+          cont.querySelector(`.dev-modo-caja[data-id="${id}"]`).style.display=modo==='caja'?'':'none';
+          cont.querySelector(`.dev-modo-rango[data-id="${id}"]`).style.display=modo==='rango'?'':'none';
+          cont.querySelector(`.dev-modo-individual[data-id="${id}"]`).style.display=modo==='individual'?'':'none';
+        };
+      });
+      // Aplicar seriales
+      cont.querySelector(`.dev-aplicar[data-id="${id}"]`).onclick=()=>{
+        const modo=cont.querySelector(`.dev-modo[data-id="${id}"] .select-chip.active`)?.dataset.modo||'caja';
+        const msg=cont.querySelector(`.dev-msg[data-id="${id}"]`);
+        let nuevas=[];
+        if(modo==='caja'){
+          const r=_devExpandirCaja(cont.querySelector(`.dev-cj-desde[data-id="${id}"]`).value, cont.querySelector(`.dev-cj-cant[data-id="${id}"]`).value, cont.querySelector(`.dev-cj-faltan[data-id="${id}"]`).value);
+          if(r.error){ msg.textContent=r.error; msg.style.color='#ef4444'; msg.style.display='block'; return; }
+          nuevas=r.seriales;
+        }else if(modo==='rango'){
+          nuevas=_devExpandirRango(cont.querySelector(`.dev-ri[data-id="${id}"]`).value, cont.querySelector(`.dev-rf[data-id="${id}"]`).value);
+          if(!nuevas.length){ msg.textContent='Revisa el rango.'; msg.style.color='#ef4444'; msg.style.display='block'; return; }
+        }else{
+          nuevas=String(cont.querySelector(`.dev-ind[data-id="${id}"]`).value||'').split('\n').map(s=>s.trim()).filter(Boolean);
+          if(!nuevas.length){ msg.textContent='Escribe al menos un serial.'; msg.style.color='#ef4444'; msg.style.display='block'; return; }
+        }
+        // Fusionar sin duplicar
+        const set=new Set(sel.seriales); nuevas.forEach(s=>set.add(s)); sel.seriales=[...set];
+        msg.textContent=`Se agregaron. Total: ${sel.seriales.length}.`; msg.style.color='#22c55e'; msg.style.display='block';
+        pintarChips(id); actualizarEst(id); actualizarFooter();
+      };
+      pintarChips(id);
+    }
+  }
+
+  function pintarChips(id){
+    const cont=ov.querySelector(`.dev-chips[data-id="${id}"]`);
+    if(!cont) return;
+    const sel=seleccion[id];
+    cont.innerHTML=sel.seriales.length?`
+      <div style="display:flex;flex-wrap:wrap;gap:5px">
+        ${sel.seriales.map(s=>`<div class="dev-chip-del" data-id="${id}" data-ser="${s}" style="cursor:pointer;display:flex;align-items:center;gap:5px;background:rgba(34,197,94,.1);border:1px solid rgba(34,197,94,.4);border-radius:7px;padding:5px 8px;font-family:monospace;font-size:11px;font-weight:700;color:#22c55e">${s}<span style="color:#ef4444;font-size:12px">&#10007;</span></div>`).join('')}
+      </div>`:'';
+    cont.querySelectorAll('.dev-chip-del').forEach(chip=>{
+      chip.onclick=()=>{ sel.seriales=sel.seriales.filter(x=>x!==chip.dataset.ser); pintarChips(id); actualizarEst(id); actualizarFooter(); };
+    });
+  }
+  function actualizarEst(id){
+    const est=ov.querySelector(`.dev-est[data-id="${id}"]`);
+    if(est){ const n=seleccion[id].seriales.length; est.textContent=`${n} seriales`; est.style.color=n?'#22c55e':'var(--text-4)'; }
+  }
+
+  function actualizarFooter(){
+    const footer=ov.querySelector('#dev-footer');
+    const btn=ov.querySelector('#dev-enviar');
+    const hay=Object.keys(seleccion).length>0;
+    btn.style.display=hay?'':'none';
+  }
+
+  // Enviar
+  ov.querySelector('#dev-enviar').addEventListener('click', async ()=>{
+    const errEl=ov.querySelector('#dev-err'); errEl.style.display='none';
+    const items=[];
+    for(const id of Object.keys(seleccion)){
+      const s=seleccion[id];
+      if(s.item.requiereSerial){
+        if(!s.seriales.length){ errEl.textContent=`Agrega los seriales de ${s.item.name}.`; errEl.style.display='block'; return; }
+        items.push({itemId:id, nombre:s.item.name, unit:s.item.unit||'unidades', requiereSerial:true, cantidad:s.seriales.length, seriales:s.seriales});
+      }else{
+        if(!s.cantidad||s.cantidad<1){ errEl.textContent=`Indica la cantidad de ${s.item.name}.`; errEl.style.display='block'; return; }
+        items.push({itemId:id, nombre:s.item.name, unit:s.item.unit||'unidades', requiereSerial:false, cantidad:s.cantidad, seriales:[]});
+      }
+    }
+    if(!items.length){ errEl.textContent='Selecciona al menos un material.'; errEl.style.display='block'; return; }
+
+    const nota=(ov.querySelector('#dev-nota')?.value||'').trim();
+    const btn=ov.querySelector('#dev-enviar'); const lbl=ov.querySelector('#dev-enviar-lbl');
+    btn.disabled=true; lbl.textContent='Enviando…';
+    try{
+      await db.collection('devoluciones_pendientes').add({
+        estado:'pendiente',
+        area:campana,
+        tecnicoUid:session.uid,
+        tecnicoNombre:session.displayName,
+        items,
+        nota:nota||null,
+        fecha:firebase.firestore.FieldValue.serverTimestamp(),
+      });
+      ov.remove();
+      toast('Devolución enviada. Bodega la revisará.','ok');
+    }catch(e){
+      btn.disabled=false; lbl.textContent='Enviar devolución';
+      errEl.textContent='Error: '+e.message; errEl.style.display='block';
+    }
+  });
+
+  // Campo de nota (se agrega al footer una vez)
+  const footer=ov.querySelector('#dev-footer');
+  const notaWrap=document.createElement('div');
+  notaWrap.style.marginBottom='8px';
+  notaWrap.innerHTML=`<input class="form-input" id="dev-nota" type="text" placeholder="Nota (opcional)" style="font-size:12px"/>`;
+  footer.insertBefore(notaWrap, footer.querySelector('#dev-err'));
+};
