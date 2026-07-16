@@ -2977,30 +2977,66 @@ function abrirEntrada(itemId) {
 
     setLoading('btn-ent-lbl','Guardando…',true);
     try{
-      // Validar que los seriales no existan ya en la base
+      const now=firebase.firestore.Timestamp.now();
+      let reintegradas=[];   // series que estaban despachadas y se liberan
+      let nuevasSeries=[];   // series que no existían y se crean
+
+      // Clasificar las series: nuevas / disponibles (repetidas) / despachadas (reintegrar)
       if(esSerial && seriales.length){
         const snapSer=await db.collection('kardex').doc('seriales').collection('items').where('itemId','==',itemId).get();
-        const existentes=new Set(snapSer.docs.map(d=>String(d.data().serial)));
-        const yaExiste=seriales.find(s=>existentes.has(String(s)));
-        if(yaExiste){errEl.textContent=`El serial ${yaExiste} ya existe en el inventario.`;errEl.style.display='block';setLoading('btn-ent-lbl','Registrar entrada',false);return;}
+        const docPorSerial={};
+        snapSer.docs.forEach(d=>{ docPorSerial[String(d.data().serial)]=d; });
+
+        const yaDisponibles=[];
+        for(const s of seriales){
+          const doc=docPorSerial[String(s)];
+          if(!doc){ nuevasSeries.push(s); }
+          else if(doc.data().estado==='despachado'){ reintegradas.push({serial:s, ref:doc.ref}); }
+          else { yaDisponibles.push(s); }
+        }
+
+        // Las que ya están disponibles en bodega no tiene sentido reingresarlas
+        if(yaDisponibles.length){
+          errEl.innerHTML=`Estas series ya están disponibles en bodega (no despachadas):<br><span style="font-family:monospace">${yaDisponibles.slice(0,10).join(', ')}${yaDisponibles.length>10?'…':''}</span>`;
+          errEl.style.display='block';
+          setLoading('btn-ent-lbl','Registrar entrada',false);
+          return;
+        }
       }
-      const now=firebase.firestore.Timestamp.now();
+
       const nuevoStock=(item?.stock||0)+cantidad;
       const batch=db.batch();
       batch.update(db.collection('kardex').doc('inventario').collection('items').doc(itemId),{stock:nuevoStock});
       const entRef=db.collection('kardex').doc('movimientos').collection('ajustes').doc();
-      batch.set(entRef,{tipo:'entrada',origen:'manual',itemId,itemNombre:item?.name,cantidad,area:item?.area||areaFiltro_,motivo:motivo||null,seriales:esSerial?seriales:[],stockAntes:item?.stock||0,stockDespues:nuevoStock,fecha:now,registradoPor:uid_,registradoPorNombre:session_.displayName});
-      if(esSerial&&seriales.length){
-        for(const ser of seriales){
-          const serRef=db.collection('kardex').doc('seriales').collection('items').doc();
-          batch.set(serRef,{sapCode:item.sapCode,axCode:item.axCode,itemId,itemNombre:item.name,serial:ser,estado:'disponible',fechaEntrada:now,registradoPor:uid_});
-        }
+      const huboReintegro=reintegradas.length>0;
+      batch.set(entRef,{
+        tipo:huboReintegro?'devolucion':'entrada',
+        origen:huboReintegro?'reintegro_manual':'manual',
+        itemId, itemNombre:item?.name, cantidad, area:item?.area||areaFiltro_,
+        motivo:motivo||(huboReintegro?'Reintegro de series devueltas':null),
+        seriales:esSerial?seriales:[],
+        serialesReintegradas:reintegradas.map(r=>r.serial),
+        stockAntes:item?.stock||0, stockDespues:nuevoStock,
+        fecha:now, registradoPor:uid_, registradoPorNombre:session_.displayName,
+      });
+      // Crear las series nuevas
+      for(const ser of nuevasSeries){
+        const serRef=db.collection('kardex').doc('seriales').collection('items').doc();
+        batch.set(serRef,{sapCode:item.sapCode,axCode:item.axCode,itemId,itemNombre:item.name,serial:ser,estado:'disponible',fechaEntrada:now,registradoPor:uid_});
+      }
+      // Liberar (reintegrar) las series que estaban despachadas
+      for(const r of reintegradas){
+        batch.update(r.ref,{estado:'disponible',salidaId:null,fechaSalida:null,usuarioDespacho:null,devueltoEn:now,devueltoPor:'Reintegro manual',reintegradoPor:session_.displayName});
       }
       await batch.commit();
       const idx=allItems_.findIndex(i=>i.id===itemId);
       if(idx!==-1) allItems_[idx].stock=nuevoStock;
+      if(serialesCache_[itemId]) delete serialesCache_[itemId];
       sheet.remove();renderInventario();
-      toast(`Entrada registrada: +${cantidad} ${safeStr(item?.unit,'')}`, 'ok');
+      const msg=huboReintegro
+        ? `Entrada: +${cantidad}${reintegradas.length?` (${reintegradas.length} reintegrada${reintegradas.length>1?'s':''})`:''}`
+        : `Entrada registrada: +${cantidad} ${safeStr(item?.unit,'')}`;
+      toast(msg, 'ok');
     }catch(err){errEl.textContent=`Error: ${err.message}`;errEl.style.display='block';setLoading('btn-ent-lbl','Registrar entrada',false);}
   });
 }
