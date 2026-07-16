@@ -1143,12 +1143,12 @@ function verDetalleDevolucion(id){
   const items=JSON.parse(JSON.stringify(d.items||[]));
 
   const ov=document.createElement('div');
-  ov.style.cssText='position:fixed;inset:0;z-index:850;background:var(--bg);overflow-y:auto';
+  ov.style.cssText='position:fixed;inset:0;z-index:850;background:#0d1117;overflow-y:auto;-webkit-overflow-scrolling:touch;';
 
   function pintar(){
     ov.innerHTML=`
     <div style="max-width:520px;margin:0 auto;min-height:100vh;display:flex;flex-direction:column">
-      <div style="padding:14px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px;position:sticky;top:0;background:var(--bg);z-index:10">
+      <div style="padding:14px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px;position:sticky;top:0;background:#0d1117;z-index:10">
         <button class="icon-btn" id="dd-back"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><polyline points="15 18 9 12 15 6"/></svg></button>
         <div style="flex:1">
           <div class="section-title">Revisar devolución</div>
@@ -1185,7 +1185,7 @@ function verDetalleDevolucion(id){
         : `<div style="text-align:center;padding:24px;color:var(--text-4);font-size:12px">No queda material en esta devolución.</div>`}
       </div>
 
-      <div style="padding:14px 20px;border-top:1px solid var(--border);background:var(--bg);position:sticky;bottom:0;display:flex;gap:8px">
+      <div style="padding:14px 20px;border-top:1px solid var(--border);background:#0d1117;position:sticky;bottom:0;display:flex;gap:8px">
         <button class="btn-primary" id="dd-rechazar" style="flex:1;background:rgba(239,68,68,.15);border:1px solid rgba(239,68,68,.4);color:#f87171">Rechazar</button>
         <button class="btn-primary bod" id="dd-aprobar" style="flex:2"><span id="dd-aprobar-lbl">Aprobar y sumar</span></button>
       </div>
