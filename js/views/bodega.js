@@ -87,6 +87,7 @@ let serialesCache_ = {};     // itemId -> [seriales disponibles] para validació
 let allItems_    = [];
 let salidas_     = [];
 let despachosPendientes_ = [];  // despachos esperando aceptación del técnico
+let devolucionesPendientes_ = [];  // devoluciones de técnicos esperando aprobación
 let solicitudes_ = [];
 let consumos_    = [];
 let activeTab_   = 'inventario';
@@ -201,6 +202,15 @@ async function loadData(miMontaje) {
         if (despachosPendientes_.length && activeTab_==='historial') renderHistorial();
       } catch(e) {
         console.warn('[bodega] No se pudieron cargar despachos pendientes:',e);
+      }
+      // Devoluciones pendientes de los técnicos
+      try {
+        const devSnap = await db.collection('devoluciones_pendientes').where('estado','==','pendiente').get();
+        if (miMontaje !== undefined && !sigueActiva(miMontaje)) return;
+        devolucionesPendientes_ = devSnap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(b.fecha?.seconds||0)-(a.fecha?.seconds||0));
+        if (devolucionesPendientes_.length && activeTab_==='historial') renderHistorial();
+      } catch(e) {
+        console.warn('[bodega] No se pudieron cargar devoluciones pendientes:',e);
       }
     }
   } catch(err) {
@@ -918,6 +928,35 @@ function renderHistorial() {
     .filter(s => (s.area || 'CAMBIOS') === areaFiltro_)
     .sort((a,b)=>(b.fecha?.seconds||0)-(a.fecha?.seconds||0));
   const pendientes = despachosPendientes_.filter(p => (p.area||'') === areaFiltro_);
+  const devoluciones = devolucionesPendientes_.filter(d => (d.area||'') === areaFiltro_);
+
+  const devHTML = devoluciones.length ? `
+    <div class="anim-up d1" style="margin-bottom:4px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+        <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:#2dd4bf">Devoluciones por revisar</div>
+        <div style="flex:1;height:1px;background:rgba(45,212,191,.2)"></div>
+        <div style="font-size:11px;color:var(--text-4)">${devoluciones.length}</div>
+      </div>
+      <div class="flex-col gap-8">
+        ${devoluciones.map(d=>`
+          <div class="bod-solic-card" style="background:rgba(45,212,191,.05);border-color:rgba(45,212,191,.25)">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:8px">
+              <div>
+                <div style="font-size:13px;font-weight:700">${safeStr(d.tecnicoNombre)}</div>
+                <div style="font-size:10px;color:var(--text-4)">${fmtDate(d.fecha)} · Devuelve material</div>
+              </div>
+            </div>
+            <div class="flex-col gap-3" style="margin-bottom:10px">
+              ${(d.items||[]).map(m=>`<div style="display:flex;justify-content:space-between;font-size:11px"><span style="color:var(--text-3)">${tc(m.nombre||m.name||'—')}${m.requiereSerial?` <span style="color:var(--text-4)">(${(m.seriales||[]).length} series)</span>`:''}</span><span style="font-weight:600">${m.cantidad} ${safeStr(m.unit,'')}</span></div>`).join('')}
+              ${d.nota?`<div style="font-size:10px;color:var(--text-4);font-style:italic;margin-top:4px">Nota: ${safeStr(d.nota)}</div>`:''}
+            </div>
+            <div style="display:flex;gap:6px">
+              <button class="bod-badge" style="flex:1;text-align:center;color:#ef4444;border-color:rgba(239,68,68,.3);background:rgba(239,68,68,.08);cursor:pointer;padding:8px" onclick="window.__bodega._rechazarDev('${d.id}')">Rechazar</button>
+              <button class="bod-badge" style="flex:1;text-align:center;color:#22c55e;border-color:rgba(34,197,94,.3);background:rgba(34,197,94,.12);cursor:pointer;padding:8px;font-weight:700" onclick="window.__bodega._aprobarDev('${d.id}')">Aprobar y sumar</button>
+            </div>
+          </div>`).join('')}
+      </div>
+    </div>` : '';
 
   const pendHTML = pendientes.length ? `
     <div class="anim-up d1" style="margin-bottom:4px">
@@ -952,6 +991,7 @@ function renderHistorial() {
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
         </button>
       </div>
+      ${devHTML}
       ${pendHTML}
       ${!sorted.length?`<div class="dev-module anim-up d1"><div class="dev-title">Sin salidas</div></div>`:`
       <div class="flex-col gap-8 anim-up d1">
@@ -978,6 +1018,8 @@ function renderHistorial() {
   window.__bodega._verMemo=(id)=>{const s=salidas_.find(x=>x.id===id);if(s)showMemo(s);};
   window.__bodega._devolucion=(id)=>{const s=salidas_.find(x=>x.id===id);if(s)abrirDevolucion(s);};
   window.__bodega._cancelarPend=(id)=>cancelarPendiente(id);
+  window.__bodega._aprobarDev=(id)=>aprobarDevolucionTecnico(id);
+  window.__bodega._rechazarDev=(id)=>rechazarDevolucionTecnico(id);
 }
 
 async function cancelarPendiente(id){
@@ -992,6 +1034,154 @@ async function cancelarPendiente(id){
   }catch(err){
     toast('Error al cancelar: '+err.message,'error');
   }
+}
+
+// ── Aprobar devolución de un técnico ──────────────
+// Suma a bodega, registra/libera series, deja constancia y genera memo.
+async function aprobarDevolucionTecnico(id){
+  const d=devolucionesPendientes_.find(x=>x.id===id);
+  if(!d) return;
+  if(!confirm(`¿Confirmas que ${safeStr(d.tecnicoNombre)} te entregó este material? Se sumará a bodega.`)) return;
+
+  try{
+    const now=firebase.firestore.FieldValue.serverTimestamp();
+
+    // 1) Sumar stock de cada material + registrar movimiento
+    for(const it of (d.items||[])){
+      const itemRef=db.collection('kardex').doc('inventario').collection('items').doc(it.itemId);
+      const cant=safeNum(it.cantidad);
+      // Leer stock actual desde memoria
+      const local=allItems_.find(x=>x.id===it.itemId);
+      const stockAntes=safeNum(local?.stock);
+      const stockDespues=stockAntes+cant;
+      const batch=db.batch();
+      batch.update(itemRef,{stock:firebase.firestore.FieldValue.increment(cant)});
+      const movRef=db.collection('kardex').doc('movimientos').collection('ajustes').doc();
+      batch.set(movRef,{
+        tipo:'devolucion', origen:'devolucion_tecnico',
+        itemId:it.itemId, itemNombre:it.nombre,
+        cantidad:cant, stockAntes, stockDespues,
+        area:d.area, seriales:it.seriales||[],
+        motivo:`Devolución de ${d.tecnicoNombre}`+(d.nota?` — ${d.nota}`:''),
+        devolucionId:id, tecnicoUid:d.tecnicoUid, tecnicoNombre:d.tecnicoNombre,
+        fecha:now, registradoPor:uid_, registradoPorNombre:session_.displayName,
+      });
+      await batch.commit();
+      if(local) local.stock=stockDespues;
+
+      // 2) Registrar/liberar series (si es medidor)
+      if(it.requiereSerial && (it.seriales||[]).length){
+        // ¿Ya existen esas series? Las que estén 'despachado' se liberan;
+        // las que no existan se crean como 'disponible' (material previo).
+        const existentes=await db.collection('kardex').doc('seriales').collection('items')
+          .where('itemId','==',it.itemId).get();
+        const mapa={}; existentes.docs.forEach(doc=>{ mapa[doc.data().serial]=doc; });
+        for(let i=0;i<it.seriales.length;i+=400){
+          const b=db.batch();
+          it.seriales.slice(i,i+400).forEach(ser=>{
+            const doc=mapa[ser];
+            if(doc){
+              b.update(doc.ref,{estado:'disponible',salidaId:null,fechaSalida:null,usuarioDespacho:null,devueltoEn:now,devueltoPor:d.tecnicoNombre});
+            }else{
+              const nuevo=db.collection('kardex').doc('seriales').collection('items').doc();
+              b.set(nuevo,{itemId:it.itemId,itemNombre:it.nombre,serial:ser,estado:'disponible',sapCode:local?.sapCode||'',axCode:local?.axCode||'',fechaEntrada:now,origen:'devolucion',devueltoPor:d.tecnicoNombre,registradoPor:uid_});
+            }
+          });
+          await b.commit();
+        }
+        if(serialesCache_[it.itemId]) delete serialesCache_[it.itemId];
+      }
+    }
+
+    // 3) Guardar la devolución aprobada (para el memo) y quitar la pendiente
+    const aprobadaRef=await db.collection('devoluciones').add({
+      area:d.area,
+      tecnicoUid:d.tecnicoUid, tecnicoNombre:d.tecnicoNombre,
+      items:d.items||[], nota:d.nota||null,
+      fechaDevolucion:d.fecha||now,
+      aprobadoPor:session_.displayName, aprobadoPorUid:uid_,
+      fechaAprobacion:now,
+    });
+    await db.collection('devoluciones_pendientes').doc(id).delete();
+    devolucionesPendientes_=devolucionesPendientes_.filter(x=>x.id!==id);
+
+    toast('Devolución aprobada y sumada a bodega','ok');
+    // Mostrar el memo de devolución
+    const memoData={id:aprobadaRef.id, ...d, aprobadoPor:session_.displayName, fechaAprobacion:new Date()};
+    mostrarMemoDevolucion(memoData);
+    renderHistorial();
+  }catch(err){
+    console.error('[bodega] Error aprobando devolución:',err);
+    toast('Error al aprobar: '+err.message,'error');
+  }
+}
+
+async function rechazarDevolucionTecnico(id){
+  const d=devolucionesPendientes_.find(x=>x.id===id);
+  if(!d) return;
+  if(!confirm(`¿Rechazar la devolución de ${safeStr(d.tecnicoNombre)}? No se sumará nada a bodega.`)) return;
+  try{
+    await db.collection('devoluciones_pendientes').doc(id).update({estado:'rechazada',rechazadoPor:session_.displayName,fechaRechazo:firebase.firestore.FieldValue.serverTimestamp()});
+    devolucionesPendientes_=devolucionesPendientes_.filter(x=>x.id!==id);
+    toast('Devolución rechazada','ok');
+    renderHistorial();
+  }catch(err){
+    toast('Error al rechazar: '+err.message,'error');
+  }
+}
+
+// Memo de devolución con sellos digitales (técnico / asistente)
+function mostrarMemoDevolucion(d){
+  const AC = d.area==='AMI' ? '#c98a00' : d.area==='ReclamosSIGET' ? '#be185d' : d.area==='CAMBIOS' ? '#0d9488' : '#7c5cd6';
+  const CAMPANA_LABEL = { CAMBIOS:'Cambio de Medidores', AMI:'AMI', Caracterizacion:'Caracterización de la Carga', ReclamosSIGET:'Reclamos SIGET' };
+  const fechaDev = d.fechaDevolucion?.toDate ? d.fechaDevolucion.toDate() : new Date();
+  const fechaApr = d.fechaAprobacion?.toDate ? d.fechaAprobacion.toDate() : (d.fechaAprobacion||new Date());
+  const fmt = dt => { try{ return dt.toLocaleDateString('es-SV',{day:'2-digit',month:'long',year:'numeric',hour:'2-digit',minute:'2-digit'}); }catch{ return '—'; } };
+
+  const ov=document.createElement('div');
+  ov.className='sheet-backdrop open';
+  ov.innerHTML=`<div class="sheet" style="max-height:90vh;overflow-y:auto"><div class="sheet-handle"></div>
+    <div id="memo-dev-print" style="background:#fff;color:#1a1a1a;padding:28px 24px;border-radius:10px;font-family:'Outfit',sans-serif">
+      <div style="text-align:center;border-bottom:2px solid ${AC};padding-bottom:14px;margin-bottom:16px">
+        <div style="font-size:20px;font-weight:800;color:${AC}">INNOVA</div>
+        <div style="font-size:11px;color:#555;margin-top:2px">Constancia de devolución de material</div>
+        <div style="font-size:12px;font-weight:700;margin-top:6px">${CAMPANA_LABEL[d.area]||d.area}</div>
+      </div>
+      <div style="font-size:12px;margin-bottom:14px">
+        <div style="display:flex;justify-content:space-between;margin-bottom:4px"><span style="color:#777">Técnico que devuelve:</span><span style="font-weight:700">${safeStr(d.tecnicoNombre)}</span></div>
+        <div style="display:flex;justify-content:space-between;margin-bottom:4px"><span style="color:#777">Recibido por:</span><span style="font-weight:700">${safeStr(d.aprobadoPor)}</span></div>
+        ${d.nota?`<div style="margin-top:6px;color:#555;font-style:italic">Nota: ${safeStr(d.nota)}</div>`:''}
+      </div>
+      <table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:16px">
+        <thead><tr style="border-bottom:1.5px solid ${AC}">
+          <th style="text-align:left;padding:6px 4px;color:${AC}">Material</th>
+          <th style="text-align:center;padding:6px 4px;color:${AC}">Cantidad</th>
+        </tr></thead>
+        <tbody>
+          ${(d.items||[]).map(m=>`
+            <tr style="border-bottom:1px solid #eee">
+              <td style="padding:6px 4px">${safeStr(m.nombre||m.name)}${m.requiereSerial&&(m.seriales||[]).length?`<div style="font-size:10px;color:#888;font-family:monospace;margin-top:2px">${m.seriales.join(', ')}</div>`:''}</td>
+              <td style="text-align:center;padding:6px 4px;font-weight:700">${m.cantidad} ${safeStr(m.unit,'')}</td>
+            </tr>`).join('')}
+        </tbody>
+      </table>
+      <div style="display:flex;gap:12px;margin-top:24px">
+        <div style="flex:1;text-align:center;padding:10px;border:1px dashed ${AC};border-radius:8px">
+          <div style="font-size:10px;color:#888">Devuelto digitalmente</div>
+          <div style="font-size:12px;font-weight:700;margin-top:3px">${safeStr(d.tecnicoNombre)}</div>
+          <div style="font-size:9px;color:#aaa;margin-top:2px">${fmt(fechaDev)}</div>
+        </div>
+        <div style="flex:1;text-align:center;padding:10px;border:1px dashed ${AC};border-radius:8px">
+          <div style="font-size:10px;color:#888">Recibido digitalmente</div>
+          <div style="font-size:12px;font-weight:700;margin-top:3px">${safeStr(d.aprobadoPor)}</div>
+          <div style="font-size:9px;color:#aaa;margin-top:2px">${fmt(fechaApr)}</div>
+        </div>
+      </div>
+    </div>
+    <div style="padding:14px 0 4px"><button class="btn-primary full" onclick="window.print()">Imprimir / Guardar PDF</button></div>
+  </div>`;
+  document.body.appendChild(ov);
+  ov.addEventListener('click',e=>{if(e.target===ov)ov.remove();});
 }
 
 // ── Stock por usuario ─────────────────────────────
