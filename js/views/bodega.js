@@ -2598,6 +2598,60 @@ function expandirSeriales(modo, textoIndividual, inicio, fin) {
     : [];
 }
 
+// Caja: genera desde el primer serial N consecutivos y descuenta los faltantes.
+// "faltan" acepta números cortos (14) o completos (12345014), coma o espacio.
+// Devuelve { seriales, faltantes, error }
+function expandirCaja(desde, cantidad, faltanTexto) {
+  const ini = String(desde||'').trim();
+  const cant = parseInt(cantidad,10);
+  if (!ini)              return { error:'Escribe el primer serial de la caja.' };
+  if (!cant || cant<=0)  return { error:'Escribe cuántos medidores trae la caja.' };
+  if (cant > 1000)       return { error:'La caja no puede tener más de 1000.' };
+
+  const nIni = parseInt(ini.replace(/\D/g,''),10);
+  if (isNaN(nIni))       return { error:'El primer serial debe contener números.' };
+
+  const prefix = ini.replace(/\d+$/,'');
+  const digits = ini.replace(/\D/g,'').length;
+  const fmt = n => prefix + String(n).padStart(digits,'0');
+
+  // Todos los de la caja llena
+  const todos = [];
+  for (let k=0; k<cant; k++) todos.push(fmt(nIni+k));
+
+  // Resolver faltantes. Cada número escrito puede ser:
+  //  - el serial COMPLETO (ej. 12345014), o
+  //  - la POSICIÓN dentro de la caja (ej. 14 = el 14º medidor).
+  // Se prioriza el serial completo; si no calza, se toma como posición.
+  const faltantes = [];
+  const noEncontrados = [];
+  const setTodos = new Set(todos);
+  const tokens = String(faltanTexto||'').split(/[\s,;]+/).map(t=>t.trim()).filter(Boolean);
+  for (const t of tokens) {
+    const limpio = t.replace(/\D/g,'');
+    if (!limpio) continue;
+    let serial = null;
+    // 1) Serial completo tal cual, o con el prefijo de la caja
+    if (setTodos.has(t))            serial = t;
+    else if (setTodos.has(prefix+limpio)) serial = prefix+limpio;
+    else {
+      // 2) Posición dentro de la caja (1..cant)
+      const pos = parseInt(limpio,10);
+      if (pos>=1 && pos<=cant) serial = todos[pos-1];
+    }
+    if (serial) faltantes.push(serial);
+    else noEncontrados.push(t);
+  }
+
+  if (noEncontrados.length) {
+    return { error:`Estos faltantes no caen dentro de la caja: ${noEncontrados.join(', ')}` };
+  }
+
+  const setFalt = new Set(faltantes);
+  const seriales = todos.filter(x => !setFalt.has(x));
+  return { seriales, faltantes };
+}
+
 function abrirEntrada(itemId) {
   const item=allItems_.find(i=>i.id===itemId);
   const esSerial = !!item?.requiereSerial;
@@ -2614,11 +2668,26 @@ function abrirEntrada(itemId) {
       <div class="form-field">
         <div class="form-label">Modo de ingreso de seriales</div>
         <div class="select-row" id="ent-modo">
-          <div class="select-chip active" data-val="individual">Individual</div>
+          <div class="select-chip active" data-val="caja">Caja</div>
           <div class="select-chip" data-val="rango">Rango</div>
+          <div class="select-chip" data-val="individual">Individual</div>
         </div>
       </div>
-      <div id="ent-serial-individual">
+      <div id="ent-serial-caja">
+        <div style="background:rgba(45,212,191,.05);border:1px solid rgba(45,212,191,.18);border-radius:10px;padding:12px;margin-bottom:8px">
+          <div style="display:grid;grid-template-columns:1.4fr 1fr;gap:10px;margin-bottom:10px">
+            <div class="form-field" style="margin:0"><div class="form-label">Primer serial de la caja *</div><input class="form-input" id="ent-cj-desde" type="text" inputmode="numeric" placeholder="12345001" style="font-family:monospace"/></div>
+            <div class="form-field" style="margin:0"><div class="form-label">Cantidad de la caja *</div><input class="form-input" id="ent-cj-cant" type="number" min="1" placeholder="30" style="text-align:center"/></div>
+          </div>
+          <div class="form-field" style="margin:0">
+            <div class="form-label">Faltan (los que sacaron) — opcional</div>
+            <input class="form-input" id="ent-cj-faltan" type="text" inputmode="numeric" placeholder="Ej. 14, 23, 29" style="font-family:monospace"/>
+            <div style="font-size:10px;color:var(--text-4);margin-top:5px">Escribe solo los números que faltan, cortos o completos, separados por coma o espacio.</div>
+          </div>
+        </div>
+        <div id="ent-cj-info" style="font-size:11px;font-weight:600;color:var(--bod-light);margin-bottom:12px"></div>
+      </div>
+      <div id="ent-serial-individual" style="display:none">
         <div class="form-field">
           <div class="form-label">Seriales (uno por línea) *</div>
           <textarea class="form-input" id="ent-sers" rows="5" placeholder="12345001&#10;12345002&#10;..." style="font-family:monospace;font-size:11px;resize:none"></textarea>
@@ -2644,14 +2713,17 @@ function abrirEntrada(itemId) {
 
   // Toggle de modo serial
   if (esSerial) {
+    const cajaBox = sheet.querySelector('#ent-serial-caja');
     const indBox = sheet.querySelector('#ent-serial-individual');
     const ranBox = sheet.querySelector('#ent-serial-rango');
     const infoEl = sheet.querySelector('#ent-rango-info');
+    const cjInfo = sheet.querySelector('#ent-cj-info');
     sheet.querySelectorAll('#ent-modo .select-chip').forEach(chip=>{
       chip.addEventListener('click',()=>{
         sheet.querySelectorAll('#ent-modo .select-chip').forEach(c=>c.classList.remove('active'));
         chip.classList.add('active');
         const modo=chip.dataset.val;
+        cajaBox.style.display = modo==='caja'?'':'none';
         indBox.style.display = modo==='individual'?'':'none';
         ranBox.style.display = modo==='rango'?'':'none';
       });
@@ -2663,6 +2735,23 @@ function abrirEntrada(itemId) {
     };
     sheet.querySelector('#ent-sri')?.addEventListener('input',actualizarInfo);
     sheet.querySelector('#ent-srf')?.addEventListener('input',actualizarInfo);
+    // Info en vivo de la caja
+    const actualizarCaja=()=>{
+      const r=expandirCaja(
+        sheet.querySelector('#ent-cj-desde').value,
+        sheet.querySelector('#ent-cj-cant').value,
+        sheet.querySelector('#ent-cj-faltan').value
+      );
+      if(r.error){ cjInfo.textContent=r.error; cjInfo.style.color='#ef4444'; return; }
+      const nf=r.faltantes.length;
+      cjInfo.style.color='#22c55e';
+      cjInfo.textContent = nf
+        ? `Entrarán ${r.seriales.length} medidores (${nf} faltante${nf>1?'s':''}: ${r.faltantes.join(', ')})`
+        : `Entrarán ${r.seriales.length} medidores (caja completa)`;
+    };
+    sheet.querySelector('#ent-cj-desde')?.addEventListener('input',actualizarCaja);
+    sheet.querySelector('#ent-cj-cant')?.addEventListener('input',actualizarCaja);
+    sheet.querySelector('#ent-cj-faltan')?.addEventListener('input',actualizarCaja);
   }
 
   document.getElementById('btn-ent').addEventListener('click',async()=>{
@@ -2672,13 +2761,21 @@ function abrirEntrada(itemId) {
     let cantidad=0, seriales=[];
 
     if(esSerial){
-      const modo=sheet.querySelector('#ent-modo .select-chip.active')?.dataset.val||'individual';
-      if(modo==='individual'){
+      const modo=sheet.querySelector('#ent-modo .select-chip.active')?.dataset.val||'caja';
+      if(modo==='caja'){
+        const r=expandirCaja(
+          document.getElementById('ent-cj-desde')?.value,
+          document.getElementById('ent-cj-cant')?.value,
+          document.getElementById('ent-cj-faltan')?.value
+        );
+        if(r.error){errEl.textContent=r.error;errEl.style.display='block';return;}
+        seriales=r.seriales;
+      }else if(modo==='individual'){
         seriales=expandirSeriales('individual',document.getElementById('ent-sers')?.value);
       }else{
         seriales=expandirSeriales('rango',null,document.getElementById('ent-sri')?.value,document.getElementById('ent-srf')?.value);
       }
-      if(!seriales.length){errEl.textContent=modo==='rango'?'Ingresa un rango válido (serial inicial y final).':'Ingresa al menos un serial.';errEl.style.display='block';return;}
+      if(!seriales.length){errEl.textContent=modo==='rango'?'Ingresa un rango válido (serial inicial y final).':modo==='caja'?'Revisa los datos de la caja.':'Ingresa al menos un serial.';errEl.style.display='block';return;}
       // Detectar duplicados dentro del mismo ingreso
       const dup=seriales.find((s,i)=>seriales.indexOf(s)!==i);
       if(dup){errEl.textContent=`Serial repetido en la lista: ${dup}`;errEl.style.display='block';return;}
