@@ -951,8 +951,7 @@ function renderHistorial() {
               ${d.nota?`<div style="font-size:10px;color:var(--text-4);font-style:italic;margin-top:4px">Nota: ${safeStr(d.nota)}</div>`:''}
             </div>
             <div style="display:flex;gap:6px">
-              <button class="bod-badge" style="flex:1;text-align:center;color:#ef4444;border-color:rgba(239,68,68,.3);background:rgba(239,68,68,.08);cursor:pointer;padding:8px" onclick="window.__bodega._rechazarDev('${d.id}')">Rechazar</button>
-              <button class="bod-badge" style="flex:1;text-align:center;color:#22c55e;border-color:rgba(34,197,94,.3);background:rgba(34,197,94,.12);cursor:pointer;padding:8px;font-weight:700" onclick="window.__bodega._aprobarDev('${d.id}')">Aprobar y sumar</button>
+              <button class="bod-badge" style="flex:1;text-align:center;color:#2dd4bf;border-color:rgba(45,212,191,.4);background:rgba(45,212,191,.12);cursor:pointer;padding:8px;font-weight:700" onclick="window.__bodega._verDev('${d.id}')">Revisar y aprobar</button>
             </div>
           </div>`).join('')}
       </div>
@@ -1020,6 +1019,7 @@ function renderHistorial() {
   window.__bodega._cancelarPend=(id)=>cancelarPendiente(id);
   window.__bodega._aprobarDev=(id)=>aprobarDevolucionTecnico(id);
   window.__bodega._rechazarDev=(id)=>rechazarDevolucionTecnico(id);
+  window.__bodega._verDev=(id)=>verDetalleDevolucion(id);
 }
 
 async function cancelarPendiente(id){
@@ -1038,16 +1038,20 @@ async function cancelarPendiente(id){
 
 // ── Aprobar devolución de un técnico ──────────────
 // Suma a bodega, registra/libera series, deja constancia y genera memo.
-async function aprobarDevolucionTecnico(id){
+async function aprobarDevolucionTecnico(id, itemsAjustados){
   const d=devolucionesPendientes_.find(x=>x.id===id);
   if(!d) return;
-  if(!confirm(`¿Confirmas que ${safeStr(d.tecnicoNombre)} te entregó este material? Se sumará a bodega.`)) return;
+  // Si vienen items ajustados desde la pantalla de revisión, se usan esos
+  const items = itemsAjustados || d.items || [];
+  if(!items.length){ toast('No hay material que aprobar','error'); return; }
+  if(!itemsAjustados && !confirm(`¿Confirmas que ${safeStr(d.tecnicoNombre)} te entregó este material? Se sumará a bodega.`)) return;
 
   try{
     const now=firebase.firestore.FieldValue.serverTimestamp();
+    const dItems = items;   // usar los ajustados
 
     // 1) Sumar stock de cada material + registrar movimiento
-    for(const it of (d.items||[])){
+    for(const it of dItems){
       const itemRef=db.collection('kardex').doc('inventario').collection('items').doc(it.itemId);
       const cant=safeNum(it.cantidad);
       // Leer stock actual desde memoria
@@ -1097,7 +1101,7 @@ async function aprobarDevolucionTecnico(id){
     const aprobadaRef=await db.collection('devoluciones').add({
       area:d.area,
       tecnicoUid:d.tecnicoUid, tecnicoNombre:d.tecnicoNombre,
-      items:d.items||[], nota:d.nota||null,
+      items:dItems, nota:d.nota||null,
       fechaDevolucion:d.fecha||now,
       aprobadoPor:session_.displayName, aprobadoPorUid:uid_,
       fechaAprobacion:now,
@@ -1128,6 +1132,92 @@ async function rechazarDevolucionTecnico(id){
   }catch(err){
     toast('Error al rechazar: '+err.message,'error');
   }
+}
+
+// Pantalla de revisión: ver el detalle, ajustar y aprobar/rechazar
+function verDetalleDevolucion(id){
+  const d=devolucionesPendientes_.find(x=>x.id===id);
+  if(!d) return;
+
+  // Copia editable de los items
+  const items=JSON.parse(JSON.stringify(d.items||[]));
+
+  const ov=document.createElement('div');
+  ov.style.cssText='position:fixed;inset:0;z-index:850;background:var(--bg);overflow-y:auto';
+
+  function pintar(){
+    ov.innerHTML=`
+    <div style="max-width:520px;margin:0 auto;min-height:100vh;display:flex;flex-direction:column">
+      <div style="padding:14px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px;position:sticky;top:0;background:var(--bg);z-index:10">
+        <button class="icon-btn" id="dd-back"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><polyline points="15 18 9 12 15 6"/></svg></button>
+        <div style="flex:1">
+          <div class="section-title">Revisar devolución</div>
+          <div style="font-size:11px;color:var(--text-4)">${safeStr(d.tecnicoNombre)} · ${fmtDate(d.fecha)}</div>
+        </div>
+      </div>
+
+      <div style="padding:16px 20px;flex:1" class="flex-col gap-12">
+        ${d.nota?`<div style="font-size:12px;color:var(--text-3);font-style:italic;background:var(--glass);border:1px solid var(--border);border-radius:10px;padding:10px">Nota del técnico: ${safeStr(d.nota)}</div>`:''}
+        <div style="font-size:11px;color:var(--text-4)">Revisa físicamente lo que te entregó. Puedes quitar lo que no cuadre antes de aprobar.</div>
+
+        ${items.length? items.map((it,idx)=>`
+          <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:14px">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:${it.requiereSerial?'10px':'0'}">
+              <div style="flex:1">
+                <div style="font-size:13px;font-weight:700">${tc(it.nombre||it.name||'—')}</div>
+                <div style="font-size:10px;color:var(--text-4)">${it.requiereSerial?'Medidor con serie':safeStr(it.unit,'unidades')}</div>
+              </div>
+              ${it.requiereSerial
+                ? `<div style="font-size:12px;font-weight:700;color:var(--bod-light)">${(it.seriales||[]).length}</div>`
+                : `<div style="display:flex;align-items:center;gap:6px">
+                     <button class="dd-menos" data-idx="${idx}" style="width:28px;height:28px;border-radius:8px;border:1px solid var(--border);background:var(--glass);color:var(--text-2);font-size:16px;cursor:pointer">-</button>
+                     <span style="min-width:32px;text-align:center;font-weight:700;font-size:14px">${it.cantidad}</span>
+                     <button class="dd-mas" data-idx="${idx}" style="width:28px;height:28px;border-radius:8px;border:1px solid var(--border);background:var(--glass);color:var(--text-2);font-size:16px;cursor:pointer">+</button>
+                   </div>`}
+            </div>
+            ${it.requiereSerial?`
+              <div style="display:flex;flex-wrap:wrap;gap:5px">
+                ${(it.seriales||[]).map(s=>`
+                  <div class="dd-serdel" data-idx="${idx}" data-ser="${s}" style="cursor:pointer;display:flex;align-items:center;gap:5px;background:rgba(34,197,94,.1);border:1px solid rgba(34,197,94,.4);border-radius:7px;padding:5px 8px;font-family:monospace;font-size:11px;font-weight:700;color:#22c55e">${s}<span style="color:#ef4444;font-size:12px">&#10007;</span></div>`).join('')}
+                ${!(it.seriales||[]).length?`<div style="font-size:11px;color:#ef4444">Sin series — se quitará al aprobar</div>`:''}
+              </div>`:''}
+          </div>`).join('')
+        : `<div style="text-align:center;padding:24px;color:var(--text-4);font-size:12px">No queda material en esta devolución.</div>`}
+      </div>
+
+      <div style="padding:14px 20px;border-top:1px solid var(--border);background:var(--bg);position:sticky;bottom:0;display:flex;gap:8px">
+        <button class="btn-primary" id="dd-rechazar" style="flex:1;background:rgba(239,68,68,.15);border:1px solid rgba(239,68,68,.4);color:#f87171">Rechazar</button>
+        <button class="btn-primary bod" id="dd-aprobar" style="flex:2"><span id="dd-aprobar-lbl">Aprobar y sumar</span></button>
+      </div>
+    </div>`;
+
+    ov.querySelector('#dd-back').onclick=()=>ov.remove();
+
+    // Ajustar cantidades (material sin serie)
+    ov.querySelectorAll('.dd-mas').forEach(b=>b.onclick=()=>{ const i=+b.dataset.idx; items[i].cantidad++; pintar(); });
+    ov.querySelectorAll('.dd-menos').forEach(b=>b.onclick=()=>{ const i=+b.dataset.idx; items[i].cantidad=Math.max(0,items[i].cantidad-1); pintar(); });
+    // Quitar una serie
+    ov.querySelectorAll('.dd-serdel').forEach(b=>b.onclick=()=>{
+      const i=+b.dataset.idx;
+      items[i].seriales=(items[i].seriales||[]).filter(x=>x!==b.dataset.ser);
+      items[i].cantidad=items[i].seriales.length;
+      pintar();
+    });
+
+    ov.querySelector('#dd-rechazar').onclick=async()=>{ ov.remove(); await rechazarDevolucionTecnico(id); };
+    ov.querySelector('#dd-aprobar').onclick=async()=>{
+      // Filtrar items vacíos (cantidad 0 o sin series)
+      const finales=items.filter(it=> it.requiereSerial ? (it.seriales||[]).length>0 : it.cantidad>0)
+        .map(it=> it.requiereSerial ? {...it, cantidad:it.seriales.length} : it);
+      if(!finales.length){ toast('No queda material que aprobar. Usa Rechazar.','error'); return; }
+      const btn=ov.querySelector('#dd-aprobar'); btn.disabled=true;
+      ov.querySelector('#dd-aprobar-lbl').textContent='Sumando…';
+      ov.remove();
+      await aprobarDevolucionTecnico(id, finales);
+    };
+  }
+  pintar();
+  document.body.appendChild(ov);
 }
 
 // Memo de devolución con sellos digitales (técnico / asistente)
