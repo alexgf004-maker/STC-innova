@@ -813,10 +813,10 @@ window.__abrirDevolucion = async function(){
   const session = JSON.parse(localStorage.getItem('innova_session') || '{}');
 
   const ov = document.createElement('div');
-  ov.style.cssText='position:fixed;inset:0;z-index:800;background:var(--bg);overflow-y:auto';
+  ov.style.cssText='position:fixed;inset:0;z-index:800;background:#0d1117;overflow-y:auto;-webkit-overflow-scrolling:touch;';
   ov.innerHTML = `
     <div style="max-width:520px;margin:0 auto;min-height:100vh;display:flex;flex-direction:column">
-      <div style="padding:14px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px;position:sticky;top:0;background:var(--bg);z-index:10">
+      <div style="padding:14px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px;position:sticky;top:0;background:#0d1117;z-index:10">
         <button class="icon-btn" id="dev-back"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><polyline points="15 18 9 12 15 6"/></svg></button>
         <div style="flex:1">
           <div class="section-title">Devolver material</div>
@@ -828,7 +828,7 @@ window.__abrirDevolucion = async function(){
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px" id="dev-camp"></div>
         <div id="dev-lista" style="margin-top:16px"></div>
       </div>
-      <div style="padding:14px 20px;border-top:1px solid var(--border);background:var(--bg);position:sticky;bottom:0" id="dev-footer" style="display:none">
+      <div style="padding:14px 20px;border-top:1px solid var(--border);background:#0d1117;position:sticky;bottom:0" id="dev-footer" style="display:none">
         <div id="dev-err" class="form-error" style="margin-bottom:8px"></div>
         <button class="btn-primary full" id="dev-enviar" style="display:none"><span id="dev-enviar-lbl">Enviar devolución</span></button>
       </div>
