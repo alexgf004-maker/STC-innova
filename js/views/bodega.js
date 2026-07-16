@@ -2443,12 +2443,16 @@ async function ejecutarImport(sheet, rows) {
 
   try {
     const col=db.collection('kardex').doc('inventario').collection('items');
+    const movCol=db.collection('kardex').doc('movimientos').collection('ajustes');
+    const now=firebase.firestore.FieldValue.serverTimestamp();
     let creados=0, actualizados=0;
+    const movimientos=[];  // se registran al final, en lote
 
     for(const r of rows){
       const rSap  = safeStr(r.sapCode,'').trim();
       const rAx   = safeStr(r.axCode,'').trim();
       const rName = safeStr(r.name,'').trim().toLowerCase();
+      const cant  = safeNum(r.stock);
 
       // Buscar el material existente en la misma campaña.
       // 1) Por código SAP o AX si el Excel los trae.
@@ -2469,7 +2473,8 @@ async function ejecutarImport(sheet, rows) {
       });
 
       if(existente){
-        const nuevoStock=safeNum(existente.stock)+safeNum(r.stock);
+        const stockAntes=safeNum(existente.stock);
+        const nuevoStock=stockAntes+cant;
         await col.doc(existente.id).update({
           stock:nuevoStock,
           name:r.name||existente.name,
@@ -2478,17 +2483,27 @@ async function ejecutarImport(sheet, rows) {
         });
         existente.stock=nuevoStock;
         actualizados++;
+        // Solo registrar movimiento si de verdad entró cantidad
+        if(cant>0) movimientos.push({tipo:'entrada',origen:'importacion',itemId:existente.id,itemNombre:existente.name,cantidad:cant,stockAntes,stockDespues:nuevoStock,area:campana,seriales:[],motivo:'Importación por Excel',fecha:now,registradoPor:uid_,registradoPorNombre:session_.displayName});
       } else {
         const nuevo={
           name:r.name, unit:r.unit,
           sapCode:r.sapCode, axCode:r.axCode,
-          stock:safeNum(r.stock), minStock:safeNum(r.minStock)||5,
+          stock:cant, minStock:safeNum(r.minStock)||5,
           requiereSerial:false, area:campana,
         };
         const ref=await col.add(nuevo);
         allItems_.push(normalizeItem({id:ref.id,...nuevo}));
         creados++;
+        if(cant>0) movimientos.push({tipo:'entrada',origen:'importacion',itemId:ref.id,itemNombre:nuevo.name,cantidad:cant,stockAntes:0,stockDespues:cant,area:campana,seriales:[],motivo:'Importación por Excel (item nuevo)',fecha:now,registradoPor:uid_,registradoPorNombre:session_.displayName});
       }
+    }
+
+    // Registrar todos los movimientos en lotes de 400
+    for(let i=0;i<movimientos.length;i+=400){
+      const batch=db.batch();
+      movimientos.slice(i,i+400).forEach(m=>batch.set(movCol.doc(),m));
+      await batch.commit();
     }
 
     toast(`Importados: ${creados} nuevos, ${actualizados} actualizados`,'ok');
@@ -2687,7 +2702,7 @@ function abrirEntrada(itemId) {
       const batch=db.batch();
       batch.update(db.collection('kardex').doc('inventario').collection('items').doc(itemId),{stock:nuevoStock});
       const entRef=db.collection('kardex').doc('movimientos').collection('ajustes').doc();
-      batch.set(entRef,{tipo:'entrada',itemId,itemNombre:item?.name,cantidad,motivo:motivo||null,seriales:esSerial?seriales:[],stockAntes:item?.stock||0,stockDespues:nuevoStock,fecha:now,registradoPor:uid_,registradoPorNombre:session_.displayName});
+      batch.set(entRef,{tipo:'entrada',origen:'manual',itemId,itemNombre:item?.name,cantidad,area:item?.area||areaFiltro_,motivo:motivo||null,seriales:esSerial?seriales:[],stockAntes:item?.stock||0,stockDespues:nuevoStock,fecha:now,registradoPor:uid_,registradoPorNombre:session_.displayName});
       if(esSerial&&seriales.length){
         for(const ser of seriales){
           const serRef=db.collection('kardex').doc('seriales').collection('items').doc();
