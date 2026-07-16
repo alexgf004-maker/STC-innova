@@ -636,6 +636,13 @@ function renderNoAsignacion(container, session) {
         <div class="qc-title" style="color:var(--purple)">Solicitar material</div>
         <div class="qc-sub">Pide material, revisa tu stock y pedidos</div>
       </div>
+      <div class="quick-card" onclick="window.__abrirDevolucion()" style="cursor:pointer">
+        <div class="qc-icon" style="background:rgba(45,212,191,.15)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#2dd4bf" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 10 4 15 9 20"/><path d="M20 4v7a4 4 0 01-4 4H4"/></svg>
+        </div>
+        <div class="qc-title" style="color:#2dd4bf">Devolver material</div>
+        <div class="qc-sub">Reintegrar material a bodega</div>
+      </div>
     </div>
   `;
 }
