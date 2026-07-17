@@ -663,6 +663,9 @@ function renderHomeAdmin(container, session) {
         <div class="stat-chip warn-accent"><div class="val" id="m-stat-alert">—</div><div class="lbl">Solicitudes</div></div>
       </div>
 
+      <!-- Aviso de solicitudes de material -->
+      <div id="aviso-solicitudes"></div>
+
       <!-- Indicador corte del 15 -->
       <div id="indicador-corte" class="anim-up d2"></div>
 
@@ -704,6 +707,7 @@ function renderHomeAdmin(container, session) {
   // Mostrar indicador de inmediato sin esperar Firestore
   renderIndicadorCorte(null);
   cargarPersonalHoy();
+  pintarAvisoSolicitudes();
 }
 
 // ── Home Asistente ────────────────────────────────
@@ -721,6 +725,9 @@ function renderHomeAsistente(container, session) {
         <div class="stat-chip otc-accent"><div class="val" id="a-stat-otc">—</div><div class="lbl">OTC activas</div></div>
         <div class="stat-chip" style="border-color:var(--purple-border);background:var(--purple-glass)"><div class="val" style="color:var(--purple)" id="a-stat-sol">—</div><div class="lbl">Solicitudes</div></div>
       </div>
+
+      <!-- Aviso de solicitudes de material -->
+      <div id="aviso-solicitudes"></div>
 
       <!-- Indicador corte del 15 -->
       <div id="indicador-corte" class="anim-up d2"></div>
@@ -762,6 +769,7 @@ function renderHomeAsistente(container, session) {
   `;
   renderIndicadorCorte(null);
   cargarPersonalHoy();
+  pintarAvisoSolicitudes();
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -1056,3 +1064,38 @@ window.__abrirDevolucion = async function(){
   notaWrap.innerHTML=`<input class="form-input" id="dev-nota" type="text" placeholder="Nota (opcional)" style="font-size:12px"/>`;
   footer.insertBefore(notaWrap, footer.querySelector('#dev-err'));
 };
+
+// ── Aviso de solicitudes de material en el dashboard ──
+// Lee el conteo por campaña que mantiene el listener global (app.js)
+// y se registra para repintarse cuando llegan cambios en vivo.
+function pintarAvisoSolicitudes(){
+  const cont=document.getElementById('aviso-solicitudes');
+  if(!cont) return;
+  const CAMP={ CAMBIOS:{l:'Cambio de Medidores',c:'#2dd4bf'}, AMI:{l:'AMI',c:'#fbbf24'}, Caracterizacion:{l:'Caracterización',c:'#a78bfa'}, ReclamosSIGET:{l:'Reclamos SIGET',c:'#f472b6'}, OTC:{l:'OTC',c:'#60a5fa'} };
+  const data=window.__solicPorCampana||{};
+  const total=Object.values(data).reduce((a,b)=>a+b,0);
+  if(!total){ cont.innerHTML=''; return; }
+  const chips=Object.entries(data).filter(([,n])=>n>0).map(([k,n])=>{
+    const info=CAMP[k]||{l:k,c:'#94a3b8'};
+    return `<div style="display:flex;align-items:center;gap:6px;background:${info.c}18;border:1px solid ${info.c}44;border-radius:20px;padding:5px 12px">
+      <span style="font-size:11px;font-weight:700;color:${info.c}">${info.l}</span>
+      <span style="min-width:18px;height:18px;border-radius:9px;background:${info.c};color:#0d1117;font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center">${n}</span>
+    </div>`;
+  }).join('');
+  cont.innerHTML=`
+    <div class="anim-up d1" onclick="window.__router.navigateTo('bodega')" style="cursor:pointer;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.3);border-radius:16px;padding:14px 16px">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+        <div style="width:34px;height:34px;border-radius:10px;background:rgba(239,68,68,.15);display:flex;align-items:center;justify-content:center">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><path d="M6 8a6 6 0 0112 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 003.4 0"/></svg>
+        </div>
+        <div style="flex:1">
+          <div style="font-size:14px;font-weight:800;color:#f87171">${total} solicitud${total>1?'es':''} de material</div>
+          <div style="font-size:11px;color:var(--text-4)">Toca para ir a Bodega y despachar</div>
+        </div>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px">${chips}</div>
+    </div>`;
+}
+
+// Repintar en vivo cuando el listener global detecte cambios
+window.__onSolicitudesCambio = () => { try{ pintarAvisoSolicitudes(); }catch{} };
