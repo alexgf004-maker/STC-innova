@@ -144,23 +144,19 @@ function buildNavbar(session) {
               : 'tecnico_none';
   }
 
-  // NUNCA caer al menú de asistente si el rol es desconocido.
-  // Antes: NAV_CONFIGS[configKey] || NAV_CONFIGS.asistente  -> un técnico con
-  // la sesión incompleta terminaba viendo las pantallas de asistente.
-  const items = NAV_CONFIGS[configKey];
-  if (!items) {
-    console.error('[router] Rol desconocido:', role, '— cerrando sesión');
-    localStorage.removeItem('innova_session');
-    window.location.replace('/STC-innova/login.html');
-    return;
-  }
+  const items = NAV_CONFIGS[configKey] || NAV_CONFIGS.asistente;
 
   navbar.innerHTML = items.map(item => `
     <div class="nav-item${item.color ? ' ' + item.color : ''}"
          data-tab="${item.id}"
          onclick="window.__router.navigateTo('${item.id}')">
-      ${getNavIcon(item.icon)}
+      <div style="position:relative;display:inline-flex">
+        ${getNavIcon(item.icon)}
+        <span class="nav-badge" data-badge-for="${item.id}" style="display:none;position:absolute;top:-6px;right:-8px;min-width:16px;height:16px;padding:0 4px;border-radius:8px;background:#ef4444;color:#fff;font-size:10px;font-weight:800;line-height:16px;text-align:center;box-shadow:0 0 0 2px var(--bg,#0d1117)"></span>
+      </div>
       <span>${item.label}</span>
     </div>
   `).join('');
+  // Repintar badges guardados (por si el listener ya tenía datos)
+  if (window.__pintarBadgeSolicitudes) window.__pintarBadgeSolicitudes();
 }
