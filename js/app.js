@@ -7,6 +7,7 @@
 import { auth, db } from './firebase.js';
 import { initRouter, navigateTo } from './router.js';
 import { hashPin, generateSalt } from './crypto.js';
+import { toast as __appToast } from './ui.js';
 
 const SESSION_KEY = 'innova_session';
 const LOGIN_PATH  = '/STC-innova/login.html';
@@ -365,8 +366,93 @@ window.addEventListener('DOMContentLoaded', async () => {
 
   initRouter(session);
 
+  // Aviso de solicitudes de material (admin/asistente)
+  if (session.role === 'admin' || session.role === 'asistente') {
+    iniciarAvisoSolicitudes(session);
+  }
+
   // Pinta el botón y la franja según el estado (solo relevante para admin)
   if (session.role === 'admin') pintarEstadoMantenimiento();
 
   setTimeout(() => splash.remove(), 400);
 });
+
+// ══════════════════════════════════════════════════════════════
+//  AVISO DE SOLICITUDES DE MATERIAL (admin / asistente)
+//  Listener en vivo: badge en la pestaña Bodega + vibración/sonido
+//  al llegar una solicitud nueva. Se guarda el conteo por campaña.
+// ══════════════════════════════════════════════════════════════
+
+let __unsubSolic = null;
+let __solicConocidas = null;   // Set de IDs ya vistos (para detectar nuevas)
+window.__solicPorCampana = {}; // { CAMBIOS: 3, AMI: 1, ... }
+
+const CAMP_LABEL_AVISO = {
+  CAMBIOS:'Cambio de Medidores', AMI:'AMI',
+  Caracterizacion:'Caracterización', ReclamosSIGET:'Reclamos SIGET', OTC:'OTC',
+};
+
+function iniciarAvisoSolicitudes(session){
+  try{
+    // Cerrar listener anterior si lo hubiera
+    if (__unsubSolic) { try{ __unsubSolic(); }catch{} __unsubSolic=null; }
+
+    __unsubSolic = db.collection('solicitudes_material')
+      .where('estado','==','pendiente')
+      .onSnapshot(snap=>{
+        const porCampana={};
+        const idsActuales=new Set();
+        snap.forEach(doc=>{
+          const s=doc.data();
+          idsActuales.add(doc.id);
+          const c=s.area||'CAMBIOS';
+          porCampana[c]=(porCampana[c]||0)+1;
+        });
+        window.__solicPorCampana=porCampana;
+
+        // Detectar solicitudes NUEVAS (no en la primera carga)
+        if (__solicConocidas !== null){
+          let hayNueva=false;
+          idsActuales.forEach(id=>{ if(!__solicConocidas.has(id)) hayNueva=true; });
+          if (hayNueva) avisarSolicitudNueva();
+        }
+        __solicConocidas=idsActuales;
+
+        pintarBadgeSolicitudes();
+      }, err=>{
+        console.warn('[app] Listener de solicitudes falló:', err.message);
+      });
+  }catch(e){
+    console.warn('[app] No se pudo iniciar aviso de solicitudes:', e.message);
+  }
+}
+
+// Pinta el badge rojo sobre la pestaña Bodega con el total pendiente
+function pintarBadgeSolicitudes(){
+  const total=Object.values(window.__solicPorCampana||{}).reduce((a,b)=>a+b,0);
+  const badge=document.querySelector('.nav-badge[data-badge-for="bodega"]');
+  if(badge){
+    if(total>0){ badge.textContent=total>99?'99+':String(total); badge.style.display=''; }
+    else badge.style.display='none';
+  }
+  // Avisar al dashboard si está escuchando
+  if(window.__onSolicitudesCambio) window.__onSolicitudesCambio(window.__solicPorCampana);
+}
+window.__pintarBadgeSolicitudes = pintarBadgeSolicitudes;
+
+// Vibración + sonido corto al llegar una solicitud nueva
+function avisarSolicitudNueva(){
+  try{ if(navigator.vibrate) navigator.vibrate([120,60,120]); }catch{}
+  try{
+    const ctx=new (window.AudioContext||window.webkitAudioContext)();
+    const o=ctx.createOscillator(), g=ctx.createGain();
+    o.connect(g); g.connect(ctx.destination);
+    o.frequency.value=880; o.type='sine';
+    g.gain.setValueAtTime(0.001,ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.25,ctx.currentTime+0.03);
+    g.gain.exponentialRampToValueAtTime(0.001,ctx.currentTime+0.4);
+    o.start(); o.stop(ctx.currentTime+0.42);
+  }catch{}
+  // Toast si está disponible
+  try{ __appToast('Nueva solicitud de material','ok'); }catch{}
+}
