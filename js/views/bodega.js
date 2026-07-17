@@ -151,7 +151,15 @@ function renderShell() {
   container_.innerHTML = `
     ${!isTecnico ? `<div id="bod-campana-wrap" style="padding-top:4px">${campanaToggleHTML()}</div>` : ''}
     <div class="cambios-tabs">
-      ${tabs.map(t=>`<div class="cambios-tab bod ${t.id===activeTab_?'active':''}" data-tab="${t.id}">${t.label}</div>`).join('')}
+      ${tabs.map(t=>{
+        // Globo rojo en la pestaña Solicitudes con las pendientes de esta campaña
+        let badge='';
+        if(t.id==='solicitudes'){
+          const n=solicitudes_.filter(s=>(s.area||'CAMBIOS')===areaFiltro_ && (s.estado||'pendiente')==='pendiente').length;
+          if(n>0) badge=`<span class="bod-tab-badge" style="margin-left:6px;min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:#ef4444;color:#fff;font-size:10px;font-weight:800;line-height:18px;display:inline-block;text-align:center;vertical-align:middle">${n>99?'99+':n}</span>`;
+        }
+        return `<div class="cambios-tab bod ${t.id===activeTab_?'active':''}" data-tab="${t.id}">${t.label}${badge}</div>`;
+      }).join('')}
     </div>
     <div id="bod-content" style="padding-top:12px">
       <div class="loading-placeholder"><div class="loading-bar"></div><div class="loading-bar short"></div><div class="loading-bar"></div></div>
@@ -185,6 +193,7 @@ async function loadData(miMontaje) {
     solicitudes_ = solicSnap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(b.fecha?.seconds||0)-(a.fecha?.seconds||0));
     consumos_    = consumosSnap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(b.fecha?.seconds||0)-(a.fecha?.seconds||0));
     renderTab();
+    actualizarBadgeSolicitudes();
     // Cargar técnicos por separado — si falla no rompe la bodega
     try {
       const usersSnap = await db.collection('users').where('role','==','tecnico').get();
@@ -876,6 +885,26 @@ function setCampana(area) {
   if (wrap) wrap.innerHTML = campanaToggleHTML();
   // Re-renderizar la vista activa
   renderTab();
+  actualizarBadgeSolicitudes();
+}
+
+// Repinta el globo de la pestaña Solicitudes con las pendientes de la campaña activa
+function actualizarBadgeSolicitudes(){
+  const tab = container_?.querySelector('.cambios-tab.bod[data-tab="solicitudes"]');
+  if(!tab) return;
+  const n = solicitudes_.filter(s=>(s.area||'CAMBIOS')===areaFiltro_ && (s.estado||'pendiente')==='pendiente').length;
+  let badge = tab.querySelector('.bod-tab-badge');
+  if(n>0){
+    if(!badge){
+      badge=document.createElement('span');
+      badge.className='bod-tab-badge';
+      badge.style.cssText='margin-left:6px;min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:#ef4444;color:#fff;font-size:10px;font-weight:800;line-height:18px;display:inline-block;text-align:center;vertical-align:middle';
+      tab.appendChild(badge);
+    }
+    badge.textContent = n>99?'99+':n;
+  } else if(badge){
+    badge.remove();
+  }
 }
 
 function elegirCampanaTecnico(area) {
@@ -1392,7 +1421,7 @@ async function rechazarSolicitud(id) {
       await db.collection('solicitudes_material').doc(id).update({estado:'rechazado',aprobadoPor:session_.displayName,fechaAprobacion:firebase.firestore.Timestamp.now(),notas:motivo||null});
       const idx=solicitudes_.findIndex(x=>x.id===id);
       if(idx!==-1) solicitudes_[idx]={...solicitudes_[idx],estado:'rechazado',aprobadoPor:session_.displayName};
-      sheet.remove(); renderSolicitudes();
+      sheet.remove(); renderSolicitudes(); actualizarBadgeSolicitudes();
       toast('Solicitud rechazada','warn');
     }catch(err){toast('Error al rechazar','error');setLoading('btn-rej-lbl','Confirmar rechazo',false);}
   });
@@ -2225,6 +2254,7 @@ function abrirDespacho(solicitud=null) {
       toast('Salida registrada','ok');
       showMemo({...salidaData,id:ref.id,fecha:new Date()});
       renderSolicitudes();
+      actualizarBadgeSolicitudes();
     }catch(err){
       console.error('[bodega] Error despacho:',err);
       if(errEl){errEl.textContent=`Error: ${err.message}`;errEl.style.display='block';}
