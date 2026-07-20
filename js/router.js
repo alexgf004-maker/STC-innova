@@ -10,14 +10,12 @@ const NAV_CONFIGS = {
   admin: [
     { id: 'home',     label: 'Dashboard', icon: 'home' },
     { id: 'cambios',  label: 'Cambios',   icon: 'zap',   color: 'cm'  },
-    { id: 'otc',      label: 'OTC',       icon: 'bolt',  color: 'otc' },
     { id: 'bodega',   label: 'Bodega',    icon: 'box'  },
     { id: 'usuarios', label: 'Usuarios',  icon: 'users' },
   ],
   asistente: [
     { id: 'home',     label: 'Dashboard', icon: 'home' },
     { id: 'cambios',  label: 'Cambios',   icon: 'zap',   color: 'cm'  },
-    { id: 'otc',      label: 'OTC',       icon: 'bolt',  color: 'otc' },
     { id: 'bodega',   label: 'Bodega',    icon: 'box'  },
     { id: 'usuarios', label: 'Usuarios',  icon: 'users' },
   ],
@@ -25,12 +23,6 @@ const NAV_CONFIGS = {
     { id: 'home',    label: 'Inicio',  icon: 'home' },
     { id: 'cambios', label: 'Órdenes', icon: 'list', color: 'cm' },
     { id: 'mapa',    label: 'Mapa',    icon: 'map',  color: 'cm' },
-    { id: 'bodega',  label: 'Bodega',  icon: 'box'  },
-  ],
-  tecnico_otc: [
-    { id: 'home',    label: 'Inicio',  icon: 'home' },
-    { id: 'otc',     label: 'Órdenes', icon: 'list', color: 'otc' },
-    { id: 'otc_mapa',label: 'Mapa',    icon: 'map',  color: 'otc' },
     { id: 'bodega',  label: 'Bodega',  icon: 'box'  },
   ],
   tecnico_none: [
@@ -140,11 +132,19 @@ function buildNavbar(session) {
   let configKey = role;
   if (role === 'tecnico') {
     configKey = area === 'CAMBIOS' ? 'tecnico_cambios'
-              : area === 'OTC'     ? 'tecnico_otc'
               : 'tecnico_none';
   }
 
-  const items = NAV_CONFIGS[configKey] || NAV_CONFIGS.asistente;
+  // NUNCA caer al menú de asistente si el rol es desconocido.
+  // Antes: NAV_CONFIGS[configKey] || NAV_CONFIGS.asistente  -> un técnico con
+  // la sesión incompleta terminaba viendo las pantallas de asistente.
+  const items = NAV_CONFIGS[configKey];
+  if (!items) {
+    console.error('[router] Rol desconocido:', role, '- cerrando sesión');
+    localStorage.removeItem('innova_session');
+    window.location.replace('/STC-innova/login.html');
+    return;
+  }
 
   navbar.innerHTML = items.map(item => `
     <div class="nav-item${item.color ? ' ' + item.color : ''}"
