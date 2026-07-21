@@ -489,7 +489,7 @@ function renderHomeTecnico(container, session, area, destino) {
       <!-- Accesos rápidos -->
       <div class="section-label anim-up d3">Accesos rápidos</div>
       <div class="quick-grid anim-up d3">
-        <div class="quick-card" onclick="window.__router.navigateTo('${isCambios ? 'cambios' : 'otc'}')">
+        <div class="quick-card" onclick="window.__router.navigateTo('cambios')">
           <div class="qc-icon" style="background:rgba(${rgbAccent},.15)">
             <svg viewBox="0 0 24 24" fill="none" stroke="${accentColor}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/>
@@ -534,17 +534,6 @@ function renderHomeTecnico(container, session, area, destino) {
           <div class="qc-sub">Reintegrar a bodega</div>
         </div>
 
-        ${!isCambios ? `
-        <div class="quick-card" style="border-color:rgba(239,68,68,.25);background:rgba(239,68,68,.05)" onclick="window.__router.navigateTo('otc')">
-          <div class="qc-icon" style="background:rgba(239,68,68,.12)">
-            <svg viewBox="0 0 24 24" fill="none" stroke="#f87171" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <circle cx="12" cy="12" r="10"/>
-              <line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
-            </svg>
-          </div>
-          <div class="qc-title" style="color:#f87171">Reconexiones</div>
-          <div class="qc-sub">Órdenes urgentes</div>
-        </div>` : ''}
       </div>
 
     </div>
@@ -659,7 +648,6 @@ function renderHomeAdmin(container, session) {
       </div>
       <div class="stat-row anim-up d1">
         <div class="stat-chip cm-accent"><div class="val" id="m-stat-cm">—</div><div class="lbl">CM hoy</div></div>
-        <div class="stat-chip otc-accent"><div class="val" id="m-stat-otc">—</div><div class="lbl">OTC activas</div></div>
         <div class="stat-chip warn-accent"><div class="val" id="m-stat-alert">—</div><div class="lbl">Solicitudes</div></div>
       </div>
 
@@ -679,13 +667,6 @@ function renderHomeAdmin(container, session) {
           </div>
           <div class="qc-title" style="color:var(--cm-light)">Cambios</div>
           <div class="qc-sub">Panel de seguimiento</div>
-        </div>
-        <div class="quick-card otc" onclick="window.__router.navigateTo('otc')">
-          <div class="qc-icon" style="background:rgba(37,99,235,.15)">
-            <svg viewBox="0 0 24 24" fill="none" stroke="var(--otc-light)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
-          </div>
-          <div class="qc-title" style="color:var(--otc-light)">OTC</div>
-          <div class="qc-sub">Órdenes técnicas</div>
         </div>
         <div class="quick-card" onclick="window.__router.navigateTo('bodega')">
           <div class="qc-icon" style="background:var(--purple-glass)">
@@ -722,7 +703,6 @@ function renderHomeAsistente(container, session) {
       </div>
       <div class="stat-row anim-up d1">
         <div class="stat-chip cm-accent"><div class="val" id="a-stat-cm">—</div><div class="lbl">CM hoy</div></div>
-        <div class="stat-chip otc-accent"><div class="val" id="a-stat-otc">—</div><div class="lbl">OTC activas</div></div>
         <div class="stat-chip" style="border-color:var(--purple-border);background:var(--purple-glass)"><div class="val" style="color:var(--purple)" id="a-stat-sol">—</div><div class="lbl">Solicitudes</div></div>
       </div>
 
@@ -742,13 +722,6 @@ function renderHomeAsistente(container, session) {
           </div>
           <div class="qc-title" style="color:var(--cm-light)">Panel Cambios</div>
           <div class="qc-sub">Confirmar · Asignar</div>
-        </div>
-        <div class="quick-card otc" onclick="window.__router.navigateTo('otc')">
-          <div class="qc-icon" style="background:rgba(37,99,235,.15)">
-            <svg viewBox="0 0 24 24" fill="none" stroke="var(--otc-light)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
-          </div>
-          <div class="qc-title" style="color:var(--otc-light)">Panel OTC</div>
-          <div class="qc-sub">Alertas · Seguimiento</div>
         </div>
         <div class="quick-card" onclick="window.__router.navigateTo('bodega')">
           <div class="qc-icon" style="background:var(--purple-glass)">
