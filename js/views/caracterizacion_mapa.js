@@ -42,8 +42,8 @@ export async function init(container, session) {
   esAdmin_ = (session.role === 'admin' || session.role === 'asistente');
   container.scrollTop = 0;
   container.innerHTML = `
-    <div style="position:relative;width:100%;height:calc(100vh - 132px);min-height:420px">
-      <div id="crc-leaflet" style="position:absolute;inset:0;background:#0d1117"></div>
+    <div style="position:fixed;top:var(--topbar-h,62px);left:0;right:0;bottom:var(--navbar-h,72px);z-index:1">
+      <div id="crc-leaflet" style="width:100%;height:100%"></div>
 
       <div style="position:absolute;top:12px;left:12px;right:12px;z-index:500;display:flex;gap:8px;align-items:center;pointer-events:none">
         <div style="background:rgba(13,17,23,.9);border:1px solid var(--border);border-radius:12px;padding:8px 14px;pointer-events:auto">
@@ -61,10 +61,10 @@ export async function init(container, session) {
       </div>
 
       <!-- Hoja de detalle del punto (técnico) -->
-      <div id="crc-sheet" style="position:absolute;left:0;right:0;bottom:0;z-index:600;transform:translateY(110%);transition:transform .25s ease;background:#0d1117;border-top:1px solid var(--border);border-radius:20px 20px 0 0;padding:18px 20px 26px;max-height:70vh;overflow-y:auto"></div>
+      <div id="crc-sheet" style="position:fixed;left:0;right:0;bottom:0;z-index:1200;transform:translateY(calc(100% + 120px));transition:transform .25s ease;background:#0d1117;border-top:1px solid var(--border);border-radius:20px 20px 0 0;padding:18px 20px 26px;max-height:70vh;overflow-y:auto"></div>
 
       <!-- Hoja de asignación de zona (admin) -->
-      <div id="crc-sheet-zona" style="position:absolute;left:0;right:0;bottom:0;z-index:600;transform:translateY(110%);transition:transform .25s ease;background:#0d1117;border-top:1px solid var(--border);border-radius:20px 20px 0 0;padding:18px 20px 26px;max-height:70vh;overflow-y:auto"></div>
+      <div id="crc-sheet-zona" style="position:fixed;left:0;right:0;bottom:0;z-index:1200;transform:translateY(calc(100% + 120px));transition:transform .25s ease;background:#0d1117;border-top:1px solid var(--border);border-radius:20px 20px 0 0;padding:18px 20px 26px;max-height:70vh;overflow-y:auto"></div>
     </div>`;
 
   await cargarOrdenes();
@@ -135,7 +135,7 @@ function pintarOrden(o) {
     let color = '#64748b';                    // sin asignar: gris
     if (cerrada) color = o.estado === 'hecha' ? '#22c55e' : '#ef4444';
     else if (o.pareja) color = colorPareja(o.pareja);
-    const m = crearMarcador(t, color, o.pareja ? String(o.pareja).replace(/\D/g,'') || 'P' : '', !cerrada);
+    const m = crearMarcador(t, color, '', false);
     m.on('click', () => abrirAsignarIndividual(o.id));
     m.addTo(map_); markers_[o.id].titular = m;
     return;
@@ -182,10 +182,10 @@ function colorPareja(pareja) {
 }
 
 function crearMarcador(p, color, texto, activo) {
-  const size = activo ? 30 : 22;
+  const size = activo ? 20 : 14;
   const icon = L.divIcon({
     className: '',
-    html: `<div style="width:${size}px;height:${size}px;background:${color};border:2.5px solid white;border-radius:50%;box-shadow:0 2px 8px rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;font-size:${activo?13:11}px;font-weight:800;color:#0a1628;${activo?'':'opacity:.7'}">${texto}</div>`,
+    html: `<div style="width:${size}px;height:${size}px;background:${color};border:2px solid rgba(255,255,255,.85);border-radius:50%;box-shadow:0 2px 6px rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;font-size:${activo?11:9}px;font-weight:800;color:#0a1628;line-height:1">${texto || ''}</div>`,
     iconSize: [size, size], iconAnchor: [size/2, size/2],
   });
   return L.marker([p.lat, p.lng], { icon });
@@ -253,7 +253,7 @@ function abrirDetalle(ordenId, nivel) {
 
 function cerrarSheet() {
   const sheet = container_.querySelector('#crc-sheet');
-  if (sheet) sheet.style.transform = 'translateY(110%)';
+  if (sheet) sheet.style.transform = 'translateY(calc(100% + 120px))';
   selected_ = null;
 }
 
@@ -424,7 +424,7 @@ function abrirSheetZona(cuantas) {
 
 function cancelarZona() {
   const sheet = container_.querySelector('#crc-sheet-zona');
-  if (sheet) sheet.style.transform = 'translateY(110%)';
+  if (sheet) sheet.style.transform = 'translateY(calc(100% + 120px))';
   limpiarPoligono();
   puntos_ = [];
   if (map_) { map_.off('click', onMapClickZona_); map_.off('dblclick', onMapDblZona_); map_.getContainer().style.cursor = ''; }
@@ -483,11 +483,11 @@ function abrirAsignarIndividual(ordenId) {
     try {
       await db.collection('caracterizacion_ordenes').doc(ordenId).update({ pareja: val, asignadoEn: firebase.firestore.Timestamp.now() });
       o.pareja = val; pintarOrden(o);
-      sheet.style.transform = 'translateY(110%)';
+      sheet.style.transform = 'translateY(calc(100% + 120px))';
       toast(val ? `Asignada a ${val}` : 'Asignación quitada', 'ok');
     } catch (e) { toast('Error: ' + e.message, 'error'); }
   });
-  sheet.querySelector('#crc-ind-cerrar').onclick = () => { sheet.style.transform = 'translateY(110%)'; };
+  sheet.querySelector('#crc-ind-cerrar').onclick = () => { sheet.style.transform = 'translateY(calc(100% + 120px))'; };
 }
 
 // ── GPS (idéntico a Cambios) ──
