@@ -52,7 +52,7 @@ function puntoDesdePadron(nc) {
   };
 }
 
-// ── Importar el excel del día de DELSUR ──
+// ── Importar el Excel del día de DELSUR ──
 // Devuelve { ordenes, avisos } sin guardar todavía (para previsualizar).
 function construirOrdenesDesdeExcel(rows) {
   // rows: array de objetos (sheet_to_json con headers de la hoja "Información Clientes")
@@ -268,7 +268,7 @@ function panelParejas() {
   return `
     <div style="margin-bottom:16px">
       <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:var(--text-4);margin-bottom:8px">Avance por pareja · meta ${META_PAREJA}</div>
-      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px">
+      <div style="display:grid;grid-template-columns:repeat(${Math.min(nombres.length,3)},1fr);gap:10px">
         ${nombres.map(nombre => {
           const d = parejas[nombre];
           const color = PAREJA_COLOR[nombre] || '#94a3b8';
