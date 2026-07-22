@@ -21,8 +21,14 @@ const AREAS_DISPONIBLES = [
     color: '#2dd4bf',
     icon: '<path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"/>',
   },
-  // Próximamente:
-  // { id:'caracterizacion', tab:'caracterizacion', label:'Caracterización de la Carga', ... }
+  {
+    id: 'caracterizacion',
+    tab: 'caracterizacion',
+    label: 'Caracterización de la Carga',
+    sub: 'Órdenes del día con titular y suplentes',
+    color: '#a78bfa',
+    icon: '<circle cx="12" cy="10" r="3"/><path d="M12 2a8 8 0 00-8 8c0 5.4 8 12 8 12s8-6.6 8-12a8 8 0 00-8-8z"/>',
+  },
 ];
 
 export function init(container, session) {
