@@ -28,6 +28,16 @@
   --otc-light:  #60a5fa;
   --otc-glass:  rgba(37,99,235,.08);
   --otc-border: rgba(37,99,235,.22);
+  /* Caracterización (rojo) */
+  --cr:         #dc2626;
+  --cr-light:   #ef4444;
+  --cr-glass:   rgba(239,68,68,.08);
+  --cr-border:  rgba(239,68,68,.22);
+  /* Reclamos SIGET (amarillo) */
+  --rc:         #d97706;
+  --rc-light:   #fbbf24;
+  --rc-glass:   rgba(251,191,36,.08);
+  --rc-border:  rgba(251,191,36,.22);
 
   /* Estados */
   --warn:  #f59e0b;
@@ -389,6 +399,8 @@ body {
 .nav-item span { font-size: 9px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
 .nav-item.active       { color: var(--cm-light);  background: rgba(45,212,191,.06); }
 .nav-item.active.otc   { color: var(--otc-light); background: rgba(96,165,250,.06); }
+.nav-item.active.cr    { color: var(--cr-light);  background: rgba(239,68,68,.06); }
+.nav-item.active.rc    { color: var(--rc-light);  background: rgba(251,191,36,.06); }
 .nav-item .nav-badge {
   position: absolute; top: 8px; right: calc(50% - 14px);
   min-width: 16px; height: 16px; border-radius: 8px;
@@ -447,6 +459,8 @@ body {
 }
 .welcome-card.cm     { background: var(--cm-glass);  border-color: var(--cm-border);  color: var(--cm-light); }
 .welcome-card.otc    { background: var(--otc-glass); border-color: var(--otc-border); color: var(--otc-light); }
+.welcome-card.cr     { background: var(--cr-glass);  border-color: var(--cr-border);  color: var(--cr-light); }
+.welcome-card.rc     { background: var(--rc-glass);  border-color: var(--rc-border);  color: var(--rc-light); }
 .welcome-card.office { background: var(--glass);     border-color: var(--border);     color: var(--text-2); }
 .welcome-card::before {
   content: ''; position: absolute; top: -30px; right: -30px;
@@ -472,6 +486,10 @@ body {
 .stat-chip.cm-accent .val  { color: var(--cm-light); }
 .stat-chip.otc-accent    { border-color: var(--otc-border);    background: var(--otc-glass); }
 .stat-chip.otc-accent .val { color: var(--otc-light); }
+.stat-chip.cr-accent     { border-color: var(--cr-border);     background: var(--cr-glass); }
+.stat-chip.cr-accent .val  { color: var(--cr-light); }
+.stat-chip.rc-accent     { border-color: var(--rc-border);     background: var(--rc-glass); }
+.stat-chip.rc-accent .val  { color: var(--rc-light); }
 .stat-chip.warn-accent   { border-color: rgba(245,158,11,.2);  background: rgba(245,158,11,.06); }
 .stat-chip.warn-accent .val { color: var(--warn-light); }
 .stat-chip.crit-accent   { border-color: rgba(239,68,68,.2);   background: rgba(239,68,68,.06); }
@@ -1451,6 +1469,10 @@ body {
 .stat-chip.cm-accent .val { color: var(--cm-light); }
 .stat-chip.otc-accent  { background: var(--otc-glass); border-color: var(--otc-border); }
 .stat-chip.otc-accent .val { color: var(--otc-light); }
+.stat-chip.cr-accent   { background: var(--cr-glass);  border-color: var(--cr-border); }
+.stat-chip.cr-accent .val { color: var(--cr-light); }
+.stat-chip.rc-accent   { background: var(--rc-glass);  border-color: var(--rc-border); }
+.stat-chip.rc-accent .val { color: var(--rc-light); }
 .stat-chip.warn-accent { background: rgba(245,158,11,.08); border-color: rgba(245,158,11,.25); }
 .stat-chip.warn-accent .val { color: #fbbf24; }
 .stat-chip.crit-accent { background: rgba(239,68,68,.08); border-color: rgba(239,68,68,.25); }
