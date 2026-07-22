@@ -107,7 +107,20 @@ function construirOrdenesDesdeExcel(rows) {
     });
   }
 
-  return { ordenes, avisos };
+  // Detectar choques: un NC que es titular del día Y suplente de otra orden.
+  // No se corrige automáticamente; se avisa para que David decida.
+  const setTitulares = new Set(ordenes.map(o => o.ncTitular));
+  const choques = [];
+  for (const o of ordenes) {
+    if (o.suplente1 && setTitulares.has(o.suplente1.nc)) {
+      choques.push(`NC ${o.suplente1.nc} es suplente 1 de ${o.ncTitular}, pero también es titular de su propia orden.`);
+    }
+    if (o.suplente2 && setTitulares.has(o.suplente2.nc)) {
+      choques.push(`NC ${o.suplente2.nc} es suplente 2 de ${o.ncTitular}, pero también es titular de su propia orden.`);
+    }
+  }
+
+  return { ordenes, avisos, choques };
 }
 
 function num(v) {
@@ -285,14 +298,14 @@ async function manejarArchivo(file) {
     const rows = XLSX.utils.sheet_to_json(wb.Sheets[hoja], { defval: '' });
     if (!rows.length) { est.innerHTML = `<div style="color:#ef4444;font-size:12px">El archivo está vacío.</div>`; return; }
 
-    const { ordenes, avisos } = construirOrdenesDesdeExcel(rows);
-    mostrarPrevisualizacion(ordenes, avisos);
+    const { ordenes, avisos, choques } = construirOrdenesDesdeExcel(rows);
+    mostrarPrevisualizacion(ordenes, avisos, choques);
   } catch (err) {
     est.innerHTML = `<div style="color:#ef4444;font-size:12px">Error: ${err.message}</div>`;
   }
 }
 
-function mostrarPrevisualizacion(ordenes, avisos) {
+function mostrarPrevisualizacion(ordenes, avisos, choques = []) {
   const est = container_.querySelector('#crc-estado');
   const conTres = ordenes.filter(o => o.suplente1 && o.suplente2).length;
   const sinCoordTit = ordenes.filter(o => !o.titular.tieneCoord).length;
@@ -305,6 +318,12 @@ function mostrarPrevisualizacion(ordenes, avisos) {
         <div style="display:flex;justify-content:space-between"><span style="color:var(--text-3)">Titulares sin ubicación</span><span style="font-weight:700;color:${sinCoordTit?'#fbbf24':'var(--text-4)'}">${sinCoordTit}</span></div>
       </div>
     </div>
+    ${choques.length ? `
+      <div style="background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.35);border-radius:10px;padding:12px;margin-bottom:12px">
+        <div style="font-size:11px;font-weight:800;color:#f87171;margin-bottom:4px">${choques.length} choque${choques.length>1?'s':''}: un cliente es titular Y suplente</div>
+        <div style="font-size:10px;color:var(--text-4);margin-bottom:8px">Revisa estos casos. Puedes cargar igual y ajustar después, o corregir el Excel de DELSUR.</div>
+        <div style="font-size:10px;color:var(--text-3);max-height:140px;overflow-y:auto;line-height:1.6">${choques.slice(0,50).map(c=>`• ${c}`).join('<br>')}${choques.length>50?`<br>… y ${choques.length-50} más`:''}</div>
+      </div>` : ''}
     ${avisos.length ? `
       <div style="background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.3);border-radius:10px;padding:12px;margin-bottom:12px">
         <div style="font-size:11px;font-weight:700;color:#fbbf24;margin-bottom:6px">${avisos.length} aviso${avisos.length>1?'s':''}</div>
