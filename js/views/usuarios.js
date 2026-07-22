@@ -8,7 +8,7 @@ import { db, auth, SEED } from '../firebase.js';
 import { hashPin, derivePassword, generateSalt } from '../crypto.js';
 import { toast } from '../ui.js';
 
-const AREAS    = ['CAMBIOS'];
+const AREAS    = ['CAMBIOS', 'Caracterizacion'];
 const DESTINOS = {
   CAMBIOS: ['Pareja 1', 'Pareja 2', 'Pareja 3', 'Pareja 4'],
   OTC:     ['NALVAR', 'RGONZA', 'JPEREZ'],
@@ -110,6 +110,7 @@ function renderShell() {
             <div class="form-label">Área</div>
             <div class="select-row" id="asig-area-row">
               <div class="select-chip" data-val="CAMBIOS">Cambios</div>
+              <div class="select-chip" data-val="Caracterizacion">Caracterización</div>
               <div class="select-chip" data-val="null">Sin asignación</div>
             </div>
           </div>
@@ -226,7 +227,7 @@ function renderLista(filtro) {
     const asgn  = u.asignacionActual;
     const area  = asgn?.area || null;
     const dest  = asgn?.destino || null;
-    const color = area === 'CAMBIOS' ? 'cm' : area === 'OTC' ? 'otc' : '';
+    const color = area === 'CAMBIOS' ? 'cm' : area === 'Caracterizacion' ? 'cr' : area === 'OTC' ? 'otc' : '';
 
     return `
       <div class="user-card ${u.active ? '' : 'inactive'}" data-uid="${u.id}">
@@ -418,7 +419,7 @@ function updateDestinoRow(area, selectedDestino = null) {
   }
 
   wrap.style.display = '';
-  label.textContent = area === 'CAMBIOS' ? 'Pareja' : 'Supervisor';
+  label.textContent = (area === 'CAMBIOS' || area === 'Caracterizacion') ? 'Pareja' : 'Supervisor';
 
   const destinos = DESTINOS[area] || [];
   row.innerHTML = destinos.map(d => `
@@ -437,7 +438,7 @@ async function guardarAsignacion() {
     return;
   }
   if (area !== 'null' && !destino) {
-    showFormError('asig-error', area === 'CAMBIOS' ? 'Selecciona una pareja.' : 'Selecciona un supervisor.');
+    showFormError('asig-error', (area === 'CAMBIOS' || area === 'Caracterizacion') ? 'Selecciona una pareja.' : 'Selecciona un supervisor.');
     return;
   }
 
