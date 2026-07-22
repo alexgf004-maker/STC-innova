@@ -150,25 +150,29 @@ function pintarOrden(o) {
   markers_[o.id] = {};
 
   // ADMIN: un solo pin por orden (el titular), coloreado por pareja.
-  // El foco es asignar zonas, no la cascada.
+  // El foco es asignar zonas y confirmar las que el técnico marcó.
   if (esAdmin_) {
+    if (o.estado === 'confirmada') return;   // confirmadas desaparecen
     const t = o.titular;
     if (!t || t.lat == null) return;
-    const cerrada = o.estado === 'hecha' || o.estado === 'no_hecha';
+    const porConfirmar = o.estado === 'por_confirmar';
     let color = '#64748b';                    // sin asignar: gris
-    if (cerrada) color = o.estado === 'hecha' ? '#22c55e' : '#ef4444';
+    if (porConfirmar) color = '#22c55e';      // lista para confirmar: verde
     else if (o.pareja) color = colorPareja(o.pareja);
-    const m = crearMarcador(t, color, '', false);
-    m.on('click', () => abrirAsignarIndividual(o.id));
+    const m = crearMarcador(t, color, porConfirmar ? '&#10003;' : '', false, false, porConfirmar);
+    m.on('click', () => porConfirmar ? abrirConfirmar(o.id) : abrirAsignarIndividual(o.id));
     m.addTo(map_); markers_[o.id].titular = m;
     return;
   }
 
-  // TÉCNICO: cascada. Si está cerrada, un punto resumen.
-  if (o.estado === 'hecha' || o.estado === 'no_hecha') {
+  // TÉCNICO: las confirmadas ya no se muestran (desaparecen).
+  if (o.estado === 'confirmada') return;
+
+  // Por confirmar: punto atenuado (opaco) en donde se logró, esperando al asistente.
+  if (o.estado === 'por_confirmar') {
     const donde = o.logranoEn && o[o.logranoEn] ? o[o.logranoEn] : o.titular;
     if (donde?.lat != null) {
-      const m = crearMarcador(donde, o.estado === 'hecha' ? '#22c55e' : '#ef4444', o.estado === 'hecha' ? '&#10003;' : '&#10007;', true);
+      const m = crearMarcador(donde, '#22c55e', '&#10003;', false, false, true);  // atenuado
       m.on('click', () => abrirDetalle(o.id, o.logranoEn || 'titular'));
       m.addTo(map_); markers_[o.id].cerrada = m;
     }
@@ -206,14 +210,15 @@ function colorPareja(pareja) {
   return PALETA_PAREJA[(n - 1) % PALETA_PAREJA.length] || '#94a3b8';
 }
 
-function crearMarcador(p, color, texto, activo, destacar) {
+function crearMarcador(p, color, texto, activo, destacar, atenuado) {
   const size = activo ? 20 : 14;
   const anillo = destacar
     ? `<div style="position:absolute;inset:-8px;border-radius:50%;background:${color};opacity:.35;animation:crc-pulso 1.4s ease-out infinite"></div>`
     : '';
+  const op = atenuado ? 'opacity:.45;' : '';
   const icon = L.divIcon({
     className: '',
-    html: `<div style="position:relative;display:flex;align-items:center;justify-content:center">${anillo}<div style="position:relative;width:${size}px;height:${size}px;background:${color};border:2px solid rgba(255,255,255,.9);border-radius:50%;box-shadow:0 2px 6px rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;font-size:${activo?11:9}px;font-weight:800;color:#0a1628;line-height:1">${texto || ''}</div></div>`,
+    html: `<div style="position:relative;display:flex;align-items:center;justify-content:center;${op}">${anillo}<div style="position:relative;width:${size}px;height:${size}px;background:${color};border:2px solid rgba(255,255,255,.9);border-radius:50%;box-shadow:0 2px 6px rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;font-size:${activo?11:9}px;font-weight:800;color:#0a1628;line-height:1">${texto || ''}</div></div>`,
     iconSize: [size, size], iconAnchor: [size/2, size/2],
   });
   return L.marker([p.lat, p.lng], { icon });
@@ -232,11 +237,12 @@ function abrirDetalle(ordenId, nivel) {
   if (!o) return;
   selected_ = { ordenId, nivel };
   const p = o[nivel] || o.titular;
-  const cerrada = o.estado === 'hecha' || o.estado === 'no_hecha';
+  const cerrada = o.estado === 'por_confirmar' || o.estado === 'confirmada';
   const sheet = container_.querySelector('#crc-sheet');
 
   const siguiente = nivel === 'titular' ? 'suplente1' : nivel === 'suplente1' ? 'suplente2' : null;
   const haySiguiente = siguiente && o[siguiente];
+  const visitas = Array.isArray(o.visitas) ? o.visitas : [];
 
   sheet.innerHTML = `
     <div style="width:36px;height:4px;background:var(--border);border-radius:2px;margin:0 auto 14px"></div>
@@ -248,23 +254,25 @@ function abrirDetalle(ordenId, nivel) {
     <div style="font-size:12px;color:var(--text-3);margin-bottom:2px">NC ${p.nc}</div>
     <div style="font-size:11px;color:var(--text-4);margin-bottom:14px">${p.direccion || ''}</div>
 
-    <div style="display:flex;gap:8px;font-size:11px;color:var(--text-4);margin-bottom:16px">
+    <div style="display:flex;gap:8px;font-size:11px;color:var(--text-4);margin-bottom:${visitas.length?'10px':'16px'}">
       ${p.medidor ? `<div>Medidor: <span style="color:var(--text-2)">${p.medidor}</span></div>` : ''}
       ${p.ds ? `<div>DS: <span style="color:var(--text-2)">${p.ds}</span></div>` : ''}
     </div>
 
+    ${visitas.length ? `<div style="font-size:11px;color:#fbbf24;margin-bottom:16px">Visitas: ${visitas.map(v=>NIVEL_LABEL[v]).join(', ')}</div>` : ''}
+
     ${cerrada ? `
-      <div style="text-align:center;padding:12px;border-radius:12px;background:${o.estado==='hecha'?'rgba(34,197,94,.1)':'rgba(239,68,68,.1)'};border:1px solid ${o.estado==='hecha'?'rgba(34,197,94,.3)':'rgba(239,68,68,.3)'};font-size:13px;font-weight:700;color:${o.estado==='hecha'?'#22c55e':'#ef4444'}">
-        ${o.estado==='hecha' ? `Caracterizada en ${NIVEL_LABEL[o.logranoEn]||'titular'}` : 'No se pudo caracterizar'}
+      <div style="text-align:center;padding:12px;border-radius:12px;background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.3);font-size:13px;font-weight:700;color:#fbbf24">
+        ${o.logranoEn ? `Hecha en ${NIVEL_LABEL[o.logranoEn]}` : 'Sin lograr'} · esperando confirmación
       </div>
     ` : `
       <div style="display:flex;gap:8px;margin-bottom:8px">
-        <button id="crc-nopude" style="flex:1;padding:13px;border-radius:12px;border:1px solid rgba(239,68,68,.4);background:rgba(239,68,68,.1);color:#f87171;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">No pude</button>
-        <button id="crc-hecha" style="flex:2;padding:13px;border-radius:12px;border:none;background:#22c55e;color:#0a1628;font-size:13px;font-weight:800;cursor:pointer;font-family:inherit">Hecha aquí</button>
+        <button id="crc-visita" style="flex:1;padding:13px;border-radius:12px;border:1px solid rgba(251,191,36,.4);background:rgba(251,191,36,.12);color:#fbbf24;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">Visita</button>
+        <button id="crc-hecha" style="flex:2;padding:13px;border-radius:12px;border:none;background:#22c55e;color:#0a1628;font-size:13px;font-weight:800;cursor:pointer;font-family:inherit">Hecho aquí</button>
       </div>
       <button id="crc-contiguos" style="width:100%;padding:11px;border-radius:12px;border:1px solid var(--border);background:var(--glass);color:var(--text-3);font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">Buscar contiguos</button>
-      ${haySiguiente ? `<div style="font-size:10px;color:var(--text-4);text-align:center;margin-top:10px">Si no puedes, se te mostrará ${NIVEL_LABEL[siguiente]}</div>`
-        : nivel==='suplente2' ? `<div style="font-size:10px;color:var(--text-4);text-align:center;margin-top:10px">Último punto. Si no puedes, la orden queda no hecha.</div>` : ''}
+      ${haySiguiente ? `<div style="font-size:10px;color:var(--text-4);text-align:center;margin-top:10px">Si registras visita, pasarás a ${NIVEL_LABEL[siguiente]}</div>`
+        : nivel==='suplente2' ? `<div style="font-size:10px;color:var(--text-4);text-align:center;margin-top:10px">Último punto. Si registras visita, la orden queda sin lograr.</div>` : ''}
     `}
   `;
 
@@ -272,7 +280,7 @@ function abrirDetalle(ordenId, nivel) {
 
   if (!cerrada) {
     sheet.querySelector('#crc-hecha').onclick = () => marcarHecha(ordenId, nivel);
-    sheet.querySelector('#crc-nopude').onclick = () => marcarNoPude(ordenId, nivel);
+    sheet.querySelector('#crc-visita').onclick = () => marcarVisita(ordenId, nivel);
     sheet.querySelector('#crc-contiguos').onclick = buscarContiguos;
   }
 
@@ -286,42 +294,59 @@ function cerrarSheet() {
 }
 
 // "Hecha aquí": cierra la orden registrando el nivel
+// "Hecho aquí": la orden se logró en este punto. Queda POR CONFIRMAR
+// (el asistente la valida después). Guarda las visitas acumuladas.
 async function marcarHecha(ordenId, nivel) {
+  const o = ordenes_.find(x => x.id === ordenId);
+  if (!o) return;
+  const visitas = Array.isArray(o.visitas) ? o.visitas : [];
   try {
     await db.collection('caracterizacion_ordenes').doc(ordenId).update({
-      estado: 'hecha', logranoEn: nivel,
+      estado: 'por_confirmar', logranoEn: nivel, visitas,
       hechaPor: session_.displayName, fechaHecha: firebase.firestore.Timestamp.now(),
     });
-    const o = ordenes_.find(x => x.id === ordenId);
-    if (o) { o.estado = 'hecha'; o.logranoEn = nivel; o.hechaPor = session_.displayName; pintarOrden(o); }
+    o.estado = 'por_confirmar'; o.logranoEn = nivel; o.visitas = visitas; o.hechaPor = session_.displayName;
+    pintarOrden(o);
     cerrarSheet(); updateStat();
-    toast(`Hecha en ${NIVEL_LABEL[nivel]}`, 'ok');
+    const nv = visitas.length;
+    toast(`Hecha en ${NIVEL_LABEL[nivel]}${nv ? ` (${nv} visita${nv>1?'s':''})` : ''} · por confirmar`, 'ok');
   } catch (err) { toast('Error: ' + err.message, 'error'); }
 }
 
-// "No pude": revela el siguiente suplente, o cierra como no_hecha
-async function marcarNoPude(ordenId, nivel) {
+// "Visita" (antes "No pude"): registra una visita cobrable en este punto
+// y pasa al siguiente. Si no hay más suplentes, la orden queda por confirmar
+// como no lograda (solo visitas).
+async function marcarVisita(ordenId, nivel) {
   const o = ordenes_.find(x => x.id === ordenId);
   if (!o) return;
   const siguiente = nivel === 'titular' ? 'suplente1' : nivel === 'suplente1' ? 'suplente2' : null;
 
+  // Acumular la visita de este nivel (sin duplicar si ya estaba)
+  const visitas = Array.isArray(o.visitas) ? [...o.visitas] : [];
+  if (!visitas.includes(nivel)) visitas.push(nivel);
+  o.visitas = visitas;
+
   if (siguiente && o[siguiente]) {
-    // Revelar el siguiente nivel
+    // Revelar el siguiente punto (persistimos la visita para no perderla)
+    try {
+      await db.collection('caracterizacion_ordenes').doc(ordenId).update({ visitas, _nivelVisible: siguiente });
+    } catch (err) { /* si falla, seguimos localmente */ }
     o._nivelVisible = siguiente;
     pintarOrden(o);
     cerrarSheet();
     setTimeout(() => abrirDetalle(ordenId, siguiente), 260);
-    toast(`Mostrando ${NIVEL_LABEL[siguiente]}`, 'ok');
+    toast(`Visita registrada · mostrando ${NIVEL_LABEL[siguiente]}`, 'ok');
   } else {
-    // No hay más suplentes -> orden no hecha
+    // No hay más suplentes: la orden termina sin lograrse (solo visitas).
     try {
       await db.collection('caracterizacion_ordenes').doc(ordenId).update({
-        estado: 'no_hecha', logranoEn: null,
+        estado: 'por_confirmar', logranoEn: null, visitas,
         hechaPor: session_.displayName, fechaHecha: firebase.firestore.Timestamp.now(),
       });
-      o.estado = 'no_hecha'; pintarOrden(o);
+      o.estado = 'por_confirmar';
+      pintarOrden(o);
       cerrarSheet(); updateStat();
-      toast('Orden marcada como no hecha', 'warn');
+      toast(`${visitas.length} visita${visitas.length>1?'s':''}, ningún punto logrado · por confirmar`, 'warn');
     } catch (err) { toast('Error: ' + err.message, 'error'); }
   }
 }
@@ -335,8 +360,8 @@ function updateStat() {
     return;
   }
   const total = ordenes_.length;
-  const hechas = ordenes_.filter(o => o.estado === 'hecha').length;
-  const pend = ordenes_.filter(o => o.estado !== 'hecha' && o.estado !== 'no_hecha').length;
+  const hechas = ordenes_.filter(o => o.estado === 'por_confirmar' || o.estado === 'confirmada').length;
+  const pend = ordenes_.filter(o => !o.estado || o.estado === 'pendiente').length;
   el.textContent = `${pend} pendientes · ${hechas} hechas`;
 }
 
@@ -494,6 +519,64 @@ async function confirmarZona(pareja) {
 }
 
 // Asignar una sola orden (admin toca un titular)
+// El asistente confirma una orden "por confirmar" desde el mapa
+function abrirConfirmar(ordenId) {
+  const o = ordenes_.find(x => x.id === ordenId);
+  if (!o) return;
+  const t = o.titular || {};
+  const visitas = Array.isArray(o.visitas) ? o.visitas : [];
+  const sheet = container_.querySelector('#crc-sheet-zona');
+  sheet.innerHTML = `
+    <div style="width:36px;height:4px;background:var(--border);border-radius:2px;margin:0 auto 14px"></div>
+    <div style="font-size:15px;font-weight:800;margin-bottom:2px">${t.nombre || o.ncTitular}</div>
+    <div style="font-size:11px;color:var(--text-4);margin-bottom:14px">NC ${o.ncTitular}${o.pareja ? ' · ' + o.pareja : ''}</div>
+
+    <div style="background:var(--glass);border:1px solid var(--border);border-radius:12px;padding:12px;margin-bottom:14px">
+      <div style="font-size:12px;font-weight:700;color:#22c55e;margin-bottom:6px">${o.logranoEn ? `Hecha en ${NIVEL_LABEL[o.logranoEn]}` : 'Sin lograr (solo visitas)'}</div>
+      ${visitas.length ? `<div style="font-size:11px;color:#fbbf24">Visitas cobrables: ${visitas.map(v=>NIVEL_LABEL[v]).join(', ')} (${visitas.length})</div>` : `<div style="font-size:11px;color:var(--text-4)">Sin visitas</div>`}
+      ${o.hechaPor ? `<div style="font-size:10px;color:var(--text-4);margin-top:6px">Marcada por ${o.hechaPor}</div>` : ''}
+    </div>
+
+    <div style="display:flex;gap:8px">
+      <button id="crc-conf-rech" style="flex:1;padding:12px;border-radius:12px;border:1px solid rgba(239,68,68,.4);background:rgba(239,68,68,.1);color:#f87171;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">Regresar a pendiente</button>
+      <button id="crc-conf-ok" style="flex:2;padding:12px;border-radius:12px;border:none;background:#22c55e;color:#0a1628;font-size:13px;font-weight:800;cursor:pointer;font-family:inherit"><span id="crc-conf-lbl">Confirmar</span></button>
+    </div>`;
+  sheet.classList.add('abierta');
+
+  sheet.querySelector('#crc-conf-ok').onclick = () => confirmarOrden(ordenId, sheet);
+  sheet.querySelector('#crc-conf-rech').onclick = () => regresarPendiente(ordenId, sheet);
+}
+
+async function confirmarOrden(ordenId, sheet) {
+  const btn = sheet.querySelector('#crc-conf-ok'); btn.disabled = true;
+  sheet.querySelector('#crc-conf-lbl').textContent = 'Confirmando…';
+  try {
+    await db.collection('caracterizacion_ordenes').doc(ordenId).update({
+      estado: 'confirmada',
+      confirmadaPor: session_.displayName, fechaConfirmacion: firebase.firestore.Timestamp.now(),
+    });
+    const o = ordenes_.find(x => x.id === ordenId);
+    if (o) { o.estado = 'confirmada'; pintarOrden(o); }
+    sheet.classList.remove('abierta');
+    toast('Orden confirmada', 'ok');
+  } catch (err) {
+    btn.disabled = false; sheet.querySelector('#crc-conf-lbl').textContent = 'Reintentar';
+    toast('Error: ' + err.message, 'error');
+  }
+}
+
+async function regresarPendiente(ordenId, sheet) {
+  try {
+    await db.collection('caracterizacion_ordenes').doc(ordenId).update({
+      estado: 'pendiente', logranoEn: null, _nivelVisible: 'titular',
+    });
+    const o = ordenes_.find(x => x.id === ordenId);
+    if (o) { o.estado = 'pendiente'; o.logranoEn = null; o._nivelVisible = 'titular'; pintarOrden(o); }
+    sheet.classList.remove('abierta');
+    toast('Orden regresada a pendiente', 'warn');
+  } catch (err) { toast('Error: ' + err.message, 'error'); }
+}
+
 function abrirAsignarIndividual(ordenId) {
   const o = ordenes_.find(x => x.id === ordenId);
   if (!o) return;
