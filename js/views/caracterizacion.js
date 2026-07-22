@@ -1,4 +1,3 @@
-
 /**
  * js/views/caracterizacion.js
  * Área de Caracterización de la Carga.
@@ -216,24 +215,31 @@ function renderResumen() {
   if (!el) return;
   const total = ordenes_.length;
   if (!total) { el.innerHTML = ''; return; }
-  const hechas    = ordenes_.filter(o => o.estado === 'hecha').length;
-  const noHechas  = ordenes_.filter(o => o.estado === 'no_hecha').length;
-  const pend      = total - hechas - noHechas;
-  const pct = total ? Math.round((hechas / total) * 100) : 0;
+  const porConfirmar = ordenes_.filter(o => o.estado === 'por_confirmar').length;
+  const confirmadas  = ordenes_.filter(o => o.estado === 'confirmada').length;
+  const listas = porConfirmar + confirmadas;
+  const pend = total - listas;
+  const pct = total ? Math.round((listas / total) * 100) : 0;
+  // Total de visitas cobrables (de todas las órdenes)
+  const totalVisitas = ordenes_.reduce((s, o) => s + (Array.isArray(o.visitas) ? o.visitas.length : 0), 0);
   el.innerHTML = `
     <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:16px">
       <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px">
         <div style="font-size:13px;font-weight:700">Avance del día</div>
-        <div style="font-size:12px;color:var(--text-4)">${hechas} de ${total} · ${pct}%</div>
+        <div style="font-size:12px;color:var(--text-4)">${listas} de ${total} · ${pct}%</div>
       </div>
       <div style="height:8px;border-radius:4px;background:var(--glass);overflow:hidden;margin-bottom:12px">
         <div style="height:100%;width:${pct}%;background:#a78bfa;border-radius:4px"></div>
       </div>
-      <div style="display:flex;gap:8px">
+      <div style="display:flex;gap:8px;margin-bottom:${totalVisitas?'12px':'0'}">
         <div style="flex:1;text-align:center"><div style="font-size:18px;font-weight:800;color:#fbbf24">${pend}</div><div style="font-size:10px;color:var(--text-4)">Pendientes</div></div>
-        <div style="flex:1;text-align:center"><div style="font-size:18px;font-weight:800;color:#22c55e">${hechas}</div><div style="font-size:10px;color:var(--text-4)">Hechas</div></div>
-        <div style="flex:1;text-align:center"><div style="font-size:18px;font-weight:800;color:#ef4444">${noHechas}</div><div style="font-size:10px;color:var(--text-4)">No hechas</div></div>
+        <div style="flex:1;text-align:center"><div style="font-size:18px;font-weight:800;color:#3b82f6">${porConfirmar}</div><div style="font-size:10px;color:var(--text-4)">Por confirmar</div></div>
+        <div style="flex:1;text-align:center"><div style="font-size:18px;font-weight:800;color:#22c55e">${confirmadas}</div><div style="font-size:10px;color:var(--text-4)">Confirmadas</div></div>
       </div>
+      ${totalVisitas ? `<div style="display:flex;align-items:center;justify-content:space-between;padding-top:12px;border-top:1px solid var(--border)">
+        <span style="font-size:12px;color:var(--text-3)">Visitas cobrables (total)</span>
+        <span style="font-size:16px;font-weight:800;color:#fbbf24">${totalVisitas}</span>
+      </div>` : ''}
     </div>`;
 }
 
@@ -247,9 +253,9 @@ function renderLista() {
     return;
   }
 
-  const pend = ordenes_.filter(o => o.estado !== 'hecha' && o.estado !== 'no_hecha');
-  const hechas = ordenes_.filter(o => o.estado === 'hecha');
-  const noHechas = ordenes_.filter(o => o.estado === 'no_hecha');
+  const porConfirmar = ordenes_.filter(o => o.estado === 'por_confirmar');
+  const pend = ordenes_.filter(o => !o.estado || o.estado === 'pendiente');
+  const confirmadas = ordenes_.filter(o => o.estado === 'confirmada');
 
   const seccion = (titulo, arr, color) => arr.length ? `
     <div style="margin-bottom:6px;margin-top:14px;display:flex;align-items:center;gap:8px">
@@ -259,21 +265,29 @@ function renderLista() {
     </div>
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:10px">${arr.map(tarjetaOrden).join('')}</div>` : '';
 
-  el.innerHTML = seccion('Pendientes', pend, '#fbbf24')
-               + seccion('Hechas', hechas, '#22c55e')
-               + seccion('No hechas', noHechas, '#ef4444');
+  el.innerHTML = seccion('Por confirmar', porConfirmar, '#3b82f6')
+               + seccion('Pendientes', pend, '#fbbf24')
+               + seccion('Confirmadas', confirmadas, '#22c55e');
+
+  // Enganchar botones de confirmar
+  el.querySelectorAll('[data-confirmar]').forEach(btn => {
+    btn.onclick = () => confirmarDesdeLista(btn.dataset.confirmar);
+  });
 }
 
 function tarjetaOrden(o) {
   const t = o.titular || {};
-  const puntos = [
-    o.titular   ? 'Titular' : null,
-    o.suplente1 ? 'Sup 1' : null,
-    o.suplente2 ? 'Sup 2' : null,
-  ].filter(Boolean);
-  const hecha = o.estado === 'hecha';
-  const noHecha = o.estado === 'no_hecha';
-  const acento = hecha ? '#22c55e' : noHecha ? '#ef4444' : '#a78bfa';
+  const puntos = [o.titular ? 1 : 0, o.suplente1 ? 1 : 0, o.suplente2 ? 1 : 0].reduce((a,b)=>a+b,0);
+  const porConfirmar = o.estado === 'por_confirmar';
+  const confirmada = o.estado === 'confirmada';
+  const visitas = Array.isArray(o.visitas) ? o.visitas : [];
+  const acento = confirmada ? '#22c55e' : porConfirmar ? '#3b82f6' : '#a78bfa';
+
+  const badge = confirmada
+    ? `<div style="font-size:10px;font-weight:700;color:#22c55e;background:rgba(34,197,94,.12);border:1px solid rgba(34,197,94,.3);padding:3px 9px;border-radius:12px;white-space:nowrap">${o.logranoEn ? LOGRO_LABEL[o.logranoEn] : 'Sin lograr'}</div>`
+    : porConfirmar
+    ? `<div style="font-size:10px;font-weight:700;color:#3b82f6;background:rgba(59,130,246,.12);border:1px solid rgba(59,130,246,.3);padding:3px 9px;border-radius:12px;white-space:nowrap">Por confirmar</div>`
+    : `<div style="font-size:10px;color:var(--text-4);background:var(--glass);border:1px solid var(--border);padding:3px 9px;border-radius:12px">${puntos} punto${puntos>1?'s':''}</div>`;
 
   return `
     <div style="background:var(--bg-card);border:1px solid var(--border);border-left:3px solid ${acento};border-radius:12px;padding:13px">
@@ -282,12 +296,30 @@ function tarjetaOrden(o) {
           <div style="font-size:13px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${t.nombre || o.ncTitular || '—'}</div>
           <div style="font-size:10px;color:var(--text-4);margin-top:1px">NC ${o.ncTitular}${t.direccion ? ' · ' + t.direccion.split(',')[0] : ''}</div>
         </div>
-        ${hecha ? `<div style="font-size:10px;font-weight:700;color:#22c55e;background:rgba(34,197,94,.12);border:1px solid rgba(34,197,94,.3);padding:3px 9px;border-radius:12px;white-space:nowrap">${LOGRO_LABEL[o.logranoEn] || 'Hecha'}</div>`
-          : noHecha ? `<div style="font-size:10px;font-weight:700;color:#ef4444;background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);padding:3px 9px;border-radius:12px">No hecha</div>`
-          : `<div style="font-size:10px;color:var(--text-4);background:var(--glass);border:1px solid var(--border);padding:3px 9px;border-radius:12px">${puntos.length} punto${puntos.length>1?'s':''}</div>`}
+        ${badge}
       </div>
-      ${(hecha && o.pareja) ? `<div style="font-size:10px;color:var(--text-4);margin-top:7px">Realizada por ${o.pareja}</div>` : ''}
+      ${(porConfirmar || confirmada) ? `
+        <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;font-size:10px;color:var(--text-4)">
+          ${o.logranoEn ? `<span>Hecha en <span style="color:#22c55e;font-weight:700">${LOGRO_LABEL[o.logranoEn]}</span></span>` : `<span style="color:#ef4444">Sin lograr</span>`}
+          ${visitas.length ? `<span>· <span style="color:#fbbf24;font-weight:700">${visitas.length} visita${visitas.length>1?'s':''}</span> (${visitas.map(v=>LOGRO_LABEL[v]).join(', ')})</span>` : ''}
+          ${o.pareja ? `<span>· ${o.pareja}</span>` : ''}
+        </div>` : ''}
+      ${porConfirmar ? `<button data-confirmar="${o.id}" style="width:100%;margin-top:10px;padding:9px;border-radius:10px;border:none;background:#22c55e;color:#0a1628;font-size:12px;font-weight:800;cursor:pointer;font-family:inherit">Confirmar orden</button>` : ''}
     </div>`;
+}
+
+async function confirmarDesdeLista(ordenId) {
+  const o = ordenes_.find(x => x.id === ordenId);
+  if (!o) return;
+  try {
+    await db.collection('caracterizacion_ordenes').doc(ordenId).update({
+      estado: 'confirmada',
+      confirmadaPor: session_.displayName, fechaConfirmacion: firebase.firestore.Timestamp.now(),
+    });
+    o.estado = 'confirmada'; o.confirmadaPor = session_.displayName;
+    renderResumen(); renderLista();
+    toast('Orden confirmada', 'ok');
+  } catch (err) { toast('Error: ' + err.message, 'error'); }
 }
 
 async function manejarArchivo(file) {
