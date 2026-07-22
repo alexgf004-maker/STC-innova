@@ -18,10 +18,15 @@ import { toast } from '../ui.js';
 let map_ = null;
 let session_ = null;
 let container_ = null;
+let role_ = null;
+let esAdmin_ = false;
 let ordenes_ = [];
 let markers_ = {};          // ordenId -> { titular, suplente1, suplente2, linea }
 let selected_ = null;       // { ordenId, nivel }  nivel: 'titular'|'suplente1'|'suplente2'
 let geoMarker_ = null, geoCircle_ = null, watchId_ = null;
+
+// Modo zona (admin)
+let puntos_ = [], poliPreview_ = null, zonaPoligono_ = null;
 
 // Contiguos (idéntico a Cambios)
 let markersContiguos_ = [];
@@ -33,6 +38,8 @@ const NIVEL_COLOR = { titular:'#a78bfa', suplente1:'#fbbf24', suplente2:'#f472b6
 export async function init(container, session) {
   container_ = container;
   session_ = session;
+  role_ = session.role;
+  esAdmin_ = (session.role === 'admin' || session.role === 'asistente');
   container.scrollTop = 0;
   container.innerHTML = `
     <div style="position:relative;width:100%;height:calc(100vh - 132px);min-height:420px">
@@ -44,31 +51,42 @@ export async function init(container, session) {
           <div style="font-size:10px;color:var(--text-4)" id="crc-map-stat">Cargando…</div>
         </div>
         <div style="flex:1"></div>
+        ${esAdmin_ ? `<button id="crc-zona" style="pointer-events:auto;height:40px;padding:0 14px;border-radius:12px;border:1px solid rgba(167,139,250,.5);background:rgba(13,17,23,.9);color:#a78bfa;font-size:12px;font-weight:700;display:flex;align-items:center;gap:6px;cursor:pointer;font-family:inherit">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><polygon points="12 2 15 8.3 22 9.3 17 14 18 21 12 17.8 6 21 7 14 2 9.3 9 8.3 12 2"/></svg>
+          Asignar zona
+        </button>` : `
         <button id="crc-gps" style="pointer-events:auto;width:40px;height:40px;border-radius:12px;border:1px solid var(--border);background:rgba(13,17,23,.9);color:#3b82f6;display:flex;align-items:center;justify-content:center;cursor:pointer">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="20" height="20"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>
-        </button>
+        </button>`}
       </div>
 
-      <!-- Hoja de detalle del punto -->
-      <div id="crc-sheet" style="position:absolute;left:0;right:0;bottom:0;z-index:600;transform:translateY(110%);transition:transform .25s ease;background:#0d1117;border-top:1px solid var(--border);border-radius:20px 20px 0 0;padding:18px 20px 26px;max-height:70vh;overflow-y:auto">
-      </div>
+      <!-- Hoja de detalle del punto (técnico) -->
+      <div id="crc-sheet" style="position:absolute;left:0;right:0;bottom:0;z-index:600;transform:translateY(110%);transition:transform .25s ease;background:#0d1117;border-top:1px solid var(--border);border-radius:20px 20px 0 0;padding:18px 20px 26px;max-height:70vh;overflow-y:auto"></div>
+
+      <!-- Hoja de asignación de zona (admin) -->
+      <div id="crc-sheet-zona" style="position:absolute;left:0;right:0;bottom:0;z-index:600;transform:translateY(110%);transition:transform .25s ease;background:#0d1117;border-top:1px solid var(--border);border-radius:20px 20px 0 0;padding:18px 20px 26px;max-height:70vh;overflow-y:auto"></div>
     </div>`;
 
   await cargarOrdenes();
   initMap();
-  initGPS();
 
-  container.querySelector('#crc-gps').onclick = () => {
-    if (geoMarker_) map_.setView(geoMarker_.getLatLng(), 17);
-    else toast('Buscando tu ubicación…', 'ok');
-  };
+  if (esAdmin_) {
+    container.querySelector('#crc-zona').onclick = activarModoZona;
+  } else {
+    initGPS();
+    container.querySelector('#crc-gps').onclick = () => {
+      if (geoMarker_) map_.setView(geoMarker_.getLatLng(), 17);
+      else toast('Buscando tu ubicación…', 'ok');
+    };
+  }
 }
 
 export function cleanup() {
   if (watchId_ != null && navigator.geolocation) navigator.geolocation.clearWatch(watchId_);
   watchId_ = null;
+  document.getElementById('crc-cerrar-poli')?.remove();
   if (map_) { try { map_.remove(); } catch {} map_ = null; }
-  markers_ = {}; selected_ = null; geoMarker_ = null; geoCircle_ = null;
+  markers_ = {}; selected_ = null; geoMarker_ = null; geoCircle_ = null; puntos_ = [];
 }
 
 async function cargarOrdenes() {
@@ -108,7 +126,22 @@ function pintarOrden(o) {
   quitarMarcadores(o.id);
   markers_[o.id] = {};
 
-  // Si está cerrada (hecha/no hecha), pintar solo un punto resumen y salir
+  // ADMIN: un solo pin por orden (el titular), coloreado por pareja.
+  // El foco es asignar zonas, no la cascada.
+  if (esAdmin_) {
+    const t = o.titular;
+    if (!t || t.lat == null) return;
+    const cerrada = o.estado === 'hecha' || o.estado === 'no_hecha';
+    let color = '#64748b';                    // sin asignar: gris
+    if (cerrada) color = o.estado === 'hecha' ? '#22c55e' : '#ef4444';
+    else if (o.pareja) color = colorPareja(o.pareja);
+    const m = crearMarcador(t, color, o.pareja ? String(o.pareja).replace(/\D/g,'') || 'P' : '', !cerrada);
+    m.on('click', () => abrirAsignarIndividual(o.id));
+    m.addTo(map_); markers_[o.id].titular = m;
+    return;
+  }
+
+  // TÉCNICO: cascada. Si está cerrada, un punto resumen.
   if (o.estado === 'hecha' || o.estado === 'no_hecha') {
     const donde = o.logranoEn && o[o.logranoEn] ? o[o.logranoEn] : o.titular;
     if (donde?.lat != null) {
@@ -119,7 +152,6 @@ function pintarOrden(o) {
     return;
   }
 
-  // Órdenes activas: mostrar el punto del nivel actual alcanzado
   const nivel = o._nivelVisible || 'titular';
   const niveles = ['titular','suplente1','suplente2'];
   const idx = niveles.indexOf(nivel);
@@ -134,7 +166,6 @@ function pintarOrden(o) {
     m.addTo(map_); markers_[o.id][k] = m;
   }
 
-  // Línea del titular al nivel visible (si hay suplente mostrado)
   if (idx > 0) {
     const pts = [];
     for (let i = 0; i <= idx; i++) { const p = o[niveles[i]]; if (p?.lat != null) pts.push([p.lat, p.lng]); }
@@ -142,6 +173,12 @@ function pintarOrden(o) {
       markers_[o.id].linea = L.polyline(pts, { color:'#fbbf24', weight:2, dashArray:'5,6', opacity:.7 }).addTo(map_);
     }
   }
+}
+
+const PALETA_PAREJA = ['#2dd4bf','#fbbf24','#a78bfa','#f472b6','#60a5fa'];
+function colorPareja(pareja) {
+  const n = parseInt(String(pareja).replace(/\D/g,''), 10);
+  return PALETA_PAREJA[(n - 1) % PALETA_PAREJA.length] || '#94a3b8';
 }
 
 function crearMarcador(p, color, texto, activo) {
@@ -268,6 +305,189 @@ function updateStat() {
   const hechas = ordenes_.filter(o => o.estado === 'hecha').length;
   const pend = ordenes_.filter(o => o.estado !== 'hecha' && o.estado !== 'no_hecha').length;
   el.textContent = `${pend} pendientes · ${hechas} hechas`;
+}
+
+// ══════════════════════════════════════════════════════════════
+//  ASIGNACIÓN POR ZONA (admin/asistente)
+//  Dibuja un polígono; las órdenes cuyo TITULAR cae dentro se
+//  asignan a la pareja elegida.
+// ══════════════════════════════════════════════════════════════
+
+const PAREJAS_CRC = ['Pareja 1','Pareja 2','Pareja 3'];
+
+function pointInPolygon(point, vertices) {
+  const x = point.lat, y = point.lng;
+  let inside = false;
+  for (let i = 0, j = vertices.length - 1; i < vertices.length; j = i++) {
+    const xi = vertices[i].lat, yi = vertices[i].lng;
+    const xj = vertices[j].lat, yj = vertices[j].lng;
+    const intersect = ((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
+    if (intersect) inside = !inside;
+  }
+  return inside;
+}
+
+function limpiarPoligono() {
+  if (poliPreview_) { map_.removeLayer(poliPreview_); poliPreview_ = null; }
+  if (zonaPoligono_) { map_.removeLayer(zonaPoligono_); zonaPoligono_ = null; }
+  const btn = document.getElementById('crc-cerrar-poli');
+  if (btn) btn.style.display = 'none';
+}
+
+function activarModoZona() {
+  if (!map_) return;
+  cerrarSheet();
+  puntos_ = [];
+  limpiarPoligono();
+  map_.getContainer().style.cursor = 'crosshair';
+  toast('Toca para marcar la zona · ciérrala con el botón o doble toque', 'ok', 5000);
+
+  let btn = document.getElementById('crc-cerrar-poli');
+  if (!btn) {
+    btn = document.createElement('button');
+    btn.id = 'crc-cerrar-poli';
+    btn.textContent = 'Cerrar zona';
+    btn.style.cssText = 'position:fixed;bottom:100px;left:50%;transform:translateX(-50%);z-index:700;background:#a78bfa;color:#0d1117;border:none;border-radius:20px;padding:10px 24px;font-size:13px;font-weight:800;font-family:inherit;cursor:pointer;display:none;box-shadow:0 4px 20px rgba(0,0,0,.4)';
+    document.body.appendChild(btn);
+    btn.addEventListener('click', cerrarPoligono);
+  }
+  btn.style.display = 'none';
+
+  map_.on('click', onMapClickZona_);
+  map_.on('dblclick', onMapDblZona_);
+}
+
+function onMapClickZona_(e) {
+  if (puntos_.length > 0) {
+    const dist = map_.distance(puntos_[puntos_.length - 1], e.latlng);
+    if (dist < 5) return;
+  }
+  puntos_.push(e.latlng);
+  if (poliPreview_) map_.removeLayer(poliPreview_);
+  if (puntos_.length === 1) {
+    poliPreview_ = L.circleMarker(puntos_[0], { radius:5, color:'#a78bfa', fillColor:'#a78bfa', fillOpacity:1, weight:2 }).addTo(map_);
+  } else {
+    poliPreview_ = L.polygon(puntos_, { color:'#a78bfa', weight:2, fillOpacity:.1, dashArray:'6,4' }).addTo(map_);
+  }
+  const btn = document.getElementById('crc-cerrar-poli');
+  if (btn) btn.style.display = puntos_.length >= 3 ? '' : 'none';
+}
+
+function onMapDblZona_(e) {
+  L.DomEvent.stop(e);
+  if (puntos_.length >= 3) cerrarPoligono();
+}
+
+function cerrarPoligono() {
+  if (puntos_.length < 3) { toast('Necesitas al menos 3 puntos', 'warn'); return; }
+  map_.off('click', onMapClickZona_);
+  map_.off('dblclick', onMapDblZona_);
+  map_.getContainer().style.cursor = '';
+  const btn = document.getElementById('crc-cerrar-poli');
+  if (btn) btn.style.display = 'none';
+  if (poliPreview_) { map_.removeLayer(poliPreview_); poliPreview_ = null; }
+  zonaPoligono_ = L.polygon(puntos_, { color:'#a78bfa', weight:2, fillOpacity:.12 }).addTo(map_);
+
+  const dentro = ordenes_.filter(o => o.titular?.lat != null &&
+    pointInPolygon(L.latLng(o.titular.lat, o.titular.lng), puntos_));
+
+  abrirSheetZona(dentro.length);
+}
+
+function abrirSheetZona(cuantas) {
+  const sheet = container_.querySelector('#crc-sheet-zona');
+  sheet.innerHTML = `
+    <div style="width:36px;height:4px;background:var(--border);border-radius:2px;margin:0 auto 14px"></div>
+    <div style="font-size:16px;font-weight:800;margin-bottom:4px">Asignar zona</div>
+    <div style="font-size:12px;color:var(--text-4);margin-bottom:16px">${cuantas} orden${cuantas!==1?'es':''} en esta zona (por titular)</div>
+    <div class="form-label" style="margin-bottom:8px">Pareja</div>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px" id="crc-zona-parejas">
+      ${PAREJAS_CRC.map(p => `<div class="crc-zp" data-val="${p}" style="cursor:pointer;padding:9px 16px;border-radius:20px;border:1px solid var(--border);background:var(--glass);font-size:13px;font-weight:700">${p}</div>`).join('')}
+      <div class="crc-zp" data-val="null" style="cursor:pointer;padding:9px 16px;border-radius:20px;border:1px solid var(--border);background:var(--glass);font-size:13px;font-weight:700;color:var(--text-4)">Sin pareja</div>
+    </div>
+    <div id="crc-zona-err" class="form-error" style="display:none;margin-bottom:8px"></div>
+    <div style="display:flex;gap:8px;margin-top:8px">
+      <button id="crc-zona-cancel" style="flex:1;padding:12px;border-radius:12px;border:1px solid var(--border);background:var(--glass);color:var(--text-3);font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">Cancelar</button>
+      <button id="crc-zona-ok" style="flex:2;padding:12px;border-radius:12px;border:none;background:#a78bfa;color:#0d1117;font-size:13px;font-weight:800;cursor:pointer;font-family:inherit"><span id="crc-zona-ok-lbl">Asignar</span></button>
+    </div>`;
+  sheet.style.transform = 'translateY(0)';
+
+  let sel = null;
+  sheet.querySelectorAll('.crc-zp').forEach(chip => chip.onclick = () => {
+    sheet.querySelectorAll('.crc-zp').forEach(c => { c.style.borderColor='var(--border)'; c.style.background='var(--glass)'; });
+    chip.style.borderColor = '#a78bfa'; chip.style.background = 'rgba(167,139,250,.15)';
+    sel = chip.dataset.val;
+  });
+  sheet.querySelector('#crc-zona-cancel').onclick = cancelarZona;
+  sheet.querySelector('#crc-zona-ok').onclick = () => confirmarZona(sel);
+}
+
+function cancelarZona() {
+  const sheet = container_.querySelector('#crc-sheet-zona');
+  if (sheet) sheet.style.transform = 'translateY(110%)';
+  limpiarPoligono();
+  puntos_ = [];
+  if (map_) { map_.off('click', onMapClickZona_); map_.off('dblclick', onMapDblZona_); map_.getContainer().style.cursor = ''; }
+}
+
+async function confirmarZona(pareja) {
+  const err = container_.querySelector('#crc-zona-err');
+  if (!pareja) { err.textContent = 'Selecciona una pareja o "Sin pareja".'; err.style.display = 'block'; return; }
+  const dentro = ordenes_.filter(o => o.titular?.lat != null &&
+    pointInPolygon(L.latLng(o.titular.lat, o.titular.lng), puntos_));
+  if (!dentro.length) { err.textContent = 'No hay órdenes en esa zona.'; err.style.display = 'block'; return; }
+
+  const val = pareja === 'null' ? null : pareja;
+  const btn = container_.querySelector('#crc-zona-ok');
+  btn.disabled = true;
+  container_.querySelector('#crc-zona-ok-lbl').textContent = 'Asignando…';
+  try {
+    const ts = firebase.firestore.Timestamp.now();
+    for (let i = 0; i < dentro.length; i += 400) {
+      const batch = db.batch();
+      dentro.slice(i, i + 400).forEach(o => {
+        batch.update(db.collection('caracterizacion_ordenes').doc(o.id), { pareja: val, asignadoEn: ts });
+      });
+      await batch.commit();
+    }
+    dentro.forEach(o => { o.pareja = val; pintarOrden(o); });
+    cancelarZona();
+    toast(`${dentro.length} órdenes asignadas${val ? ' a ' + val : ' (sin pareja)'}`, 'ok');
+  } catch (e) {
+    btn.disabled = false;
+    container_.querySelector('#crc-zona-ok-lbl').textContent = 'Reintentar';
+    toast('Error: ' + e.message, 'error');
+  }
+}
+
+// Asignar una sola orden (admin toca un titular)
+function abrirAsignarIndividual(ordenId) {
+  const o = ordenes_.find(x => x.id === ordenId);
+  if (!o) return;
+  const t = o.titular || {};
+  const sheet = container_.querySelector('#crc-sheet-zona');
+  sheet.innerHTML = `
+    <div style="width:36px;height:4px;background:var(--border);border-radius:2px;margin:0 auto 14px"></div>
+    <div style="font-size:15px;font-weight:800;margin-bottom:2px">${t.nombre || o.ncTitular}</div>
+    <div style="font-size:11px;color:var(--text-4);margin-bottom:16px">NC ${o.ncTitular}${o.pareja ? ' · ' + o.pareja : ' · sin asignar'}</div>
+    <div class="form-label" style="margin-bottom:8px">Asignar a</div>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px" id="crc-ind-parejas">
+      ${PAREJAS_CRC.map(p => `<div class="crc-ip" data-val="${p}" style="cursor:pointer;padding:9px 16px;border-radius:20px;border:1px solid ${o.pareja===p?'#a78bfa':'var(--border)'};background:${o.pareja===p?'rgba(167,139,250,.15)':'var(--glass)'};font-size:13px;font-weight:700">${p}</div>`).join('')}
+      <div class="crc-ip" data-val="null" style="cursor:pointer;padding:9px 16px;border-radius:20px;border:1px solid var(--border);background:var(--glass);font-size:13px;font-weight:700;color:var(--text-4)">Quitar</div>
+    </div>
+    <button id="crc-ind-cerrar" style="width:100%;padding:11px;border-radius:12px;border:1px solid var(--border);background:var(--glass);color:var(--text-3);font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">Cerrar</button>`;
+  sheet.style.transform = 'translateY(0)';
+
+  sheet.querySelectorAll('.crc-ip').forEach(chip => chip.onclick = async () => {
+    const val = chip.dataset.val === 'null' ? null : chip.dataset.val;
+    try {
+      await db.collection('caracterizacion_ordenes').doc(ordenId).update({ pareja: val, asignadoEn: firebase.firestore.Timestamp.now() });
+      o.pareja = val; pintarOrden(o);
+      sheet.style.transform = 'translateY(110%)';
+      toast(val ? `Asignada a ${val}` : 'Asignación quitada', 'ok');
+    } catch (e) { toast('Error: ' + e.message, 'error'); }
+  });
+  sheet.querySelector('#crc-ind-cerrar').onclick = () => { sheet.style.transform = 'translateY(110%)'; };
 }
 
 // ── GPS (idéntico a Cambios) ──
