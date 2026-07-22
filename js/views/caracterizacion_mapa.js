@@ -8,8 +8,7 @@
  * Y así en cascada: Suplente 1 -> Suplente 2. Si tampoco el 2,
  * la orden queda "no hecha".
  *
- * Reutiliza el patrón de Cambios: Leaflet + Google tiles + GPS +
- * "Buscar contiguos" (contiguos.json).
+ * Reutiliza el patrón de Cambios: Leaflet + Google tiles + GPS.
  */
 
 import { db } from '../firebase.js';
@@ -27,10 +26,6 @@ let geoMarker_ = null, geoCircle_ = null, watchId_ = null;
 
 // Modo zona (admin)
 let puntos_ = [], poliPreview_ = null, zonaPoligono_ = null;
-
-// Contiguos (idéntico a Cambios)
-let markersContiguos_ = [];
-let contiguosData_ = null, contiguosIndex_ = null, contiguosLoading_ = false;
 
 const NIVEL_LABEL = { titular:'Titular', suplente1:'Suplente 1', suplente2:'Suplente 2' };
 const NIVEL_COLOR = { titular:'#a78bfa', suplente1:'#fbbf24', suplente2:'#f472b6' };
@@ -285,7 +280,6 @@ function abrirDetalle(ordenId, nivel) {
         <button id="crc-visita" style="flex:1;padding:13px;border-radius:12px;border:1px solid rgba(251,191,36,.4);background:rgba(251,191,36,.12);color:#fbbf24;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">Visita</button>
         <button id="crc-hecha" style="flex:2;padding:13px;border-radius:12px;border:none;background:#22c55e;color:#0a1628;font-size:13px;font-weight:800;cursor:pointer;font-family:inherit">Hecho aquí</button>
       </div>
-      <button id="crc-contiguos" style="width:100%;padding:11px;border-radius:12px;border:1px solid var(--border);background:var(--glass);color:var(--text-3);font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">Buscar contiguos</button>
       ${haySiguiente ? `<div style="font-size:10px;color:var(--text-4);text-align:center;margin-top:10px">Si registras visita, pasarás a ${NIVEL_LABEL[siguiente]}</div>`
         : nivel==='suplente2' ? `<div style="font-size:10px;color:var(--text-4);text-align:center;margin-top:10px">Último punto. Si registras visita, la orden queda sin lograr.</div>` : ''}
     `}
@@ -296,7 +290,6 @@ function abrirDetalle(ordenId, nivel) {
   if (!cerrada) {
     sheet.querySelector('#crc-hecha').onclick = () => marcarHecha(ordenId, nivel);
     sheet.querySelector('#crc-visita').onclick = () => marcarVisita(ordenId, nivel);
-    sheet.querySelector('#crc-contiguos').onclick = buscarContiguos;
   }
 
   if (p.lat != null) map_.setView([p.lat, p.lng], Math.max(map_.getZoom(), 16));
@@ -642,71 +635,4 @@ function initGPS() {
     err => console.warn('[crc-mapa] GPS:', err.message),
     { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 }
   );
-}
-
-// ── Buscar contiguos (idéntico a Cambios) ──
-async function cargarContiguosData() {
-  if (contiguosData_) return true;
-  if (contiguosLoading_) {
-    let i = 0; while (contiguosLoading_ && i < 100) { await new Promise(r => setTimeout(r, 100)); i++; }
-    return !!contiguosData_;
-  }
-  contiguosLoading_ = true;
-  try {
-    const resp = await fetch('contiguos.json');
-    if (!resp.ok) throw new Error('No se pudo cargar');
-    contiguosData_ = await resp.json();
-    contiguosIndex_ = {};
-    for (let i = 0; i < contiguosData_.length; i++) contiguosIndex_[contiguosData_[i][0]] = i;
-    return true;
-  } catch (err) { console.error('[contiguos]', err); contiguosData_ = null; return false; }
-  finally { contiguosLoading_ = false; }
-}
-
-async function buscarContiguos() {
-  if (!selected_) return;
-  const o = ordenes_.find(x => x.id === selected_.ordenId);
-  const p = o?.[selected_.nivel];
-  const nc = String(p?.nc ?? '').trim();
-  console.log('[contiguos] nivel:', selected_.nivel, '| punto:', p, '| nc buscado:', JSON.stringify(nc));
-  if (!nc) { toast('Este punto no tiene NC', 'error'); return; }
-
-  toast('Cargando base de contiguos…', 'ok');
-  const ok = await cargarContiguosData();
-  if (!ok) { toast('No se pudo cargar la base', 'error'); return; }
-
-  let pos = contiguosIndex_[nc];
-  // Respaldo: si no está por clave directa, buscar comparando como texto
-  if (pos === undefined) {
-    console.log('[contiguos] no encontrado por índice, probando búsqueda lineal…');
-    pos = contiguosData_.findIndex(f => String(f[0]).trim() === nc);
-    if (pos < 0) pos = undefined;
-  }
-  console.log('[contiguos] posición encontrada:', pos);
-  if (pos === undefined) { toast('NC no encontrado en la base', 'error'); return; }
-
-  limpiarContiguos();
-  for (let off = -2; off <= 2; off++) {
-    const i = pos + off;
-    if (i < 0 || i >= contiguosData_.length) continue;
-    const r = contiguosData_[i];
-    if (!r[5] || !r[6]) continue;
-    const esCentro = off === 0;
-    const color = esCentro ? '#2dd4bf' : '#fbbf24';
-    const icon = L.divIcon({
-      className: '',
-      html: '<div style="display:flex;flex-direction:column;align-items:center">'
-        + '<div style="width:'+(esCentro?24:20)+'px;height:'+(esCentro?24:20)+'px;background:'+color+';border:2px solid white;border-radius:50%;box-shadow:0 2px 6px rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;color:#0a1628">'+(esCentro?'&#9679;':(off<0?'&#8593;':'&#8595;'))+'</div>'
-        + '<div style="margin-top:2px;background:rgba(10,22,40,.85);padding:1px 6px;border-radius:6px;font-size:10px;font-weight:700;color:white;white-space:nowrap">NC '+r[0]+'</div></div>',
-      iconSize: [60, 44], iconAnchor: [30, 22],
-    });
-    const m = L.marker([r[5], r[6]], { icon, zIndexOffset: 1000 }).addTo(map_);
-    markersContiguos_.push(m);
-  }
-  toast('Contiguos en el mapa (amarillos)', 'ok');
-}
-
-function limpiarContiguos() {
-  markersContiguos_.forEach(m => { if (map_.hasLayer(m)) map_.removeLayer(m); });
-  markersContiguos_ = [];
 }
