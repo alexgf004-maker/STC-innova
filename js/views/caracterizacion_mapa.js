@@ -41,11 +41,19 @@ export async function init(container, session) {
   role_ = session.role;
   esAdmin_ = (session.role === 'admin' || session.role === 'asistente');
 
-  // Animación del anillo de pulso (una sola vez)
+  // Animación del anillo de pulso + hojas responsivas (una sola vez)
   if (!document.getElementById('crc-pulso-css')) {
     const st = document.createElement('style');
     st.id = 'crc-pulso-css';
-    st.textContent = '@keyframes crc-pulso{0%{transform:scale(.8);opacity:.5}100%{transform:scale(1.8);opacity:0}}';
+    st.textContent = `
+      @keyframes crc-pulso{0%{transform:scale(.8);opacity:.5}100%{transform:scale(1.8);opacity:0}}
+      .crc-hoja{position:fixed;left:0;right:0;bottom:0;z-index:1200;transform:translateY(calc(100% + 120px));transition:transform .25s ease;background:#0d1117;border-top:1px solid var(--border);border-radius:20px 20px 0 0;padding:18px 20px 26px;max-height:70vh;overflow-y:auto}
+      .crc-hoja.abierta{transform:translateY(0)}
+      @media (min-width:820px){
+        .crc-hoja{left:auto;right:16px;bottom:auto;top:80px;width:340px;max-height:calc(100vh - 160px);border:1px solid var(--border);border-radius:16px;transform:translateX(calc(100% + 40px));box-shadow:0 8px 40px rgba(0,0,0,.5)}
+        .crc-hoja.abierta{transform:translateX(0)}
+      }
+    `;
     document.head.appendChild(st);
   }
   container.scrollTop = 0;
@@ -69,10 +77,10 @@ export async function init(container, session) {
       </div>
 
       <!-- Hoja de detalle del punto (técnico) -->
-      <div id="crc-sheet" style="position:fixed;left:0;right:0;bottom:0;z-index:1200;transform:translateY(calc(100% + 120px));transition:transform .25s ease;background:#0d1117;border-top:1px solid var(--border);border-radius:20px 20px 0 0;padding:18px 20px 26px;max-height:70vh;overflow-y:auto"></div>
+      <div id="crc-sheet" class="crc-hoja"></div>
 
       <!-- Hoja de asignación de zona (admin) -->
-      <div id="crc-sheet-zona" style="position:fixed;left:0;right:0;bottom:0;z-index:1200;transform:translateY(calc(100% + 120px));transition:transform .25s ease;background:#0d1117;border-top:1px solid var(--border);border-radius:20px 20px 0 0;padding:18px 20px 26px;max-height:70vh;overflow-y:auto"></div>
+      <div id="crc-sheet-zona" class="crc-hoja"></div>
     </div>`;
 
   await cargarOrdenes();
@@ -260,7 +268,7 @@ function abrirDetalle(ordenId, nivel) {
     `}
   `;
 
-  sheet.style.transform = 'translateY(0)';
+  sheet.classList.add('abierta');
 
   if (!cerrada) {
     sheet.querySelector('#crc-hecha').onclick = () => marcarHecha(ordenId, nivel);
@@ -273,7 +281,7 @@ function abrirDetalle(ordenId, nivel) {
 
 function cerrarSheet() {
   const sheet = container_.querySelector('#crc-sheet');
-  if (sheet) sheet.style.transform = 'translateY(calc(100% + 120px))';
+  if (sheet) sheet.classList.remove('abierta');
   selected_ = null;
 }
 
@@ -435,7 +443,7 @@ function abrirSheetZona(cuantas) {
       <button id="crc-zona-cancel" style="flex:1;padding:12px;border-radius:12px;border:1px solid var(--border);background:var(--glass);color:var(--text-3);font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">Cancelar</button>
       <button id="crc-zona-ok" style="flex:2;padding:12px;border-radius:12px;border:none;background:#a78bfa;color:#0d1117;font-size:13px;font-weight:800;cursor:pointer;font-family:inherit"><span id="crc-zona-ok-lbl">Asignar</span></button>
     </div>`;
-  sheet.style.transform = 'translateY(0)';
+  sheet.classList.add('abierta');
 
   let sel = null;
   sheet.querySelectorAll('.crc-zp').forEach(chip => chip.onclick = () => {
@@ -449,7 +457,7 @@ function abrirSheetZona(cuantas) {
 
 function cancelarZona() {
   const sheet = container_.querySelector('#crc-sheet-zona');
-  if (sheet) sheet.style.transform = 'translateY(calc(100% + 120px))';
+  if (sheet) sheet.classList.remove('abierta');
   limpiarPoligono();
   puntos_ = [];
   if (map_) { map_.off('click', onMapClickZona_); map_.off('dblclick', onMapDblZona_); map_.getContainer().style.cursor = ''; }
@@ -501,18 +509,18 @@ function abrirAsignarIndividual(ordenId) {
       <div class="crc-ip" data-val="null" style="cursor:pointer;padding:9px 16px;border-radius:20px;border:1px solid var(--border);background:var(--glass);font-size:13px;font-weight:700;color:var(--text-4)">Quitar</div>
     </div>
     <button id="crc-ind-cerrar" style="width:100%;padding:11px;border-radius:12px;border:1px solid var(--border);background:var(--glass);color:var(--text-3);font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">Cerrar</button>`;
-  sheet.style.transform = 'translateY(0)';
+  sheet.classList.add('abierta');
 
   sheet.querySelectorAll('.crc-ip').forEach(chip => chip.onclick = async () => {
     const val = chip.dataset.val === 'null' ? null : chip.dataset.val;
     try {
       await db.collection('caracterizacion_ordenes').doc(ordenId).update({ pareja: val, asignadoEn: firebase.firestore.Timestamp.now() });
       o.pareja = val; pintarOrden(o);
-      sheet.style.transform = 'translateY(calc(100% + 120px))';
+      sheet.classList.remove('abierta');
       toast(val ? `Asignada a ${val}` : 'Asignación quitada', 'ok');
     } catch (e) { toast('Error: ' + e.message, 'error'); }
   });
-  sheet.querySelector('#crc-ind-cerrar').onclick = () => { sheet.style.transform = 'translateY(calc(100% + 120px))'; };
+  sheet.querySelector('#crc-ind-cerrar').onclick = () => { sheet.classList.remove('abierta'); };
 }
 
 // ── GPS (idéntico a Cambios) ──
