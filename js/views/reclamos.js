@@ -42,7 +42,7 @@ export async function init(container, session) {
           <button class="icon-btn" id="rc-excel" title="Descargar historial en Excel">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
           </button>` : `
-          <button class="icon-btn" id="rc-nueva" title="Registrar orden" style="background:#a78bfa;border-color:#a78bfa;color:#0d1117">
+          <button class="icon-btn" id="rc-nueva" title="Registrar orden" style="background:#fbbf24;border-color:#fbbf24;color:#0d1117">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
           </button>`}
         </div>
@@ -112,7 +112,7 @@ function renderResumen() {
   el.innerHTML = `
     <div style="display:flex;gap:10px;margin-bottom:16px">
       <div style="flex:1;background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:14px;text-align:center">
-        <div style="font-size:22px;font-weight:800;color:#a78bfa">${total}</div>
+        <div style="font-size:22px;font-weight:800;color:#fbbf24">${total}</div>
         <div style="font-size:10px;color:var(--text-4)">${esAdmin_ ? 'Total registradas' : 'Tus órdenes'}</div>
       </div>
       <div style="flex:1;background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:14px;text-align:center">
@@ -152,9 +152,9 @@ function renderLista() {
 
   el.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:10px">${
     arr.map(r => `
-      <div style="background:var(--bg-card);border:1px solid var(--border);border-left:3px solid #a78bfa;border-radius:12px;padding:13px">
+      <div style="background:var(--bg-card);border:1px solid var(--border);border-left:3px solid #fbbf24;border-radius:12px;padding:13px">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px">
-          <div style="font-size:14px;font-weight:800;color:#a78bfa">WO ${r.wo || '—'}</div>
+          <div style="font-size:14px;font-weight:800;color:#fbbf24">WO ${r.wo || '—'}</div>
           <div style="font-size:10px;color:var(--text-4)">${fmtFecha(r.fecha)}</div>
         </div>
         <div style="font-size:12px;color:var(--text-2);line-height:1.5;margin-bottom:8px;white-space:pre-wrap">${escapar(r.descripcion || '')}</div>
@@ -191,7 +191,7 @@ function abrirNueva() {
 
     <div style="display:flex;gap:8px">
       <button id="rc-cancel" style="flex:1;padding:13px;border-radius:12px;border:1px solid var(--border);background:var(--glass);color:var(--text-3);font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">Cancelar</button>
-      <button id="rc-guardar" style="flex:2;padding:13px;border-radius:12px;border:none;background:#a78bfa;color:#0d1117;font-size:13px;font-weight:800;cursor:pointer;font-family:inherit"><span id="rc-guardar-lbl">Guardar</span></button>
+      <button id="rc-guardar" style="flex:2;padding:13px;border-radius:12px;border:none;background:#fbbf24;color:#0d1117;font-size:13px;font-weight:800;cursor:pointer;font-family:inherit"><span id="rc-guardar-lbl">Guardar</span></button>
     </div>`;
 
   sheet.style.transform = 'translateY(0)';
