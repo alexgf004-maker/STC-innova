@@ -220,9 +220,10 @@ function renderResumen() {
   const listas = porConfirmar + confirmadas;
   const pend = total - listas;
   const pct = total ? Math.round((listas / total) * 100) : 0;
-  // Total de visitas cobrables (de todas las órdenes)
   const totalVisitas = ordenes_.reduce((s, o) => s + (Array.isArray(o.visitas) ? o.visitas.length : 0), 0);
+
   el.innerHTML = `
+    ${panelParejas()}
     <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:16px">
       <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px">
         <div style="font-size:13px;font-weight:700">Avance del día</div>
@@ -240,6 +241,62 @@ function renderResumen() {
         <span style="font-size:12px;color:var(--text-3)">Visitas cobrables (total)</span>
         <span style="font-size:16px;font-weight:800;color:#fbbf24">${totalVisitas}</span>
       </div>` : ''}
+    </div>`;
+}
+
+// Panel por pareja: ejecutadas (marcadas hechas, aunque falte confirmar),
+// visitas, y avance contra la meta diaria.
+const META_PAREJA = 7;
+const PAREJA_COLOR = { 'Pareja 1':'#2dd4bf', 'Pareja 2':'#fbbf24', 'Pareja 3':'#a78bfa' };
+
+function panelParejas() {
+  // Agrupar por pareja. "Ejecutada" = el técnico la marcó hecha (logró un punto),
+  // esté por_confirmar o confirmada.
+  const parejas = {};
+  for (const o of ordenes_) {
+    const p = o.pareja;
+    if (!p) continue;
+    if (!parejas[p]) parejas[p] = { ejecutadas: 0, visitas: 0, asignadas: 0 };
+    parejas[p].asignadas++;
+    const ejecutada = (o.estado === 'por_confirmar' || o.estado === 'confirmada') && o.logranoEn;
+    if (ejecutada) parejas[p].ejecutadas++;
+    parejas[p].visitas += Array.isArray(o.visitas) ? o.visitas.length : 0;
+  }
+  const nombres = Object.keys(parejas).sort();
+  if (!nombres.length) return '';
+
+  return `
+    <div style="margin-bottom:16px">
+      <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:var(--text-4);margin-bottom:8px">Avance por pareja · meta ${META_PAREJA}</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px">
+        ${nombres.map(nombre => {
+          const d = parejas[nombre];
+          const color = PAREJA_COLOR[nombre] || '#94a3b8';
+          const pct = Math.min(100, Math.round((d.ejecutadas / META_PAREJA) * 100));
+          const cumplida = d.ejecutadas >= META_PAREJA;
+          return `
+            <div style="background:var(--bg-card);border:1px solid ${cumplida?'rgba(34,197,94,.4)':'var(--border)'};border-radius:12px;padding:13px">
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+                <div style="display:flex;align-items:center;gap:7px">
+                  <div style="width:9px;height:9px;border-radius:50%;background:${color}"></div>
+                  <span style="font-size:13px;font-weight:700">${nombre}</span>
+                </div>
+                ${cumplida ? `<span style="font-size:10px;font-weight:800;color:#22c55e">META &#10003;</span>` : ''}
+              </div>
+              <div style="display:flex;align-items:baseline;gap:4px;margin-bottom:8px">
+                <span style="font-size:26px;font-weight:800;color:${cumplida?'#22c55e':color}">${d.ejecutadas}</span>
+                <span style="font-size:13px;color:var(--text-4)">/ ${META_PAREJA} ejecutadas</span>
+              </div>
+              <div style="height:6px;border-radius:3px;background:var(--glass);overflow:hidden;margin-bottom:8px">
+                <div style="height:100%;width:${pct}%;background:${cumplida?'#22c55e':color};border-radius:3px"></div>
+              </div>
+              <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text-4)">
+                <span>${d.asignadas} asignadas</span>
+                <span style="color:#fbbf24;font-weight:700">${d.visitas} visita${d.visitas!==1?'s':''}</span>
+              </div>
+            </div>`;
+        }).join('')}
+      </div>
     </div>`;
 }
 
