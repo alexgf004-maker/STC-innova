@@ -5,7 +5,7 @@
  */
 
 import { auth, db } from './firebase.js';
-import { initRouter, navigateTo } from './router.js';
+import { initRouter, navigateTo, goBack, canGoBack } from './router.js';
 import { hashPin, generateSalt } from './crypto.js';
 import { toast as __appToast } from './ui.js';
 
@@ -13,7 +13,7 @@ const SESSION_KEY = 'innova_session';
 const LOGIN_PATH  = '/STC-innova/login.html';
 
 // Exponer navigateTo globalmente para los onclick de la navbar
-window.__router = { navigateTo };
+window.__router = { navigateTo, goBack, canGoBack };
 
 // ── Verificar sesión ──────────────────────────────
 const raw = localStorage.getItem(SESSION_KEY);
