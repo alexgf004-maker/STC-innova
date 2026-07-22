@@ -667,14 +667,22 @@ async function buscarContiguos() {
   if (!selected_) return;
   const o = ordenes_.find(x => x.id === selected_.ordenId);
   const p = o?.[selected_.nivel];
-  const nc = String(p?.nc || '').trim();
+  const nc = String(p?.nc ?? '').trim();
+  console.log('[contiguos] nivel:', selected_.nivel, '| punto:', p, '| nc buscado:', JSON.stringify(nc));
   if (!nc) { toast('Este punto no tiene NC', 'error'); return; }
 
   toast('Cargando base de contiguos…', 'ok');
   const ok = await cargarContiguosData();
   if (!ok) { toast('No se pudo cargar la base', 'error'); return; }
 
-  const pos = contiguosIndex_[nc];
+  let pos = contiguosIndex_[nc];
+  // Respaldo: si no está por clave directa, buscar comparando como texto
+  if (pos === undefined) {
+    console.log('[contiguos] no encontrado por índice, probando búsqueda lineal…');
+    pos = contiguosData_.findIndex(f => String(f[0]).trim() === nc);
+    if (pos < 0) pos = undefined;
+  }
+  console.log('[contiguos] posición encontrada:', pos);
   if (pos === undefined) { toast('NC no encontrado en la base', 'error'); return; }
 
   limpiarContiguos();
