@@ -25,6 +25,12 @@ const NAV_CONFIGS = {
     { id: 'mapa',    label: 'Mapa',    icon: 'map',  color: 'cm' },
     { id: 'bodega',  label: 'Bodega',  icon: 'box'  },
   ],
+  tecnico_caracterizacion: [
+    { id: 'home',                label: 'Inicio',  icon: 'home' },
+    { id: 'caracterizacion',     label: 'Órdenes', icon: 'list', color: 'cr' },
+    { id: 'caracterizacion_mapa',label: 'Mapa',    icon: 'map',  color: 'cr' },
+    { id: 'bodega',              label: 'Bodega',  icon: 'box'  },
+  ],
   tecnico_none: [
     { id: 'home', label: 'Inicio', icon: 'home' },
   ],
@@ -45,9 +51,10 @@ export function initRouter(session) {
 export async function navigateTo(tabId) {
   if (currentTab === tabId && tabId !== 'otc_mapa') return;
 
-  // 'cambios' vive bajo la pestaña 'areas' (admin/asistente no tienen
-  // pestaña propia de cambios). Mantener 'Áreas' resaltado al entrar.
-  const tabResaltado = (tabId === 'cambios') ? 'areas' : tabId;
+  // 'cambios' y 'caracterizacion' viven bajo la pestaña 'areas'
+  // (admin/asistente no tienen pestaña propia de cada área).
+  const bajoAreas = ['cambios','caracterizacion','caracterizacion_mapa'];
+  const tabResaltado = bajoAreas.includes(tabId) ? 'areas' : tabId;
   document.querySelectorAll('.nav-item').forEach(el => {
     el.classList.toggle('active', el.dataset.tab === tabResaltado);
   });
@@ -135,6 +142,7 @@ function buildNavbar(session) {
   let configKey = role;
   if (role === 'tecnico') {
     configKey = area === 'CAMBIOS' ? 'tecnico_cambios'
+              : area === 'Caracterizacion' ? 'tecnico_caracterizacion'
               : 'tecnico_none';
   }
 
