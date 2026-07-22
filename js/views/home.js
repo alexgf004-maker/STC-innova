@@ -18,7 +18,7 @@ export async function init(container, session) {
   if (role === 'tecnico') {
     __containerTec = container;
     if (!area) { renderNoAsignacion(container, session); }
-    else { renderHomeTecnico(container, session, area, destino); cargarDatosTecnico(session, area, destino); }
+    else { renderHomeTecnico(container, session, area, destino); if (area !== 'Reclamos') cargarDatosTecnico(session, area, destino); }
     cargarDespachosPendientesTecnico(session);
     return;
   }
@@ -444,12 +444,55 @@ function renderIndicadorCorte(sinActualizar) {
 }
 
 // ── Home Técnico ──────────────────────────────────
+function renderHomeReclamos(container, session) {
+  const hoy = new Date().toLocaleDateString('es-SV', { weekday:'long', day:'numeric', month:'long' });
+  const fechaLabel = hoy.charAt(0).toUpperCase() + hoy.slice(1);
+
+  container.innerHTML = `
+    <div class="flex-col gap-12" style="padding-top:4px">
+      <div class="welcome-card rc anim-up">
+        <div class="welcome-area-label">${fechaLabel}</div>
+        <div class="welcome-name">${session.displayName}</div>
+        <div class="welcome-role">Reclamos SIGET</div>
+      </div>
+
+      <div class="section-label anim-up d2">Accesos rápidos</div>
+      <div class="quick-grid anim-up d2">
+        <div class="quick-card" onclick="window.__router.navigateTo('reclamos')">
+          <div class="qc-icon" style="background:rgba(251,191,36,.15)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="#fbbf24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>
+            </svg>
+          </div>
+          <div class="qc-title">Mis órdenes</div>
+          <div class="qc-sub">Registrar y ver</div>
+        </div>
+
+        <div class="quick-card" onclick="window.__router.navigateTo('bodega')">
+          <div class="qc-icon" style="background:var(--purple-glass)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="var(--purple)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/>
+              <polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/>
+            </svg>
+          </div>
+          <div class="qc-title">Bodega</div>
+          <div class="qc-sub">Material</div>
+        </div>
+      </div>
+    </div>`;
+}
+
 function renderHomeTecnico(container, session, area, destino) {
+  // Reclamos SIGET: home simple (solo registro, sin panel de órdenes/pareja)
+  if (area === 'Reclamos') {
+    return renderHomeReclamos(container, session);
+  }
+
   const isCambios   = area === 'CAMBIOS';
   const isCaract    = area === 'Caracterizacion';
   const color       = isCambios ? 'cm' : isCaract ? 'cr' : 'otc';
-  const accentColor = isCambios ? '#2dd4bf' : isCaract ? '#a78bfa' : '#60a5fa';
-  const rgbAccent   = isCambios ? '13,148,136' : isCaract ? '124,92,214' : '37,99,235';
+  const accentColor = isCambios ? '#2dd4bf' : isCaract ? '#ef4444' : '#60a5fa';
+  const rgbAccent   = isCambios ? '13,148,136' : isCaract ? '239,68,68' : '37,99,235';
   const areaLabel   = CAMP_LABEL_HOME[area] || 'Órdenes de campo';
 
   const hoy = new Date().toLocaleDateString('es-SV', { weekday:'long', day:'numeric', month:'long' });
