@@ -167,14 +167,14 @@ export async function init(container, session) {
   esAdmin_ = (session.role === 'admin' || session.role === 'asistente');
   container.scrollTop = 0;
   container.innerHTML = `
-    <div style="padding:16px 16px 32px;max-width:1100px;margin:0 auto">
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:16px">
-        <div>
-          <div class="section-title">Caracterización de la Carga</div>
-          <div style="font-size:12px;color:var(--text-4);margin-top:2px">${esAdmin_ ? 'Órdenes del día' : 'Tus órdenes del día'}</div>
+    <div style="padding:4px 16px 32px;max-width:1100px;margin:0 auto">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:16px">
+        <div style="flex:1;min-width:0">
+          <div style="font-size:20px;font-weight:800;letter-spacing:-.01em;line-height:1.15">Caracterización de la Carga</div>
+          <div style="font-size:12px;color:var(--text-4);margin-top:3px">${esAdmin_ ? 'Órdenes del día' : 'Tus órdenes del día'}</div>
         </div>
         ${esAdmin_ ? `
-        <div style="display:flex;gap:8px">
+        <div style="display:flex;gap:8px;flex-shrink:0">
           <button class="icon-btn" id="crc-excel" title="Descargar Excel de trazabilidad">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
           </button>
@@ -186,7 +186,7 @@ export async function init(container, session) {
           </button>
         </div>
         <input type="file" id="crc-file" accept=".xlsx,.xls" style="display:none"/>` : `
-        <button class="icon-btn" id="crc-mapa-tec" title="Ver mapa">
+        <button class="icon-btn" id="crc-mapa-tec" title="Ver mapa" style="flex-shrink:0">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg>
         </button>`}
       </div>
