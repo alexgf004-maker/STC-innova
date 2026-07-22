@@ -40,6 +40,14 @@ export async function init(container, session) {
   session_ = session;
   role_ = session.role;
   esAdmin_ = (session.role === 'admin' || session.role === 'asistente');
+
+  // Animación del anillo de pulso (una sola vez)
+  if (!document.getElementById('crc-pulso-css')) {
+    const st = document.createElement('style');
+    st.id = 'crc-pulso-css';
+    st.textContent = '@keyframes crc-pulso{0%{transform:scale(.8);opacity:.5}100%{transform:scale(1.8);opacity:0}}';
+    document.head.appendChild(st);
+  }
   container.scrollTop = 0;
   container.innerHTML = `
     <div style="position:fixed;top:var(--topbar-h,62px);left:0;right:0;bottom:var(--navbar-h,72px);z-index:1">
@@ -91,9 +99,16 @@ export function cleanup() {
 
 async function cargarOrdenes() {
   try {
-    // El técnico ve las órdenes de su pareja/asignación; por ahora todas las pendientes
     const snap = await db.collection('caracterizacion_ordenes').get();
-    ordenes_ = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    let todas = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+    // El técnico ve SOLO las órdenes de su pareja. El admin ve todas.
+    if (!esAdmin_) {
+      const miPareja = session_.asignacionActual?.destino || null;
+      if (miPareja) todas = todas.filter(o => o.pareja === miPareja);
+      else todas = [];   // sin pareja asignada, no ve nada (evita el desorden)
+    }
+    ordenes_ = todas;
   } catch (err) {
     toast('Error cargando órdenes: ' + err.message, 'error');
     ordenes_ = [];
@@ -161,7 +176,9 @@ function pintarOrden(o) {
     const p = o[k];
     if (!p || p.lat == null) continue;
     const activo = (i === idx);
-    const m = crearMarcador(p, NIVEL_COLOR[k], String(i === 0 ? 'T' : i), activo);
+    // El suplente recién revelado (nivel activo que no es el titular) se destaca con pulso
+    const destacar = activo && i > 0;
+    const m = crearMarcador(p, NIVEL_COLOR[k], String(i === 0 ? 'T' : i), activo, destacar);
     m.on('click', () => abrirDetalle(o.id, k));
     m.addTo(map_); markers_[o.id][k] = m;
   }
@@ -181,11 +198,14 @@ function colorPareja(pareja) {
   return PALETA_PAREJA[(n - 1) % PALETA_PAREJA.length] || '#94a3b8';
 }
 
-function crearMarcador(p, color, texto, activo) {
+function crearMarcador(p, color, texto, activo, destacar) {
   const size = activo ? 20 : 14;
+  const anillo = destacar
+    ? `<div style="position:absolute;inset:-8px;border-radius:50%;background:${color};opacity:.35;animation:crc-pulso 1.4s ease-out infinite"></div>`
+    : '';
   const icon = L.divIcon({
     className: '',
-    html: `<div style="width:${size}px;height:${size}px;background:${color};border:2px solid rgba(255,255,255,.85);border-radius:50%;box-shadow:0 2px 6px rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;font-size:${activo?11:9}px;font-weight:800;color:#0a1628;line-height:1">${texto || ''}</div>`,
+    html: `<div style="position:relative;display:flex;align-items:center;justify-content:center">${anillo}<div style="position:relative;width:${size}px;height:${size}px;background:${color};border:2px solid rgba(255,255,255,.9);border-radius:50%;box-shadow:0 2px 6px rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;font-size:${activo?11:9}px;font-weight:800;color:#0a1628;line-height:1">${texto || ''}</div></div>`,
     iconSize: [size, size], iconAnchor: [size/2, size/2],
   });
   return L.marker([p.lat, p.lng], { icon });
@@ -301,6 +321,11 @@ async function marcarNoPude(ordenId, nivel) {
 function updateStat() {
   const el = container_.querySelector('#crc-map-stat');
   if (!el) return;
+  if (!esAdmin_ && !ordenes_.length) {
+    const miPareja = session_.asignacionActual?.destino;
+    el.textContent = miPareja ? `Sin órdenes para ${miPareja}` : 'Sin pareja asignada';
+    return;
+  }
   const total = ordenes_.length;
   const hechas = ordenes_.filter(o => o.estado === 'hecha').length;
   const pend = ordenes_.filter(o => o.estado !== 'hecha' && o.estado !== 'no_hecha').length;
