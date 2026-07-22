@@ -8,7 +8,7 @@ import { db, auth, SEED } from '../firebase.js';
 import { hashPin, derivePassword, generateSalt } from '../crypto.js';
 import { toast } from '../ui.js';
 
-const AREAS    = ['CAMBIOS', 'Caracterizacion'];
+const AREAS    = ['CAMBIOS', 'Caracterizacion', 'Reclamos'];
 const DESTINOS = {
   CAMBIOS: ['Pareja 1', 'Pareja 2', 'Pareja 3', 'Pareja 4'],
   Caracterizacion: ['Pareja 1', 'Pareja 2', 'Pareja 3'],
@@ -112,6 +112,7 @@ function renderShell() {
             <div class="select-row" id="asig-area-row">
               <div class="select-chip" data-val="CAMBIOS">Cambios</div>
               <div class="select-chip" data-val="Caracterizacion">Caracterización</div>
+              <div class="select-chip" data-val="Reclamos">Reclamos SIGET</div>
               <div class="select-chip" data-val="null">Sin asignación</div>
             </div>
           </div>
@@ -419,6 +420,12 @@ function updateDestinoRow(area, selectedDestino = null) {
     return;
   }
 
+  // Reclamos SIGET no usa destino (el técnico solo registra lo suyo)
+  if (area === 'Reclamos') {
+    wrap.style.display = 'none';
+    return;
+  }
+
   wrap.style.display = '';
   label.textContent = (area === 'CAMBIOS' || area === 'Caracterizacion') ? 'Pareja' : 'Supervisor';
 
@@ -438,7 +445,7 @@ async function guardarAsignacion() {
     showFormError('asig-error', 'Selecciona un área.');
     return;
   }
-  if (area !== 'null' && !destino) {
+  if (area !== 'null' && area !== 'Reclamos' && !destino) {
     showFormError('asig-error', (area === 'CAMBIOS' || area === 'Caracterizacion') ? 'Selecciona una pareja.' : 'Selecciona un supervisor.');
     return;
   }
