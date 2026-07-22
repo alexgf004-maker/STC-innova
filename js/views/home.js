@@ -526,12 +526,12 @@ function renderHomeTecnico(container, session, area, destino) {
 
       <!-- Stats -->
       <div class="stat-row anim-up d2">
-        <div class="stat-chip ${color}-accent">
-          <div class="val" id="stat-pendientes">—</div>
+        <div class="stat-chip" style="border-color:rgba(245,158,11,.25);background:rgba(245,158,11,.06)">
+          <div class="val" id="stat-pendientes" style="color:#fbbf24">—</div>
           <div class="lbl">Pendientes</div>
         </div>
-        <div class="stat-chip ${color}-accent">
-          <div class="val" id="stat-hechas">—</div>
+        <div class="stat-chip" style="border-color:rgba(34,197,94,.25);background:rgba(34,197,94,.06)">
+          <div class="val" id="stat-hechas" style="color:#22c55e">—</div>
           <div class="lbl">Confirmadas</div>
         </div>
         <div class="stat-chip">
