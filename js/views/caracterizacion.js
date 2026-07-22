@@ -175,6 +175,9 @@ export async function init(container, session) {
         </div>
         ${esAdmin_ ? `
         <div style="display:flex;gap:8px">
+          <button class="icon-btn" id="crc-excel" title="Descargar Excel de trazabilidad">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          </button>
           <button class="icon-btn" id="crc-mapa" title="Mapa y asignación de zonas">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg>
           </button>
@@ -196,6 +199,7 @@ export async function init(container, session) {
     const fileInput = container.querySelector('#crc-file');
     container.querySelector('#crc-cargar').onclick = () => fileInput.click();
     container.querySelector('#crc-mapa').onclick = () => window.__router.navigateTo('caracterizacion_mapa');
+    container.querySelector('#crc-excel').onclick = abrirDescargaExcel;
     fileInput.onchange = (e) => manejarArchivo(e.target.files[0]);
     cargarPadron().catch(()=>{});
   } else {
@@ -456,4 +460,140 @@ function mostrarPrevisualizacion(ordenes, avisos, choques = []) {
       toast('Error al guardar: ' + err.message, 'error');
     }
   };
+}
+
+// ══════════════════════════════════════════════════════════════
+//  DESCARGA DE EXCEL — trazabilidad por día (admin/asistente)
+// ══════════════════════════════════════════════════════════════
+
+// Convierte importadaEn (Timestamp) a una clave de día YYYY-MM-DD local
+function claveDia(ts) {
+  if (!ts) return null;
+  const d = ts.toDate ? ts.toDate() : new Date(ts);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${dd}`;
+}
+
+function etiquetaDia(clave) {
+  const [y, m, d] = clave.split('-').map(Number);
+  const fecha = new Date(y, m - 1, d);
+  const hoy = new Date(); hoy.setHours(0,0,0,0);
+  const ayer = new Date(hoy); ayer.setDate(ayer.getDate() - 1);
+  const meses = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+  let prefijo = '';
+  if (fecha.getTime() === hoy.getTime()) prefijo = 'Hoy · ';
+  else if (fecha.getTime() === ayer.getTime()) prefijo = 'Ayer · ';
+  return `${prefijo}${d} ${meses[m-1]} ${y}`;
+}
+
+function abrirDescargaExcel() {
+  // Agrupar las órdenes por día de carga
+  const porDia = {};
+  for (const o of ordenes_) {
+    const k = claveDia(o.importadaEn);
+    if (!k) continue;
+    if (!porDia[k]) porDia[k] = [];
+    porDia[k].push(o);
+  }
+  const dias = Object.keys(porDia).sort().reverse();  // más reciente primero
+
+  let modal = document.getElementById('crc-excel-modal');
+  if (modal) modal.remove();
+  modal = document.createElement('div');
+  modal.id = 'crc-excel-modal';
+  modal.style.cssText = 'position:fixed;inset:0;z-index:2000;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;padding:20px';
+
+  if (!dias.length) {
+    modal.innerHTML = `<div style="background:#0d1117;border:1px solid var(--border);border-radius:16px;padding:24px;max-width:360px;width:100%;text-align:center">
+      <div style="font-size:14px;color:var(--text-3);margin-bottom:16px">No hay órdenes con fecha de carga para exportar.</div>
+      <button id="crc-excel-cerrar" style="padding:10px 20px;border-radius:10px;border:1px solid var(--border);background:var(--glass);color:var(--text-2);font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">Cerrar</button>
+    </div>`;
+  } else {
+    modal.innerHTML = `<div style="background:#0d1117;border:1px solid var(--border);border-radius:16px;padding:20px;max-width:380px;width:100%;max-height:80vh;overflow-y:auto">
+      <div style="font-size:16px;font-weight:800;margin-bottom:4px">Descargar trazabilidad</div>
+      <div style="font-size:12px;color:var(--text-4);margin-bottom:16px">Elige el día a exportar</div>
+      <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px">
+        ${dias.map(k => {
+          const arr = porDia[k];
+          const hechas = arr.filter(o => o.estado === 'por_confirmar' || o.estado === 'confirmada').length;
+          return `<button class="crc-dia-btn" data-dia="${k}" style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:13px 15px;border-radius:12px;border:1px solid var(--border);background:var(--glass);color:var(--text-2);cursor:pointer;font-family:inherit;text-align:left">
+            <div>
+              <div style="font-size:13px;font-weight:700">${etiquetaDia(k)}</div>
+              <div style="font-size:10px;color:var(--text-4);margin-top:2px">${arr.length} órdenes · ${hechas} hechas</div>
+            </div>
+            <svg viewBox="0 0 24 24" fill="none" stroke="#a78bfa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          </button>`;
+        }).join('')}
+      </div>
+      <button id="crc-excel-cerrar" style="width:100%;padding:11px;border-radius:10px;border:1px solid var(--border);background:transparent;color:var(--text-4);font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">Cancelar</button>
+    </div>`;
+  }
+
+  document.body.appendChild(modal);
+  modal.querySelector('#crc-excel-cerrar').onclick = () => modal.remove();
+  modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
+  modal.querySelectorAll('.crc-dia-btn').forEach(btn => {
+    btn.onclick = () => { generarExcelDia(btn.dataset.dia, porDia[btn.dataset.dia]); modal.remove(); };
+  });
+}
+
+function fmtFechaHora(ts) {
+  if (!ts) return '';
+  const d = ts.toDate ? ts.toDate() : new Date(ts);
+  const p = n => String(n).padStart(2, '0');
+  return `${p(d.getDate())}/${p(d.getMonth()+1)}/${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+const ESTADO_LABEL = { pendiente:'Pendiente', por_confirmar:'Por confirmar', confirmada:'Confirmada' };
+const PUNTO_LABEL = { titular:'Titular', suplente1:'Suplente 1', suplente2:'Suplente 2' };
+
+function generarExcelDia(clave, ordenes) {
+  try {
+    const filas = ordenes.map(o => {
+      const t = o.titular || {};
+      const s1 = o.suplente1 || {};
+      const s2 = o.suplente2 || {};
+      const visitas = Array.isArray(o.visitas) ? o.visitas : [];
+      return {
+        'NC Titular': o.ncTitular || '',
+        'Nombre Titular': t.nombre || '',
+        'Dirección': t.direccion || '',
+        'DS': t.ds || '',
+        'Medidor': t.medidor || '',
+        'NC Suplente 1': s1.nc || '',
+        'Nombre Suplente 1': s1.nombre || '',
+        'NC Suplente 2': s2.nc || '',
+        'Nombre Suplente 2': s2.nombre || '',
+        'Pareja': o.pareja || 'Sin asignar',
+        'Estado': ESTADO_LABEL[o.estado] || 'Pendiente',
+        'Hecha en': o.logranoEn ? PUNTO_LABEL[o.logranoEn] : (o.estado && o.estado !== 'pendiente' ? 'Sin lograr' : ''),
+        'Visitas (cantidad)': visitas.length,
+        'Visitas (puntos)': visitas.map(v => PUNTO_LABEL[v]).join(', '),
+        'Marcada por': o.hechaPor || '',
+        'Fecha marcada': fmtFechaHora(o.fechaHecha),
+        'Confirmada por': o.confirmadaPor || '',
+        'Fecha confirmada': fmtFechaHora(o.fechaConfirmacion),
+        'Cargada': fmtFechaHora(o.importadaEn),
+      };
+    });
+
+    const headers = Object.keys(filas[0] || {
+      'NC Titular':'','Nombre Titular':'','Dirección':'','DS':'','Medidor':'',
+      'NC Suplente 1':'','Nombre Suplente 1':'','NC Suplente 2':'','Nombre Suplente 2':'',
+      'Pareja':'','Estado':'','Hecha en':'','Visitas (cantidad)':'','Visitas (puntos)':'',
+      'Marcada por':'','Fecha marcada':'','Confirmada por':'','Fecha confirmada':'','Cargada':''
+    });
+
+    const ws = XLSX.utils.json_to_sheet(filas, { header: headers });
+    // Anchos de columna cómodos
+    ws['!cols'] = headers.map(h => ({ wch: Math.max(12, Math.min(34, h.length + 4)) }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Caracterización');
+    XLSX.writeFile(wb, `Caracterizacion_${clave}.xlsx`);
+    toast(`Excel de ${etiquetaDia(clave)} descargado`, 'ok');
+  } catch (err) {
+    toast('Error al generar el Excel: ' + err.message, 'error');
+  }
 }
