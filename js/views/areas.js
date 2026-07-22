@@ -29,6 +29,14 @@ const AREAS_DISPONIBLES = [
     color: '#a78bfa',
     icon: '<circle cx="12" cy="10" r="3"/><path d="M12 2a8 8 0 00-8 8c0 5.4 8 12 8 12s8-6.6 8-12a8 8 0 00-8-8z"/>',
   },
+  {
+    id: 'reclamos',
+    tab: 'reclamos',
+    label: 'Reclamos SIGET',
+    sub: 'Bitácora de órdenes realizadas',
+    color: '#f59e0b',
+    icon: '<path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/>',
+  },
 ];
 
 export function init(container, session) {
