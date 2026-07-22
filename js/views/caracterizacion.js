@@ -52,7 +52,7 @@ function puntoDesdePadron(nc) {
   };
 }
 
-// ── Importar el Excel del día de DELSUR ──
+// ── Importar el excel del día de DELSUR ──
 // Devuelve { ordenes, avisos } sin guardar todavía (para previsualizar).
 function construirOrdenesDesdeExcel(rows) {
   // rows: array de objetos (sheet_to_json con headers de la hoja "Información Clientes")
