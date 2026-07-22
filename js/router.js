@@ -9,13 +9,13 @@ import { getNavIcon } from './ui.js';
 const NAV_CONFIGS = {
   admin: [
     { id: 'home',     label: 'Dashboard', icon: 'home' },
-    { id: 'cambios',  label: 'Cambios',   icon: 'zap',   color: 'cm'  },
+    { id: 'areas',    label: 'Áreas',     icon: 'zap',   color: 'cm'  },
     { id: 'bodega',   label: 'Bodega',    icon: 'box'  },
     { id: 'usuarios', label: 'Usuarios',  icon: 'users' },
   ],
   asistente: [
     { id: 'home',     label: 'Dashboard', icon: 'home' },
-    { id: 'cambios',  label: 'Cambios',   icon: 'zap',   color: 'cm'  },
+    { id: 'areas',    label: 'Áreas',     icon: 'zap',   color: 'cm'  },
     { id: 'bodega',   label: 'Bodega',    icon: 'box'  },
     { id: 'usuarios', label: 'Usuarios',  icon: 'users' },
   ],
@@ -45,8 +45,11 @@ export function initRouter(session) {
 export async function navigateTo(tabId) {
   if (currentTab === tabId && tabId !== 'otc_mapa') return;
 
+  // 'cambios' vive bajo la pestaña 'areas' (admin/asistente no tienen
+  // pestaña propia de cambios). Mantener 'Áreas' resaltado al entrar.
+  const tabResaltado = (tabId === 'cambios') ? 'areas' : tabId;
   document.querySelectorAll('.nav-item').forEach(el => {
-    el.classList.toggle('active', el.dataset.tab === tabId);
+    el.classList.toggle('active', el.dataset.tab === tabResaltado);
   });
 
   // otc_mapa — renderiza mapa OTC directamente
