@@ -1,3 +1,4 @@
+
 /**
  * js/views/caracterizacion.js
  * Área de Caracterización de la Carga.
@@ -165,7 +166,7 @@ export async function init(container, session) {
   session_ = session;
   container.scrollTop = 0;
   container.innerHTML = `
-    <div style="padding:16px 16px 32px;max-width:560px;margin:0 auto">
+    <div style="padding:16px 16px 32px;max-width:1100px;margin:0 auto">
       <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:16px">
         <div>
           <div class="section-title">Caracterización de la Carga</div>
@@ -256,7 +257,7 @@ function renderLista() {
       <div style="flex:1;height:1px;background:var(--border)"></div>
       <div style="font-size:11px;color:var(--text-4)">${arr.length}</div>
     </div>
-    <div class="flex-col gap-8">${arr.map(tarjetaOrden).join('')}</div>` : '';
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:10px">${arr.map(tarjetaOrden).join('')}</div>` : '';
 
   el.innerHTML = seccion('Pendientes', pend, '#fbbf24')
                + seccion('Hechas', hechas, '#22c55e')
