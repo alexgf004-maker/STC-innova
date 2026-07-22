@@ -21,6 +21,7 @@ const PADRON_URL = '/STC-innova/caracterizacion_padron.json';
 
 let session_   = null;
 let container_ = null;
+let esAdmin_   = false;
 let padron_    = null;   // { NC: {nc,nombre,direccion,ds,medidor,lat,lng,sup1?,sup2?} }
 let ordenes_   = [];
 
@@ -163,14 +164,16 @@ async function guardarOrdenes(ordenes) {
 export async function init(container, session) {
   container_ = container;
   session_ = session;
+  esAdmin_ = (session.role === 'admin' || session.role === 'asistente');
   container.scrollTop = 0;
   container.innerHTML = `
     <div style="padding:16px 16px 32px;max-width:1100px;margin:0 auto">
       <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:16px">
         <div>
           <div class="section-title">Caracterización de la Carga</div>
-          <div style="font-size:12px;color:var(--text-4);margin-top:2px">Órdenes del día</div>
+          <div style="font-size:12px;color:var(--text-4);margin-top:2px">${esAdmin_ ? 'Órdenes del día' : 'Tus órdenes del día'}</div>
         </div>
+        ${esAdmin_ ? `
         <div style="display:flex;gap:8px">
           <button class="icon-btn" id="crc-mapa" title="Mapa y asignación de zonas">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg>
@@ -179,30 +182,42 @@ export async function init(container, session) {
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
           </button>
         </div>
-        <input type="file" id="crc-file" accept=".xlsx,.xls" style="display:none"/>
+        <input type="file" id="crc-file" accept=".xlsx,.xls" style="display:none"/>` : `
+        <button class="icon-btn" id="crc-mapa-tec" title="Ver mapa">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg>
+        </button>`}
       </div>
       <div id="crc-resumen"></div>
       <div id="crc-lista"></div>
       <div id="crc-estado"></div>
     </div>`;
 
-  const fileInput = container.querySelector('#crc-file');
-  container.querySelector('#crc-cargar').onclick = () => fileInput.click();
-  container.querySelector('#crc-mapa').onclick = () => window.__router.navigateTo('caracterizacion_mapa');
-  fileInput.onchange = (e) => manejarArchivo(e.target.files[0]);
+  if (esAdmin_) {
+    const fileInput = container.querySelector('#crc-file');
+    container.querySelector('#crc-cargar').onclick = () => fileInput.click();
+    container.querySelector('#crc-mapa').onclick = () => window.__router.navigateTo('caracterizacion_mapa');
+    fileInput.onchange = (e) => manejarArchivo(e.target.files[0]);
+    cargarPadron().catch(()=>{});
+  } else {
+    container.querySelector('#crc-mapa-tec').onclick = () => window.__router.navigateTo('caracterizacion_mapa');
+  }
 
-  cargarPadron().catch(()=>{});   // precargar en segundo plano
   await cargarOrdenes();
 }
 
 // ── Cargar y renderizar las órdenes del día ──
 async function cargarOrdenes() {
   const lista = container_.querySelector('#crc-lista');
-  const resumen = container_.querySelector('#crc-resumen');
   if (lista) lista.innerHTML = `<div style="text-align:center;padding:24px"><div class="spinner" style="margin:0 auto 8px"></div><div style="font-size:12px;color:var(--text-4)">Cargando órdenes…</div></div>`;
   try {
     const snap = await db.collection('caracterizacion_ordenes').get();
-    ordenes_ = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    let todas = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    // El técnico ve SOLO las órdenes de su pareja
+    if (!esAdmin_) {
+      const miPareja = session_.asignacionActual?.destino || null;
+      todas = miPareja ? todas.filter(o => o.pareja === miPareja) : [];
+    }
+    ordenes_ = todas;
     renderResumen();
     renderLista();
   } catch (err) {
@@ -223,10 +238,10 @@ function renderResumen() {
   const totalVisitas = ordenes_.reduce((s, o) => s + (Array.isArray(o.visitas) ? o.visitas.length : 0), 0);
 
   el.innerHTML = `
-    ${panelParejas()}
+    ${esAdmin_ ? panelParejas() : ''}
     <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:16px">
       <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px">
-        <div style="font-size:13px;font-weight:700">Avance del día</div>
+        <div style="font-size:13px;font-weight:700">${esAdmin_ ? 'Avance del día' : 'Tu avance del día'}</div>
         <div style="font-size:12px;color:var(--text-4)">${listas} de ${total} · ${pct}%</div>
       </div>
       <div style="height:8px;border-radius:4px;background:var(--glass);overflow:hidden;margin-bottom:12px">
@@ -361,7 +376,7 @@ function tarjetaOrden(o) {
           ${visitas.length ? `<span>· <span style="color:#fbbf24;font-weight:700">${visitas.length} visita${visitas.length>1?'s':''}</span> (${visitas.map(v=>LOGRO_LABEL[v]).join(', ')})</span>` : ''}
           ${o.pareja ? `<span>· ${o.pareja}</span>` : ''}
         </div>` : ''}
-      ${porConfirmar ? `<button data-confirmar="${o.id}" style="width:100%;margin-top:10px;padding:9px;border-radius:10px;border:none;background:#22c55e;color:#0a1628;font-size:12px;font-weight:800;cursor:pointer;font-family:inherit">Confirmar orden</button>` : ''}
+      ${(porConfirmar && esAdmin_) ? `<button data-confirmar="${o.id}" style="width:100%;margin-top:10px;padding:9px;border-radius:10px;border:none;background:#22c55e;color:#0a1628;font-size:12px;font-weight:800;cursor:pointer;font-family:inherit">Confirmar orden</button>` : ''}
     </div>`;
 }
 
