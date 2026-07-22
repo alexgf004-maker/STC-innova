@@ -147,25 +147,122 @@ export async function init(container, session) {
   session_ = session;
   container.scrollTop = 0;
   container.innerHTML = `
-    <div style="padding:20px 16px;max-width:520px;margin:0 auto">
-      <div style="margin-bottom:16px">
-        <div class="section-title">Caracterización de la Carga</div>
-        <div style="font-size:12px;color:var(--text-4);margin-top:2px">Carga del día · cruce automático de suplentes</div>
+    <div style="padding:16px 16px 32px;max-width:560px;margin:0 auto">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:16px">
+        <div>
+          <div class="section-title">Caracterización de la Carga</div>
+          <div style="font-size:12px;color:var(--text-4);margin-top:2px">Órdenes del día</div>
+        </div>
+        <button class="icon-btn" id="crc-cargar" title="Cargar órdenes del día">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        </button>
+        <input type="file" id="crc-file" accept=".xlsx,.xls" style="display:none"/>
       </div>
-      <button class="btn-primary full" id="crc-cargar">Cargar órdenes del día (Excel de DELSUR)</button>
-      <input type="file" id="crc-file" accept=".xlsx,.xls" style="display:none"/>
-      <div id="crc-estado" style="margin-top:16px"></div>
+      <div id="crc-resumen"></div>
+      <div id="crc-lista"></div>
+      <div id="crc-estado"></div>
     </div>`;
 
   const fileInput = container.querySelector('#crc-file');
   container.querySelector('#crc-cargar').onclick = () => fileInput.click();
   fileInput.onchange = (e) => manejarArchivo(e.target.files[0]);
 
-  // Precargar el padrón en segundo plano
-  cargarPadron().catch(err => {
-    const est = container.querySelector('#crc-estado');
-    if (est) est.innerHTML = `<div style="color:#ef4444;font-size:12px">No se pudo cargar el padrón base: ${err.message}</div>`;
-  });
+  cargarPadron().catch(()=>{});   // precargar en segundo plano
+  await cargarOrdenes();
+}
+
+// ── Cargar y renderizar las órdenes del día ──
+async function cargarOrdenes() {
+  const lista = container_.querySelector('#crc-lista');
+  const resumen = container_.querySelector('#crc-resumen');
+  if (lista) lista.innerHTML = `<div style="text-align:center;padding:24px"><div class="spinner" style="margin:0 auto 8px"></div><div style="font-size:12px;color:var(--text-4)">Cargando órdenes…</div></div>`;
+  try {
+    const snap = await db.collection('caracterizacion_ordenes').get();
+    ordenes_ = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    renderResumen();
+    renderLista();
+  } catch (err) {
+    if (lista) lista.innerHTML = `<div style="color:#ef4444;font-size:12px;padding:16px">Error cargando órdenes: ${err.message}</div>`;
+  }
+}
+
+function renderResumen() {
+  const el = container_.querySelector('#crc-resumen');
+  if (!el) return;
+  const total = ordenes_.length;
+  if (!total) { el.innerHTML = ''; return; }
+  const hechas    = ordenes_.filter(o => o.estado === 'hecha').length;
+  const noHechas  = ordenes_.filter(o => o.estado === 'no_hecha').length;
+  const pend      = total - hechas - noHechas;
+  const pct = total ? Math.round((hechas / total) * 100) : 0;
+  el.innerHTML = `
+    <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:16px">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px">
+        <div style="font-size:13px;font-weight:700">Avance del día</div>
+        <div style="font-size:12px;color:var(--text-4)">${hechas} de ${total} · ${pct}%</div>
+      </div>
+      <div style="height:8px;border-radius:4px;background:var(--glass);overflow:hidden;margin-bottom:12px">
+        <div style="height:100%;width:${pct}%;background:#a78bfa;border-radius:4px"></div>
+      </div>
+      <div style="display:flex;gap:8px">
+        <div style="flex:1;text-align:center"><div style="font-size:18px;font-weight:800;color:#fbbf24">${pend}</div><div style="font-size:10px;color:var(--text-4)">Pendientes</div></div>
+        <div style="flex:1;text-align:center"><div style="font-size:18px;font-weight:800;color:#22c55e">${hechas}</div><div style="font-size:10px;color:var(--text-4)">Hechas</div></div>
+        <div style="flex:1;text-align:center"><div style="font-size:18px;font-weight:800;color:#ef4444">${noHechas}</div><div style="font-size:10px;color:var(--text-4)">No hechas</div></div>
+      </div>
+    </div>`;
+}
+
+const LOGRO_LABEL = { titular:'Titular', suplente1:'Suplente 1', suplente2:'Suplente 2' };
+
+function renderLista() {
+  const el = container_.querySelector('#crc-lista');
+  if (!el) return;
+  if (!ordenes_.length) {
+    el.innerHTML = `<div style="text-align:center;padding:32px 16px;color:var(--text-4);font-size:13px">No hay órdenes cargadas.<br>Usa el botón de arriba para cargar el Excel del día.</div>`;
+    return;
+  }
+
+  const pend = ordenes_.filter(o => o.estado !== 'hecha' && o.estado !== 'no_hecha');
+  const hechas = ordenes_.filter(o => o.estado === 'hecha');
+  const noHechas = ordenes_.filter(o => o.estado === 'no_hecha');
+
+  const seccion = (titulo, arr, color) => arr.length ? `
+    <div style="margin-bottom:6px;margin-top:14px;display:flex;align-items:center;gap:8px">
+      <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:${color}">${titulo}</div>
+      <div style="flex:1;height:1px;background:var(--border)"></div>
+      <div style="font-size:11px;color:var(--text-4)">${arr.length}</div>
+    </div>
+    <div class="flex-col gap-8">${arr.map(tarjetaOrden).join('')}</div>` : '';
+
+  el.innerHTML = seccion('Pendientes', pend, '#fbbf24')
+               + seccion('Hechas', hechas, '#22c55e')
+               + seccion('No hechas', noHechas, '#ef4444');
+}
+
+function tarjetaOrden(o) {
+  const t = o.titular || {};
+  const puntos = [
+    o.titular   ? 'Titular' : null,
+    o.suplente1 ? 'Sup 1' : null,
+    o.suplente2 ? 'Sup 2' : null,
+  ].filter(Boolean);
+  const hecha = o.estado === 'hecha';
+  const noHecha = o.estado === 'no_hecha';
+  const acento = hecha ? '#22c55e' : noHecha ? '#ef4444' : '#a78bfa';
+
+  return `
+    <div style="background:var(--bg-card);border:1px solid var(--border);border-left:3px solid ${acento};border-radius:12px;padding:13px">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+        <div style="flex:1;min-width:0">
+          <div style="font-size:13px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${t.nombre || o.ncTitular || '—'}</div>
+          <div style="font-size:10px;color:var(--text-4);margin-top:1px">NC ${o.ncTitular}${t.direccion ? ' · ' + t.direccion.split(',')[0] : ''}</div>
+        </div>
+        ${hecha ? `<div style="font-size:10px;font-weight:700;color:#22c55e;background:rgba(34,197,94,.12);border:1px solid rgba(34,197,94,.3);padding:3px 9px;border-radius:12px;white-space:nowrap">${LOGRO_LABEL[o.logranoEn] || 'Hecha'}</div>`
+          : noHecha ? `<div style="font-size:10px;font-weight:700;color:#ef4444;background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);padding:3px 9px;border-radius:12px">No hecha</div>`
+          : `<div style="font-size:10px;color:var(--text-4);background:var(--glass);border:1px solid var(--border);padding:3px 9px;border-radius:12px">${puntos.length} punto${puntos.length>1?'s':''}</div>`}
+      </div>
+      ${(hecha && o.pareja) ? `<div style="font-size:10px;color:var(--text-4);margin-top:7px">Realizada por ${o.pareja}</div>` : ''}
+    </div>`;
 }
 
 async function manejarArchivo(file) {
@@ -216,7 +313,8 @@ function mostrarPrevisualizacion(ordenes, avisos) {
     try {
       const { creadas, omitidas } = await guardarOrdenes(ordenes);
       toast(`${creadas} órdenes cargadas${omitidas ? ` · ${omitidas} ya existían` : ''}`, 'ok');
-      est.innerHTML = `<div style="text-align:center;padding:20px;color:#22c55e;font-size:13px;font-weight:700">${creadas} órdenes del día cargadas</div>`;
+      est.innerHTML = '';
+      await cargarOrdenes();
     } catch (err) {
       btn.disabled = false;
       container_.querySelector('#crc-confirmar-lbl').textContent = 'Reintentar';
