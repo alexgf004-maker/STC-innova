@@ -47,7 +47,7 @@ export async function init(container, session) {
     st.id = 'crc-pulso-css';
     st.textContent = `
       @keyframes crc-pulso{0%{transform:scale(.8);opacity:.5}100%{transform:scale(1.8);opacity:0}}
-      .crc-hoja{position:fixed;left:0;right:0;bottom:0;z-index:1200;transform:translateY(calc(100% + 120px));transition:transform .25s ease;background:#0d1117;border-top:1px solid var(--border);border-radius:20px 20px 0 0;padding:18px 20px 26px;max-height:70vh;overflow-y:auto}
+      .crc-hoja{position:fixed;left:0;right:0;bottom:0;z-index:1200;transform:translateY(calc(100% + 120px));transition:transform .25s ease;background:#0d1117;border-top:1px solid var(--border);border-radius:20px 20px 0 0;padding:18px 20px calc(var(--navbar-h,72px) + 26px);max-height:calc(85vh - var(--navbar-h,72px));overflow-y:auto}
       .crc-hoja.abierta{transform:translateY(0)}
       @media (min-width:820px){
         .crc-hoja{left:auto;right:16px;bottom:auto;top:80px;width:340px;max-height:calc(100vh - 160px);border:1px solid var(--border);border-radius:16px;transform:translateX(calc(100% + 40px));box-shadow:0 8px 40px rgba(0,0,0,.5)}
@@ -141,6 +141,21 @@ function initMap() {
   // Pintar solo los titulares al inicio (cascada)
   ordenes_.forEach(o => pintarOrden(o));
   updateStat();
+
+  // Tocar el mapa (fuera de un marcador) cierra cualquier hoja abierta,
+  // salvo cuando se está dibujando una zona.
+  map_.on('click', () => {
+    if (puntos_ && puntos_.length) return;   // dibujando zona: no cerrar
+    cerrarTodasLasHojas();
+  });
+}
+
+function cerrarTodasLasHojas() {
+  const s1 = container_.querySelector('#crc-sheet');
+  const s2 = container_.querySelector('#crc-sheet-zona');
+  if (s1) s1.classList.remove('abierta');
+  if (s2) s2.classList.remove('abierta');
+  selected_ = null;
 }
 
 // Pinta una orden según su estado. Muestra el titular; si la orden ya
