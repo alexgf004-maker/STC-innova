@@ -311,15 +311,25 @@ async function cargarDatosTecnico(session, area, destino) {
     }
 
     // Órdenes de la pareja
-    const col = area === 'CAMBIOS' ? 'cambios_ordenes' : 'otc_ordenes';
-    const campo = area === 'CAMBIOS' ? 'pareja' : 'tecnicoDestino';
+    const col = area === 'CAMBIOS' ? 'cambios_ordenes'
+              : area === 'Caracterizacion' ? 'caracterizacion_ordenes'
+              : 'otc_ordenes';
+    const campo = (area === 'CAMBIOS' || area === 'Caracterizacion') ? 'pareja' : 'tecnicoDestino';
     const snap = await db.collection(col).where(campo, '==', destino).get();
     const ordenes = snap.docs.map(d => ({ id: d.id, ...d.data() }));
 
-    const total      = ordenes.length;
-    const aprobadas  = ordenes.filter(o => o.estadoCampo === 'aprobada').length;
-    const pendientes = ordenes.filter(o => !o.estadoCampo).length;
-    const pct        = total ? Math.round((aprobadas / total) * 100) : 0;
+    let total, aprobadas, pendientes, pct;
+    if (area === 'Caracterizacion') {
+      total      = ordenes.length;
+      aprobadas  = ordenes.filter(o => o.estado === 'hecha').length;
+      pendientes = ordenes.filter(o => o.estado !== 'hecha' && o.estado !== 'no_hecha').length;
+      pct        = total ? Math.round((aprobadas / total) * 100) : 0;
+    } else {
+      total      = ordenes.length;
+      aprobadas  = ordenes.filter(o => o.estadoCampo === 'aprobada').length;
+      pendientes = ordenes.filter(o => !o.estadoCampo).length;
+      pct        = total ? Math.round((aprobadas / total) * 100) : 0;
+    }
 
     // Actualizar chips
     const setVal = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
@@ -436,10 +446,11 @@ function renderIndicadorCorte(sinActualizar) {
 // ── Home Técnico ──────────────────────────────────
 function renderHomeTecnico(container, session, area, destino) {
   const isCambios   = area === 'CAMBIOS';
-  const color       = isCambios ? 'cm' : 'otc';
-  const accentColor = isCambios ? '#2dd4bf' : '#60a5fa';
-  const rgbAccent   = isCambios ? '13,148,136' : '37,99,235';
-  const areaLabel   = isCambios ? 'Cambios de Medidor' : 'Órdenes Técnicas de Campo';
+  const isCaract    = area === 'Caracterizacion';
+  const color       = isCambios ? 'cm' : isCaract ? 'cr' : 'otc';
+  const accentColor = isCambios ? '#2dd4bf' : isCaract ? '#a78bfa' : '#60a5fa';
+  const rgbAccent   = isCambios ? '13,148,136' : isCaract ? '124,92,214' : '37,99,235';
+  const areaLabel   = CAMP_LABEL_HOME[area] || 'Órdenes de campo';
 
   const hoy = new Date().toLocaleDateString('es-SV', { weekday:'long', day:'numeric', month:'long' });
   const fechaLabel = hoy.charAt(0).toUpperCase() + hoy.slice(1);
@@ -489,7 +500,7 @@ function renderHomeTecnico(container, session, area, destino) {
       <!-- Accesos rápidos -->
       <div class="section-label anim-up d3">Accesos rápidos</div>
       <div class="quick-grid anim-up d3">
-        <div class="quick-card" onclick="window.__router.navigateTo('cambios')">
+        <div class="quick-card" onclick="window.__router.navigateTo('${isCaract ? 'caracterizacion' : 'cambios'}')">
           <div class="qc-icon" style="background:rgba(${rgbAccent},.15)">
             <svg viewBox="0 0 24 24" fill="none" stroke="${accentColor}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/>
@@ -501,7 +512,7 @@ function renderHomeTecnico(container, session, area, destino) {
           <div class="qc-sub">Ver listado del día</div>
         </div>
 
-        <div class="quick-card" onclick="window.__router.navigateTo('mapa')">
+        <div class="quick-card" onclick="window.__router.navigateTo('${isCaract ? 'caracterizacion_mapa' : 'mapa'}')">
           <div class="qc-icon" style="background:rgba(${rgbAccent},.15)">
             <svg viewBox="0 0 24 24" fill="none" stroke="${accentColor}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/>
