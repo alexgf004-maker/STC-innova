@@ -60,6 +60,11 @@ function construirOrdenesDesdeExcel(rows) {
   const avisos = [];
 
   for (const r of rows) {
+    // SOLO las filas marcadas "Titular" en la columna Categoria son órdenes.
+    // Las filas "Suplente" no generan orden propia; son el respaldo de un titular.
+    const categoria = String(r['Categoria'] ?? r['Categoría'] ?? '').trim().toLowerCase();
+    if (categoria && categoria !== 'titular') continue;
+
     // Aceptar variantes de encabezado
     const ncTit = String(r['ID_Sorteado'] ?? r['Contrato'] ?? r['NC'] ?? '').trim();
     if (!ncTit) continue;
