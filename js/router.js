@@ -91,7 +91,7 @@ export async function navigateTo(tabId, _esRegreso) {
     }
   }
 
-  // 'cambios' y 'caracterizacion' viven bajo la pestaña 'areas'
+  // 'cambios'  y 'caracterizacion' viven bajo la pestaña 'areas'
   // (admin/asistente no tienen pestaña propia de cada área).
   const bajoAreas = ['cambios','caracterizacion','caracterizacion_mapa'];
   const tabResaltado = bajoAreas.includes(tabId) ? 'areas' : tabId;
