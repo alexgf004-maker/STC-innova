@@ -39,6 +39,7 @@ const NAV_CONFIGS = {
 const viewCache   = {};
 let currentTab    = null;
 let currentSession = null;
+const navHistory  = [];   // pila de tabs visitados para "regresar"
 const contentArea = document.getElementById('content-area');
 const navbar      = document.getElementById('navbar');
 
@@ -48,8 +49,47 @@ export function initRouter(session) {
   navigateTo('home');
 }
 
-export async function navigateTo(tabId) {
+export function goBack() {
+  const prev = navHistory.pop();
+  navigateTo(prev || 'home', true);
+}
+
+export function canGoBack() {
+  return navHistory.length > 0;
+}
+
+// Convierte el logo del topbar en botón "regresar" cuando hay historial.
+function actualizarBotonRegreso() {
+  const logo = document.querySelector('.topbar-logo');
+  if (!logo) return;
+  const hayRegreso = navHistory.length > 0;
+  if (hayRegreso) {
+    logo.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" width="20" height="20"><polyline points="15 18 9 12 15 6"/></svg>`;
+    logo.style.cursor = 'pointer';
+    logo.setAttribute('title', 'Regresar');
+    logo.onclick = () => window.__router.goBack();
+  } else {
+    logo.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>`;
+    logo.style.cursor = 'default';
+    logo.removeAttribute('title');
+    logo.onclick = null;
+  }
+}
+
+export async function navigateTo(tabId, _esRegreso) {
   if (currentTab === tabId && tabId !== 'otc_mapa') return;
+
+  // Las pestañas principales del navbar reinician el historial (nuevo inicio).
+  // Las sub-vistas (mapas, cambios, caracterizacion) se apilan para poder regresar.
+  const TABS_PRINCIPALES = ['home','areas','bodega','usuarios'];
+  if (!_esRegreso) {
+    if (TABS_PRINCIPALES.includes(tabId)) {
+      navHistory.length = 0;                 // reiniciar
+    } else if (currentTab) {
+      navHistory.push(currentTab);           // apilar de dónde venimos
+      if (navHistory.length > 20) navHistory.shift();
+    }
+  }
 
   // 'cambios' y 'caracterizacion' viven bajo la pestaña 'areas'
   // (admin/asistente no tienen pestaña propia de cada área).
@@ -104,6 +144,7 @@ export async function navigateTo(tabId) {
     contentArea.scrollTop = 0;
     contentArea.innerHTML = '';
     viewCache[tabId].init(contentArea, currentSession);
+    actualizarBotonRegreso();
   } catch (err) {
     console.warn(`[router] Vista '${tabId}' error:`, err.message);
 
