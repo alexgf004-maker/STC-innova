@@ -11,6 +11,7 @@ import { toast } from '../ui.js';
 const AREAS    = ['CAMBIOS', 'Caracterizacion'];
 const DESTINOS = {
   CAMBIOS: ['Pareja 1', 'Pareja 2', 'Pareja 3', 'Pareja 4'],
+  Caracterizacion: ['Pareja 1', 'Pareja 2', 'Pareja 3'],
   OTC:     ['NALVAR', 'RGONZA', 'JPEREZ'],
 };
 const ROLES = ['tecnico', 'asistente', 'admin'];
