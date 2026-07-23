@@ -166,30 +166,51 @@ function num(v) {
   return isNaN(n) ? null : n;
 }
 
-// ── Guardar las órdenes del día en Firestore (sin duplicar por NC titular) ──
+// ── Guardar las órdenes del día en Firestore ──
+// Las que no existen se crean. Las que YA existen (mismo NC titular) NO se
+// duplican ni se reinician: solo se les completan los datos informativos que
+// pudieran faltar (tarifa, esUPR). Su estado, pareja y visitas quedan intactos.
 async function guardarOrdenes(ordenes) {
   const existSnap = await db.collection('caracterizacion_ordenes').get();
-  const existentes = new Set();
+  const porNC = new Map();
   existSnap.docs.forEach(d => {
     const nc = String(d.data().ncTitular ?? '').trim();
-    if (nc) existentes.add(nc);
+    if (nc) porNC.set(nc, { id: d.id, data: d.data() });
   });
 
-  const nuevas = ordenes.filter(o => !existentes.has(o.ncTitular));
-  const omitidas = ordenes.length - nuevas.length;
+  const nuevas = ordenes.filter(o => !porNC.has(o.ncTitular));
+
+  // Existentes a las que les falta o les cambió el dato informativo
+  const aActualizar = [];
+  for (const o of ordenes) {
+    const prev = porNC.get(o.ncTitular);
+    if (!prev) continue;
+    const cambios = {};
+    if (prev.data.tarifa !== o.tarifa)  cambios.tarifa = o.tarifa || '';
+    if (prev.data.esUPR  !== o.esUPR)   cambios.esUPR  = !!o.esUPR;
+    if (prev.data.uprFuente !== o.uprFuente) cambios.uprFuente = o.uprFuente || '';
+    if (Object.keys(cambios).length) aActualizar.push({ id: prev.id, cambios });
+  }
 
   let batch = db.batch();
   let count = 0;
   const commits = [];
+
   for (const o of nuevas) {
     const ref = db.collection('caracterizacion_ordenes').doc();
     batch.set(ref, { ...o, importadaEn: firebase.firestore.Timestamp.now() });
     if (++count === 499) { commits.push(batch.commit()); batch = db.batch(); count = 0; }
   }
+  for (const u of aActualizar) {
+    batch.update(db.collection('caracterizacion_ordenes').doc(u.id), u.cambios);
+    if (++count === 499) { commits.push(batch.commit()); batch = db.batch(); count = 0; }
+  }
+
   if (count > 0) commits.push(batch.commit());
   await Promise.all(commits);
 
-  return { creadas: nuevas.length, omitidas };
+  const omitidas = ordenes.length - nuevas.length - aActualizar.length;
+  return { creadas: nuevas.length, actualizadas: aActualizar.length, omitidas };
 }
 
 // ── Vista mínima (solo la carga del día por ahora) ──
@@ -491,8 +512,12 @@ function mostrarPrevisualizacion(ordenes, avisos, choques = []) {
     btn.disabled = true;
     container_.querySelector('#crc-confirmar-lbl').textContent = 'Guardando…';
     try {
-      const { creadas, omitidas } = await guardarOrdenes(ordenes);
-      toast(`${creadas} órdenes cargadas${omitidas ? ` · ${omitidas} ya existían` : ''}`, 'ok');
+      const { creadas, actualizadas, omitidas } = await guardarOrdenes(ordenes);
+      const partes = [];
+      if (creadas) partes.push(`${creadas} cargadas`);
+      if (actualizadas) partes.push(`${actualizadas} actualizadas`);
+      if (omitidas) partes.push(`${omitidas} sin cambios`);
+      toast(partes.length ? partes.join(' · ') : 'Sin cambios que aplicar', 'ok');
       est.innerHTML = '';
       await cargarOrdenes();
     } catch (err) {
