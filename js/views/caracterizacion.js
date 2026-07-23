@@ -55,6 +55,31 @@ function puntoDesdePadron(nc) {
 
 // ── Importar el Excel del día de DELSUR ──
 // Devuelve { ordenes, avisos } sin guardar todavía (para previsualizar).
+// ── Detección de UPR ──
+// 1) Si el Excel trae una columna con "UPR" en el nombre, manda esa.
+// 2) Si no viene esa columna, se aplica la regla: sin suplentes = UPR.
+function valorEsSi(v) {
+  const s = String(v ?? '').trim().toLowerCase();
+  if (!s) return false;
+  return ['si','sí','s','x','1','true','verdadero','upr','y','yes'].includes(s);
+}
+
+function detectarUPR(row, tieneSup1, tieneSup2) {
+  // 1) La columna Tarifa manda: sus valores son R, G, R_UPR, G_UPR
+  const tarifa = String(row['Tarifa'] ?? row['TARIFA'] ?? row['tarifa'] ?? '').trim();
+  if (tarifa) {
+    return { esUPR: tarifa.toUpperCase().includes('UPR'), fuente: 'tarifa', tarifa };
+  }
+  // 2) Por si algun dia mandan una columna dedicada a UPR
+  for (const k of Object.keys(row)) {
+    if (String(k).toLowerCase().replace(/[\s._-]/g, '').includes('upr')) {
+      return { esUPR: valorEsSi(row[k]), fuente: 'columna', tarifa: '' };
+    }
+  }
+  // 3) Sin nada de lo anterior: la regla — no tiene suplentes
+  return { esUPR: !tieneSup1 && !tieneSup2, fuente: 'regla', tarifa: '' };
+}
+
 function construirOrdenesDesdeExcel(rows) {
   // rows: array de objetos (sheet_to_json con headers de la hoja "Información Clientes")
   const ordenes = [];
@@ -102,11 +127,18 @@ function construirOrdenesDesdeExcel(rows) {
       avisos.push(`Suplente 2 (${idSup2}) del titular ${ncTit} no está en el padrón — la orden queda sin ese suplente.`);
     }
 
+    const s1ok = !!(sup1 && sup1.encontrado);
+    const s2ok = !!(sup2 && sup2.encontrado);
+    const upr = detectarUPR(r, s1ok, s2ok);
+
     ordenes.push({
       ncTitular: ncTit,
       titular,
-      suplente1: (sup1 && sup1.encontrado) ? sup1 : null,
-      suplente2: (sup2 && sup2.encontrado) ? sup2 : null,
+      suplente1: s1ok ? sup1 : null,
+      suplente2: s2ok ? sup2 : null,
+      esUPR: upr.esUPR,
+      uprFuente: upr.fuente,     // 'tarifa' | 'columna' | 'regla'
+      tarifa: upr.tarifa || '',  // R, G, R_UPR, G_UPR
       estado: 'pendiente',       // pendiente | hecha | no_hecha
       logranoEn: null,           // 'titular' | 'suplente1' | 'suplente2' | null
       pareja: null,
@@ -365,14 +397,21 @@ function tarjetaOrden(o) {
     ? `<div style="font-size:10px;font-weight:700;color:#3b82f6;background:rgba(59,130,246,.12);border:1px solid rgba(59,130,246,.3);padding:3px 9px;border-radius:12px;white-space:nowrap">Por confirmar</div>`
     : `<div style="font-size:10px;color:var(--text-4);background:var(--glass);border:1px solid var(--border);padding:3px 9px;border-radius:12px">${puntos} punto${puntos>1?'s':''}</div>`;
 
+  const badgeUPR = o.esUPR
+    ? `<div style="font-size:10px;font-weight:800;letter-spacing:.04em;color:#38bdf8;background:rgba(56,189,248,.14);border:1px solid rgba(56,189,248,.4);padding:3px 9px;border-radius:12px;white-space:nowrap">UPR</div>`
+    : '';
+
   return `
-    <div style="background:var(--bg-card);border:1px solid var(--border);border-left:3px solid ${acento};border-radius:12px;padding:13px">
+    <div style="background:var(--bg-card);border:1px solid var(--border);border-left:3px solid ${o.esUPR ? '#38bdf8' : acento};border-radius:12px;padding:13px">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
         <div style="flex:1;min-width:0">
           <div style="font-size:13px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${t.nombre || o.ncTitular || '—'}</div>
-          <div style="font-size:10px;color:var(--text-4);margin-top:1px">NC ${o.ncTitular}${t.direccion ? ' · ' + t.direccion.split(',')[0] : ''}</div>
+          <div style="font-size:10px;color:var(--text-4);margin-top:1px">NC ${o.ncTitular}${o.tarifa ? ' · ' + o.tarifa : ''}${t.direccion ? ' · ' + t.direccion.split(',')[0] : ''}</div>
         </div>
-        ${badge}
+        <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end;flex-shrink:0">
+          ${badgeUPR}
+          ${badge}
+        </div>
       </div>
       ${(porConfirmar || confirmada) ? `
         <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;font-size:10px;color:var(--text-4)">
@@ -422,6 +461,7 @@ async function manejarArchivo(file) {
 function mostrarPrevisualizacion(ordenes, avisos, choques = []) {
   const est = container_.querySelector('#crc-estado');
   const conTres = ordenes.filter(o => o.suplente1 && o.suplente2).length;
+  const cantUPR = ordenes.filter(o => o.esUPR).length;
   const sinCoordTit = ordenes.filter(o => !o.titular.tieneCoord).length;
 
   est.innerHTML = `
@@ -430,6 +470,7 @@ function mostrarPrevisualizacion(ordenes, avisos, choques = []) {
       <div class="flex-col gap-4" style="font-size:12px">
         <div style="display:flex;justify-content:space-between"><span style="color:var(--text-3)">Con titular + 2 suplentes</span><span style="font-weight:700;color:#22c55e">${conTres}</span></div>
         <div style="display:flex;justify-content:space-between"><span style="color:var(--text-3)">Titulares sin ubicación</span><span style="font-weight:700;color:${sinCoordTit?'#fbbf24':'var(--text-4)'}">${sinCoordTit}</span></div>
+        <div style="display:flex;justify-content:space-between"><span style="color:var(--text-3)">Puntos UPR</span><span style="font-weight:700;color:${cantUPR?'#38bdf8':'var(--text-4)'}">${cantUPR}</span></div>
       </div>
     </div>
     ${choques.length ? `
@@ -566,6 +607,8 @@ function generarExcelDia(clave, ordenes) {
         'Nombre Suplente 1': s1.nombre || '',
         'NC Suplente 2': s2.nc || '',
         'Nombre Suplente 2': s2.nombre || '',
+        'Tarifa': o.tarifa || '',
+        'UPR': o.esUPR ? 'Sí' : 'No',
         'Pareja': o.pareja || 'Sin asignar',
         'Estado': ESTADO_LABEL[o.estado] || 'Pendiente',
         'Hecha en': o.logranoEn ? PUNTO_LABEL[o.logranoEn] : (o.estado && o.estado !== 'pendiente' ? 'Sin lograr' : ''),
