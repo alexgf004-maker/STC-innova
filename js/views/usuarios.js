@@ -12,6 +12,7 @@ const AREAS    = ['CAMBIOS', 'Caracterizacion', 'Reclamos'];
 const DESTINOS = {
   CAMBIOS: ['Pareja 1', 'Pareja 2', 'Pareja 3', 'Pareja 4'],
   Caracterizacion: ['Pareja 1', 'Pareja 2', 'Pareja 3'],
+  Reclamos: ['Pareja 1', 'Pareja 2'],
   OTC:     ['NALVAR', 'RGONZA', 'JPEREZ'],
 };
 const ROLES = ['tecnico', 'asistente', 'admin'];
@@ -229,7 +230,7 @@ function renderLista(filtro) {
     const asgn  = u.asignacionActual;
     const area  = asgn?.area || null;
     const dest  = asgn?.destino || null;
-    const color = area === 'CAMBIOS' ? 'cm' : area === 'Caracterizacion' ? 'cr' : area === 'OTC' ? 'otc' : '';
+    const color = area === 'CAMBIOS' ? 'cm' : area === 'Caracterizacion' ? 'cr' : area === 'Reclamos' ? 'rc' : area === 'OTC' ? 'otc' : '';
 
     return `
       <div class="user-card ${u.active ? '' : 'inactive'}" data-uid="${u.id}">
@@ -420,14 +421,8 @@ function updateDestinoRow(area, selectedDestino = null) {
     return;
   }
 
-  // Reclamos SIGET no usa destino (el técnico solo registra lo suyo)
-  if (area === 'Reclamos') {
-    wrap.style.display = 'none';
-    return;
-  }
-
   wrap.style.display = '';
-  label.textContent = (area === 'CAMBIOS' || area === 'Caracterizacion') ? 'Pareja' : 'Supervisor';
+  label.textContent = (area === 'CAMBIOS' || area === 'Caracterizacion' || area === 'Reclamos') ? 'Pareja' : 'Supervisor';
 
   const destinos = DESTINOS[area] || [];
   row.innerHTML = destinos.map(d => `
@@ -445,8 +440,8 @@ async function guardarAsignacion() {
     showFormError('asig-error', 'Selecciona un área.');
     return;
   }
-  if (area !== 'null' && area !== 'Reclamos' && !destino) {
-    showFormError('asig-error', (area === 'CAMBIOS' || area === 'Caracterizacion') ? 'Selecciona una pareja.' : 'Selecciona un supervisor.');
+  if (area !== 'null' && !destino) {
+    showFormError('asig-error', (area === 'CAMBIOS' || area === 'Caracterizacion' || area === 'Reclamos') ? 'Selecciona una pareja.' : 'Selecciona un supervisor.');
     return;
   }
 
