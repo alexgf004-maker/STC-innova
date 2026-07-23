@@ -234,11 +234,15 @@ export async function init(container, session) {
           <button class="icon-btn" id="crc-mapa" title="Mapa y asignación de zonas">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg>
           </button>
+          <button class="icon-btn" id="crc-complemento" title="Completar datos desde BDTH">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><path d="M20 6H10M20 12H10M20 18H10"/><path d="M4 7l2 2 3-3"/><path d="M4 13l2 2 3-3"/><path d="M4 19l2 2 3-3"/></svg>
+          </button>
           <button class="icon-btn" id="crc-cargar" title="Cargar órdenes del día">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
           </button>
         </div>
-        <input type="file" id="crc-file" accept=".xlsx,.xls" style="display:none"/>` : `
+        <input type="file" id="crc-file" accept=".xlsx,.xls" style="display:none"/>
+        <input type="file" id="crc-file-comp" accept=".xlsx,.xls" style="display:none"/>` : `
         <button class="icon-btn" id="crc-mapa-tec" title="Ver mapa" style="flex-shrink:0">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg>
         </button>`}
@@ -253,6 +257,9 @@ export async function init(container, session) {
     container.querySelector('#crc-cargar').onclick = () => fileInput.click();
     container.querySelector('#crc-mapa').onclick = () => window.__router.navigateTo('caracterizacion_mapa');
     container.querySelector('#crc-excel').onclick = abrirDescargaExcel;
+    const fileComp = container.querySelector('#crc-file-comp');
+    container.querySelector('#crc-complemento').onclick = () => fileComp.click();
+    fileComp.onchange = (e) => manejarComplemento(e.target.files[0]);
     fileInput.onchange = (e) => manejarArchivo(e.target.files[0]);
     cargarPadron().catch(()=>{});
   } else {
@@ -664,4 +671,177 @@ function generarExcelDia(clave, ordenes) {
   } catch (err) {
     toast('Error al generar el Excel: ' + err.message, 'error');
   }
+}
+
+// ══════════════════════════════════════════════════════════════
+//  COMPLETAR DATOS DESDE LA BDTH (admin/asistente)
+//  Sube un Excel con NC + nombre (y opcionalmente dirección, DS,
+//  medidor) y completa las órdenes ya cargadas. Sirve para los UPR,
+//  que no están en el padrón y llegan sin nombre.
+//  Sobrescribe con lo del complemento y aplica a titular y suplentes.
+//  NO toca estado, pareja, visitas ni confirmaciones.
+// ══════════════════════════════════════════════════════════════
+
+function normHeader(s) {
+  return String(s ?? '')
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')   // quitar acentos
+    .toLowerCase().replace(/[\s._\-\/]/g, '');
+}
+
+const ALIAS_COMP = {
+  nc:        ['contrato','nc','id','idsorteado','nic','numerocliente','cuenta','numerodecuenta'],
+  nombre:    ['nombredepila','nombre','nombrecliente','nombredelcliente','titular','cliente'],
+  direccion: ['direccion','dir','direccioncompleta','domicilio'],
+  ds:        ['ubicaciontecnica','ds','ubicacion'],
+  medidor:   ['aparato','medidor','nromedidor','numerodemedidor','nmedidor'],
+};
+
+// Detecta qué encabezado del archivo corresponde a cada campo
+function mapearColumnas(rows) {
+  const claves = Object.keys(rows[0] || {});
+  const encontrado = {};
+  for (const campo of Object.keys(ALIAS_COMP)) {
+    for (const k of claves) {
+      if (ALIAS_COMP[campo].includes(normHeader(k))) { encontrado[campo] = k; break; }
+    }
+  }
+  return encontrado;
+}
+
+function construirMapaComplemento(rows) {
+  const cols = mapearColumnas(rows);
+  if (!cols.nc) return { mapa: null, cols };
+  const mapa = new Map();
+  for (const r of rows) {
+    const nc = String(r[cols.nc] ?? '').trim();
+    if (!nc) continue;
+    const info = {};
+    if (cols.nombre)    info.nombre    = String(r[cols.nombre] ?? '').trim();
+    if (cols.direccion) info.direccion = String(r[cols.direccion] ?? '').trim();
+    if (cols.ds)        info.ds        = String(r[cols.ds] ?? '').trim();
+    if (cols.medidor)   info.medidor   = String(r[cols.medidor] ?? '').trim();
+    // Solo guardar si aporta algo
+    if (Object.values(info).some(v => v)) mapa.set(nc, info);
+  }
+  return { mapa, cols };
+}
+
+// Aplica el complemento sobre un punto (titular o suplente) y dice si cambió
+function completarPunto(punto, info) {
+  if (!punto || !info) return null;
+  const nuevo = { ...punto };
+  let cambio = false;
+  for (const campo of ['nombre','direccion','ds','medidor']) {
+    const val = info[campo];
+    if (val && nuevo[campo] !== val) { nuevo[campo] = val; cambio = true; }
+  }
+  return cambio ? nuevo : null;
+}
+
+async function manejarComplemento(file) {
+  if (!file) return;
+  const est = container_.querySelector('#crc-estado');
+  est.innerHTML = `<div style="text-align:center;padding:20px"><div class="spinner" style="margin:0 auto 8px"></div><div style="font-size:12px;color:var(--text-4)">Leyendo el complemento…</div></div>`;
+
+  try {
+    if (!ordenes_.length) throw new Error('Primero carga las órdenes del día.');
+
+    const buf = await file.arrayBuffer();
+    const wb = XLSX.read(buf, { type: 'array' });
+    const hoja = wb.SheetNames[0];
+    const rows = XLSX.utils.sheet_to_json(wb.Sheets[hoja], { defval: '' });
+    if (!rows.length) throw new Error('El archivo está vacío.');
+
+    const { mapa, cols } = construirMapaComplemento(rows);
+    if (!mapa) {
+      throw new Error('No encontré la columna del NC. Debe llamarse Contrato, NC o ID.');
+    }
+    if (!cols.nombre && !cols.direccion && !cols.ds && !cols.medidor) {
+      throw new Error('El archivo no trae Nombre, Dirección, DS ni Medidor.');
+    }
+
+    // Calcular qué órdenes se completarían
+    const cambios = [];   // { id, patch:{}, detalles:[] }
+    const ncsUsados = new Set();
+    for (const o of ordenes_) {
+      const patch = {};
+      const detalles = [];
+      for (const nivel of ['titular','suplente1','suplente2']) {
+        const p = o[nivel];
+        if (!p || !p.nc) continue;
+        const info = mapa.get(String(p.nc).trim());
+        if (!info) continue;
+        const nuevo = completarPunto(p, info);
+        if (nuevo) {
+          patch[nivel] = nuevo;
+          detalles.push(nivel);
+          ncsUsados.add(String(p.nc).trim());
+        }
+      }
+      if (Object.keys(patch).length) cambios.push({ id: o.id, patch, detalles, nc: o.ncTitular });
+    }
+
+    const sinUsar = mapa.size - ncsUsados.size;
+    mostrarPrevisualizacionComplemento(cambios, mapa.size, sinUsar, cols);
+
+  } catch (err) {
+    est.innerHTML = `<div style="background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.3);border-radius:10px;padding:14px;font-size:12px;color:#f87171">${err.message}</div>`;
+  } finally {
+    const inp = container_.querySelector('#crc-file-comp');
+    if (inp) inp.value = '';
+  }
+}
+
+function mostrarPrevisualizacionComplemento(cambios, totalArchivo, sinUsar, cols) {
+  const est = container_.querySelector('#crc-estado');
+  const titulares = cambios.filter(c => c.detalles.includes('titular')).length;
+  const suplentes = cambios.reduce((s, c) => s + c.detalles.filter(d => d !== 'titular').length, 0);
+  const campos = ['nombre','direccion','ds','medidor'].filter(k => cols[k]);
+
+  if (!cambios.length) {
+    est.innerHTML = `
+      <div style="background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.3);border-radius:10px;padding:14px;font-size:12px;color:#fbbf24">
+        El archivo tiene ${totalArchivo} registros, pero ninguno coincide con las órdenes cargadas (o ya estaban completas).
+      </div>`;
+    return;
+  }
+
+  est.innerHTML = `
+    <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:12px">
+      <div style="font-size:15px;font-weight:800;margin-bottom:10px">${cambios.length} órdenes se completarán</div>
+      <div class="flex-col gap-4" style="font-size:12px">
+        <div style="display:flex;justify-content:space-between"><span style="color:var(--text-3)">Titulares a completar</span><span style="font-weight:700;color:#38bdf8">${titulares}</span></div>
+        <div style="display:flex;justify-content:space-between"><span style="color:var(--text-3)">Suplentes a completar</span><span style="font-weight:700;color:${suplentes?'#a78bfa':'var(--text-4)'}">${suplentes}</span></div>
+        <div style="display:flex;justify-content:space-between"><span style="color:var(--text-3)">Registros del archivo sin usar</span><span style="font-weight:700;color:var(--text-4)">${sinUsar}</span></div>
+      </div>
+      <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);font-size:10px;color:var(--text-4)">
+        Campos que trae el archivo: ${campos.join(', ')}
+      </div>
+    </div>
+    <button class="btn-primary full" id="crc-comp-confirmar"><span id="crc-comp-lbl">Aplicar a ${cambios.length} órdenes</span></button>`;
+
+  container_.querySelector('#crc-comp-confirmar').onclick = async (e) => {
+    const btn = e.currentTarget;
+    btn.disabled = true;
+    container_.querySelector('#crc-comp-lbl').textContent = 'Aplicando…';
+    try {
+      let batch = db.batch();
+      let count = 0;
+      const commits = [];
+      for (const c of cambios) {
+        batch.update(db.collection('caracterizacion_ordenes').doc(c.id), c.patch);
+        if (++count === 499) { commits.push(batch.commit()); batch = db.batch(); count = 0; }
+      }
+      if (count > 0) commits.push(batch.commit());
+      await Promise.all(commits);
+
+      est.innerHTML = '';
+      toast(`${cambios.length} órdenes completadas`, 'ok');
+      await cargarOrdenes();
+    } catch (err) {
+      btn.disabled = false;
+      container_.querySelector('#crc-comp-lbl').textContent = 'Reintentar';
+      toast('Error al aplicar: ' + err.message, 'error');
+    }
+  };
 }
