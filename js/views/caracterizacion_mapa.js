@@ -29,6 +29,7 @@ let puntos_ = [], poliPreview_ = null, zonaPoligono_ = null;
 
 const NIVEL_LABEL = { titular:'Titular', suplente1:'Suplente 1', suplente2:'Suplente 2' };
 const NIVEL_COLOR = { titular:'#a78bfa', suplente1:'#fbbf24', suplente2:'#f472b6' };
+const UPR_COLOR = '#38bdf8';   // celeste: punto UPR (sin suplentes)
 
 export async function init(container, session) {
   container_ = container;
@@ -200,7 +201,9 @@ function pintarOrden(o) {
     const activo = (i === idx);
     // El suplente recién revelado (nivel activo que no es el titular) se destaca con pulso
     const destacar = activo && i > 0;
-    const m = crearMarcador(p, NIVEL_COLOR[k], String(i === 0 ? 'T' : i), activo, destacar);
+    // Los UPR se pintan en celeste para que el técnico los reconozca al instante
+    const color = (o.esUPR && k === 'titular') ? UPR_COLOR : NIVEL_COLOR[k];
+    const m = crearMarcador(p, color, String(i === 0 ? 'T' : i), activo, destacar);
     m.on('click', () => abrirDetalle(o.id, k));
     m.addTo(map_); markers_[o.id][k] = m;
   }
@@ -256,15 +259,20 @@ function abrirDetalle(ordenId, nivel) {
 
   sheet.innerHTML = `
     <div style="width:36px;height:4px;background:var(--border);border-radius:2px;margin:0 auto 14px"></div>
+    ${o.esUPR ? `<div style="display:flex;align-items:center;gap:7px;background:rgba(56,189,248,.14);border:1px solid rgba(56,189,248,.45);border-radius:10px;padding:9px 12px;margin-bottom:12px">
+      <span style="font-size:13px;font-weight:800;letter-spacing:.06em;color:${UPR_COLOR}">UPR</span>
+      <span style="font-size:11px;color:var(--text-3)">${o.tarifa ? 'Tarifa ' + o.tarifa : 'Punto UPR'}</span>
+    </div>` : ''}
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
-      <div style="width:10px;height:10px;border-radius:50%;background:${NIVEL_COLOR[nivel]}"></div>
-      <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:${NIVEL_COLOR[nivel]}">${NIVEL_LABEL[nivel]}</div>
+      <div style="width:10px;height:10px;border-radius:50%;background:${(o.esUPR && nivel==='titular') ? UPR_COLOR : NIVEL_COLOR[nivel]}"></div>
+      <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:${(o.esUPR && nivel==='titular') ? UPR_COLOR : NIVEL_COLOR[nivel]}">${NIVEL_LABEL[nivel]}</div>
     </div>
     <div style="font-size:16px;font-weight:800;margin-bottom:2px">${p.nombre || '—'}</div>
     <div style="font-size:12px;color:var(--text-3);margin-bottom:2px">NC ${p.nc}</div>
     <div style="font-size:11px;color:var(--text-4);margin-bottom:14px">${p.direccion || ''}</div>
 
     <div style="display:flex;gap:8px;font-size:11px;color:var(--text-4);margin-bottom:${visitas.length?'10px':'16px'}">
+      ${o.tarifa ? `<div>Tarifa: <span style="color:var(--text-2)">${o.tarifa}</span></div>` : ''}
       ${p.medidor ? `<div>Medidor: <span style="color:var(--text-2)">${p.medidor}</span></div>` : ''}
       ${p.ds ? `<div>DS: <span style="color:var(--text-2)">${p.ds}</span></div>` : ''}
     </div>
@@ -592,6 +600,7 @@ function abrirAsignarIndividual(ordenId) {
   const sheet = container_.querySelector('#crc-sheet-zona');
   sheet.innerHTML = `
     <div style="width:36px;height:4px;background:var(--border);border-radius:2px;margin:0 auto 14px"></div>
+    ${o.esUPR ? `<div style="display:inline-block;font-size:11px;font-weight:800;letter-spacing:.06em;color:${UPR_COLOR};background:rgba(56,189,248,.14);border:1px solid rgba(56,189,248,.45);border-radius:8px;padding:3px 9px;margin-bottom:8px">UPR</div>` : ''}
     <div style="font-size:15px;font-weight:800;margin-bottom:2px">${t.nombre || o.ncTitular}</div>
     <div style="font-size:11px;color:var(--text-4);margin-bottom:16px">NC ${o.ncTitular}${o.pareja ? ' · ' + o.pareja : ' · sin asignar'}</div>
     <div class="form-label" style="margin-bottom:8px">Asignar a</div>
