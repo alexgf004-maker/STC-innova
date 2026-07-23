@@ -595,6 +595,13 @@ function renderHomeTecnico(container, session, area, destino) {
 }
 
 // ── Personal asignado hoy ─────────────────────────
+const AREA_INFO_HOME = {
+  CAMBIOS:         { label: 'Cambios',        color: '#2dd4bf', rgb: '45,212,191' },
+  Caracterizacion: { label: 'Caracterización', color: '#ef4444', rgb: '239,68,68' },
+  Reclamos:        { label: 'Reclamos SIGET',  color: '#fbbf24', rgb: '251,191,36' },
+  OTC:             { label: 'OTC',             color: '#60a5fa', rgb: '96,165,250' },
+};
+
 async function cargarPersonalHoy() {
   const el = document.getElementById('personal-hoy');
   if (!el) return;
@@ -605,43 +612,52 @@ async function cargarPersonalHoy() {
       .where('role', '==', 'tecnico')
       .get();
 
-    const tecnicos = snap.docs.map(d => d.data()).filter(u => u.asignacionActual?.destino);
+    const todos = snap.docs.map(d => d.data());
+    const asignados = todos.filter(u => u.asignacionActual?.destino);
+    const sinAsignar = todos.filter(u => !u.asignacionActual?.destino);
 
-    // Agrupar por destino (pareja)
-    const grupos = {};
-    tecnicos.forEach(u => {
-      const pareja = u.asignacionActual.destino;
-      if (!grupos[pareja]) grupos[pareja] = [];
-      grupos[pareja].push(u.displayName);
+    // Agrupar por ÁREA y dentro de cada área por pareja/destino
+    const porArea = {};
+    asignados.forEach(u => {
+      const area = u.asignacionActual.area || 'Sin área';
+      const dest = u.asignacionActual.destino;
+      if (!porArea[area]) porArea[area] = {};
+      if (!porArea[area][dest]) porArea[area][dest] = [];
+      porArea[area][dest].push(u.displayName);
     });
 
-    const sinAsignar = snap.docs.map(d => d.data())
-      .filter(u => u.role === 'tecnico' && u.active && !u.asignacionActual?.destino);
-
-    const parejas = Object.keys(grupos).sort();
-
-    if (!parejas.length && !sinAsignar.length) {
-      el.innerHTML = '';
-      return;
-    }
+    const areas = Object.keys(porArea).sort();
+    if (!areas.length && !sinAsignar.length) { el.innerHTML = ''; return; }
 
     el.innerHTML = `
       <div style="background:var(--glass);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px">
-        <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-4);margin-bottom:10px">Personal activo hoy</div>
-        <div class="flex-col gap-8">
-          ${parejas.map(pareja => `
-            <div style="display:flex;align-items:center;gap:10px">
-              <div style="font-size:12px;font-weight:700;color:var(--cm-light);min-width:80px;flex-shrink:0">${pareja}</div>
-              <div style="display:flex;flex-wrap:wrap;gap:6px">
-                ${grupos[pareja].map(nombre => `
-                  <div style="font-size:11px;font-weight:500;background:rgba(45,212,191,.08);border:1px solid rgba(45,212,191,.2);border-radius:8px;padding:3px 10px;color:var(--text-2)">${nombre}</div>
-                `).join('')}
-              </div>
-            </div>
-          `).join('')}
+        <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-4);margin-bottom:12px">Personal activo hoy</div>
+        <div class="flex-col gap-12">
+          ${areas.map(area => {
+            const info = AREA_INFO_HOME[area] || { label: area, color: '#94a3b8', rgb: '148,163,184' };
+            const parejas = Object.keys(porArea[area]).sort();
+            return `
+              <div>
+                <div style="display:flex;align-items:center;gap:6px;margin-bottom:7px">
+                  <div style="width:7px;height:7px;border-radius:50%;background:${info.color}"></div>
+                  <div style="font-size:11px;font-weight:800;letter-spacing:.04em;color:${info.color}">${info.label}</div>
+                </div>
+                <div class="flex-col gap-8" style="padding-left:13px">
+                  ${parejas.map(pareja => `
+                    <div style="display:flex;align-items:center;gap:10px">
+                      <div style="font-size:11px;font-weight:700;color:var(--text-3);min-width:70px;flex-shrink:0">${pareja}</div>
+                      <div style="display:flex;flex-wrap:wrap;gap:6px">
+                        ${porArea[area][pareja].map(nombre => `
+                          <div style="font-size:11px;font-weight:500;background:rgba(${info.rgb},.08);border:1px solid rgba(${info.rgb},.25);border-radius:8px;padding:3px 10px;color:var(--text-2)">${nombre}</div>
+                        `).join('')}
+                      </div>
+                    </div>`).join('')}
+                </div>
+              </div>`;
+          }).join('')}
           ${sinAsignar.length ? `
-          <div style="display:flex;align-items:center;gap:10px">
-            <div style="font-size:12px;font-weight:700;color:var(--text-4);min-width:80px;flex-shrink:0">Sin asignar</div>
+          <div style="display:flex;align-items:center;gap:10px;padding-top:4px;border-top:1px solid var(--border)">
+            <div style="font-size:11px;font-weight:700;color:var(--text-4);min-width:70px;flex-shrink:0">Sin asignar</div>
             <div style="display:flex;flex-wrap:wrap;gap:6px">
               ${sinAsignar.map(u => `
                 <div style="font-size:11px;font-weight:500;background:var(--glass);border:1px solid var(--border);border-radius:8px;padding:3px 10px;color:var(--text-4)">${u.displayName}</div>
