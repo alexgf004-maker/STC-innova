@@ -1,5 +1,5 @@
 /* ═══════════════════════════════════════════════
-   INNOVA STC v — styles.css
+   INNOVA STC v2 — styles.css
    Design tokens + componentes base
 ═══════════════════════════════════════════════ */
 
@@ -793,6 +793,8 @@ body {
 }
 .user-avatar.cm  { background: var(--cm-glass);  border-color: var(--cm-border);  color: var(--cm-light); }
 .user-avatar.otc { background: var(--otc-glass); border-color: var(--otc-border); color: var(--otc-light); }
+.user-avatar.cr  { background: var(--cr-glass);  border-color: var(--cr-border);  color: var(--cr-light); }
+.user-avatar.rc  { background: var(--rc-glass);  border-color: var(--rc-border);  color: var(--rc-light); }
 
 /* User info */
 .user-info { flex: 1; min-width: 0; }
@@ -807,6 +809,8 @@ body {
 }
 .user-asign.cm  { color: var(--cm-light); }
 .user-asign.otc { color: var(--otc-light); }
+.user-asign.cr  { color: var(--cr-light); }
+.user-asign.rc  { color: var(--rc-light); }
 .sin-asign { color: var(--text-4); font-style: italic; }
 .dot-sep { opacity: .4; }
 
