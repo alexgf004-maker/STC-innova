@@ -288,6 +288,10 @@ function abrirDetalle(ordenId, nivel) {
         <button id="crc-visita" style="flex:1;padding:13px;border-radius:12px;border:1px solid rgba(251,191,36,.4);background:rgba(251,191,36,.12);color:#fbbf24;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">Visita</button>
         <button id="crc-hecha" style="flex:2;padding:13px;border-radius:12px;border:none;background:#22c55e;color:#0a1628;font-size:13px;font-weight:800;cursor:pointer;font-family:inherit">Hecho aquí</button>
       </div>
+      ${nivel !== 'titular' ? `<button id="crc-atras" style="width:100%;padding:11px;border-radius:12px;border:1px solid var(--border);background:var(--glass);color:var(--text-3);font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;gap:6px">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><polyline points="15 18 9 12 15 6"/></svg>
+        Volver al ${NIVEL_LABEL[nivelAnterior(nivel)]}
+      </button>` : ''}
       ${haySiguiente ? `<div style="font-size:10px;color:var(--text-4);text-align:center;margin-top:10px">Si registras visita, pasarás a ${NIVEL_LABEL[siguiente]}</div>`
         : nivel==='suplente2' ? `<div style="font-size:10px;color:var(--text-4);text-align:center;margin-top:10px">Último punto. Si registras visita, la orden queda sin lograr.</div>` : ''}
     `}
@@ -298,6 +302,8 @@ function abrirDetalle(ordenId, nivel) {
   if (!cerrada) {
     sheet.querySelector('#crc-hecha').onclick = () => marcarHecha(ordenId, nivel);
     sheet.querySelector('#crc-visita').onclick = () => marcarVisita(ordenId, nivel);
+    const btnAtras = sheet.querySelector('#crc-atras');
+    if (btnAtras) btnAtras.onclick = () => retrocederCascada(ordenId, nivel);
   }
 
   if (p.lat != null) map_.setView([p.lat, p.lng], Math.max(map_.getZoom(), 16));
@@ -327,6 +333,65 @@ async function marcarHecha(ordenId, nivel) {
     const nv = visitas.length;
     toast(`Hecha en ${NIVEL_LABEL[nivel]}${nv ? ` (${nv} visita${nv>1?'s':''})` : ''} · por confirmar`, 'ok');
   } catch (err) { toast('Error: ' + err.message, 'error'); }
+}
+
+function nivelAnterior(nivel) {
+  return nivel === 'suplente2' ? 'suplente1' : nivel === 'suplente1' ? 'titular' : null;
+}
+
+// Retrocede un paso la cascada. Si el punto anterior tenía una visita
+// registrada, el técnico decide si la mantiene (se cobra) o la borra.
+function retrocederCascada(ordenId, nivelActual) {
+  const o = ordenes_.find(x => x.id === ordenId);
+  if (!o) return;
+  const anterior = nivelAnterior(nivelActual);
+  if (!anterior) return;
+
+  const visitas = Array.isArray(o.visitas) ? o.visitas : [];
+  const teniaVisita = visitas.includes(anterior);
+
+  const sheet = container_.querySelector('#crc-sheet');
+  sheet.innerHTML = `
+    <div style="width:36px;height:4px;background:var(--border);border-radius:2px;margin:0 auto 14px"></div>
+    <div style="font-size:16px;font-weight:800;margin-bottom:6px">Volver al ${NIVEL_LABEL[anterior]}</div>
+    <div style="font-size:12px;color:var(--text-3);line-height:1.5;margin-bottom:16px">
+      Regresarás al ${NIVEL_LABEL[anterior]} para intentarlo de nuevo.${teniaVisita ? ` Ya habías registrado una visita en ese punto.` : ''}
+    </div>
+    ${teniaVisita ? `
+      <div style="font-size:11px;font-weight:700;color:var(--text-3);margin-bottom:8px">¿Qué hago con esa visita?</div>
+      <div style="display:flex;gap:8px;margin-bottom:8px">
+        <button id="crc-ret-mantener" style="flex:1;padding:13px;border-radius:12px;border:1px solid rgba(251,191,36,.4);background:rgba(251,191,36,.12);color:#fbbf24;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">Mantener visita</button>
+        <button id="crc-ret-borrar" style="flex:1;padding:13px;border-radius:12px;border:1px solid var(--border);background:var(--glass);color:var(--text-2);font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">Borrar visita</button>
+      </div>
+    ` : `
+      <button id="crc-ret-ok" style="width:100%;padding:13px;border-radius:12px;border:none;background:#a78bfa;color:#0d1117;font-size:13px;font-weight:800;cursor:pointer;font-family:inherit">Volver al ${NIVEL_LABEL[anterior]}</button>
+    `}
+    <button id="crc-ret-cancel" style="width:100%;padding:11px;border-radius:12px;border:1px solid var(--border);background:transparent;color:var(--text-4);font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;margin-top:8px">Cancelar</button>
+  `;
+
+  const aplicar = async (borrarVisita) => {
+    let nuevasVisitas = visitas;
+    if (borrarVisita) nuevasVisitas = visitas.filter(v => v !== anterior);
+    try {
+      await db.collection('caracterizacion_ordenes').doc(ordenId).update({
+        _nivelVisible: anterior, visitas: nuevasVisitas,
+      });
+      o._nivelVisible = anterior;
+      o.visitas = nuevasVisitas;
+      pintarOrden(o);
+      cerrarSheet();
+      setTimeout(() => abrirDetalle(ordenId, anterior), 260);
+      toast(borrarVisita ? `Volviste al ${NIVEL_LABEL[anterior]} · visita borrada` : `Volviste al ${NIVEL_LABEL[anterior]}`, 'ok');
+    } catch (err) { toast('Error: ' + err.message, 'error'); }
+  };
+
+  if (teniaVisita) {
+    sheet.querySelector('#crc-ret-mantener').onclick = () => aplicar(false);
+    sheet.querySelector('#crc-ret-borrar').onclick = () => aplicar(true);
+  } else {
+    sheet.querySelector('#crc-ret-ok').onclick = () => aplicar(false);
+  }
+  sheet.querySelector('#crc-ret-cancel').onclick = () => abrirDetalle(ordenId, nivelActual);
 }
 
 // "Visita" (antes "No pude"): registra una visita cobrable en este punto
