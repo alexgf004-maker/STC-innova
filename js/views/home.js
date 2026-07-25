@@ -301,13 +301,18 @@ async function rechazarDespachoPendiente(id){
 // ── Carga de datos técnico ────────────────────────
 async function cargarDatosTecnico(session, area, destino) {
   try {
-    // Compañeros
+    // Compañeros — deben ser de la MISMA área y la MISMA pareja,
+    // si no, se mezclan las "Pareja 2" de áreas distintas.
     let companeros = [];
     if (destino) {
       const snap = await db.collection('users')
         .where('asignacionActual.destino', '==', destino)
         .where('active', '==', true).get();
-      companeros = snap.docs.map(d => d.data().displayName).filter(n => n !== session.displayName);
+      companeros = snap.docs
+        .map(d => d.data())
+        .filter(u => u.asignacionActual?.area === area)
+        .map(u => u.displayName)
+        .filter(n => n !== session.displayName);
     }
 
     // Órdenes de la pareja
