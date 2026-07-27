@@ -352,6 +352,14 @@ async function crearUsuario() {
       createdBy:     session_.uid,
     });
 
+    // Registro en `usernames` — lo usa el login para resolver
+    // username -> uid + correo interno (sin secretos). Sin esto,
+    // el usuario nuevo no puede iniciar sesión.
+    await db.collection('usernames').doc(user).set({
+      uid,
+      email,
+    });
+
     // Actualizar lista local
     usuarios.push({
       id: uid, uid, username: user, displayName: name,
