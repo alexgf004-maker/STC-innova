@@ -123,7 +123,14 @@ function renderShell(container) {
             <path d="M3 3h7v7H3zM14 3h7v7h-7zM14 14h7v7h-7zM3 14h7v7H3z"/>
           </svg>
           Asignar zona
-        </button>` : ''}
+        </button>
+        <button class="mapa-btn" id="btn-marcar-azul" title="Marcar puntos con Excel" style="background:rgba(59,130,246,.2);border-color:rgba(59,130,246,.4);color:#60a5fa">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
+            <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+          </svg>
+          Marcar
+        </button>
+        <input type="file" id="file-marcar-azul" accept=".xlsx,.xls" style="display:none"/>` : ''}
         <button class="mapa-btn-icon" id="btn-mi-ubicacion" title="Mi ubicación">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
             <circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/>
@@ -236,6 +243,9 @@ function renderShell(container) {
 
   // Eventos del mapa-wrapper
   document.getElementById('btn-asignar-zona')?.addEventListener('click', activarModoZona);
+  const fileAzul = document.getElementById('file-marcar-azul');
+  document.getElementById('btn-marcar-azul')?.addEventListener('click', () => abrirMenuMarcarAzul(fileAzul));
+  if (fileAzul) fileAzul.onchange = (e) => procesarMarcarAzul(e.target.files[0]);
   document.getElementById('btn-mi-ubicacion')?.addEventListener('click', () => {
     if (geoMarker_) {
       map_.setView(geoMarker_.getLatLng(), 17);
@@ -489,8 +499,11 @@ function plotMarkers() {
     if (!orden.latitud || !orden.longitud) return;
 
     const bloqueada = !orden.estadoCampo && isBlocked_(orden);
+    const marcadoAzul = orden.marcadoAzul && !orden.estadoCampo;
     const color = bloqueada
       ? '#4b5563'
+      : marcadoAzul
+      ? '#3b82f6'
       : ESTADO_COLORS[orden.estadoCampo] || PAREJA_COLORS[orden.pareja] || PAREJA_COLORS[null];
     const size  = orden.estadoCampo === 'hecha' ? 10 : 14;
     const wo    = orden.wo || '';
@@ -1602,4 +1615,113 @@ function sheetsMapaHTML() {
       </div>
     </div>
   `;
+}
+
+// ══════════════════════════════════════════════════════════════
+//  MARCAR PUNTOS EN AZUL (admin) — "hacer, pero no urgentes"
+//  Se sube un Excel con los números de orden (WO). La app cruza
+//  contra las órdenes del mapa y las marca en azul. Otra acción
+//  limpia todas las marcas. Persistido en cambios_ordenes.marcadoAzul.
+// ══════════════════════════════════════════════════════════════
+
+function abrirMenuMarcarAzul(fileInput) {
+  const yaMarcadas = ordenes_.filter(o => o.marcadoAzul).length;
+
+  let modal = document.getElementById('marcar-azul-modal');
+  if (modal) modal.remove();
+  modal = document.createElement('div');
+  modal.id = 'marcar-azul-modal';
+  modal.style.cssText = 'position:fixed;inset:0;z-index:2000;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;padding:20px';
+  modal.innerHTML = `
+    <div style="background:#0d1117;border:1px solid var(--border);border-radius:16px;padding:20px;max-width:360px;width:100%">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+        <div style="width:12px;height:12px;border-radius:50%;background:#3b82f6"></div>
+        <div style="font-size:16px;font-weight:800">Marcar puntos en azul</div>
+      </div>
+      <div style="font-size:12px;color:var(--text-4);line-height:1.5;margin-bottom:16px">
+        Sube un Excel con los números de orden (WO) a marcar. Se pintarán de azul para todos.${yaMarcadas ? ` Ahora hay <b style="color:#60a5fa">${yaMarcadas}</b> marcadas.` : ''}
+      </div>
+      <button id="maz-subir" class="btn-primary full" style="margin-bottom:8px">Subir Excel y marcar</button>
+      ${yaMarcadas ? `<button id="maz-limpiar" style="width:100%;padding:12px;border-radius:10px;border:1px solid rgba(239,68,68,.3);background:rgba(239,68,68,.08);color:#f87171;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;margin-bottom:8px">Quitar todas las marcas (${yaMarcadas})</button>` : ''}
+      <button id="maz-cerrar" style="width:100%;padding:11px;border-radius:10px;border:1px solid var(--border);background:transparent;color:var(--text-4);font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">Cerrar</button>
+    </div>`;
+  document.body.appendChild(modal);
+
+  modal.querySelector('#maz-cerrar').onclick = () => modal.remove();
+  modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
+  modal.querySelector('#maz-subir').onclick = () => { modal.remove(); fileInput.click(); };
+  const btnLimpiar = modal.querySelector('#maz-limpiar');
+  if (btnLimpiar) btnLimpiar.onclick = () => { modal.remove(); limpiarMarcasAzul(); };
+}
+
+async function procesarMarcarAzul(file) {
+  if (!file) return;
+  try {
+    const buf = await file.arrayBuffer();
+    const wb = XLSX.read(buf, { type: 'array' });
+    const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: '' });
+    if (!rows.length) { toast('El archivo está vacío', 'error'); return; }
+
+    // Detectar la columna de WO (flexible) o tomar la primera
+    const claves = Object.keys(rows[0]);
+    const normal = s => String(s ?? '').toLowerCase().replace(/[\s._-]/g, '');
+    let colWO = claves.find(k => ['wo','orden','numeroorden','norden','ot','numero','no'].includes(normal(k)));
+    if (!colWO) colWO = claves[0];
+
+    // Set de WO a marcar (como texto, sin espacios)
+    const objetivo = new Set();
+    rows.forEach(r => {
+      const v = String(r[colWO] ?? '').trim();
+      if (v) objetivo.add(v);
+    });
+    if (!objetivo.size) { toast('No encontré números de orden en el archivo', 'error'); return; }
+
+    // Cruzar con las órdenes cargadas
+    const aMarcar = ordenes_.filter(o => objetivo.has(String(o.wo ?? '').trim()) && !o.marcadoAzul);
+    const noEncontradas = objetivo.size - ordenes_.filter(o => objetivo.has(String(o.wo ?? '').trim())).length;
+
+    if (!aMarcar.length) {
+      toast(`Ninguna orden nueva para marcar${noEncontradas ? ` · ${noEncontradas} WO no están en el mapa` : ''}`, 'warn');
+      return;
+    }
+
+    toast('Marcando…', 'ok');
+    let batch = db.batch(), count = 0; const commits = [];
+    for (const o of aMarcar) {
+      batch.update(db.collection('cambios_ordenes').doc(o.id), { marcadoAzul: true });
+      o.marcadoAzul = true;
+      if (++count === 499) { commits.push(batch.commit()); batch = db.batch(); count = 0; }
+    }
+    if (count > 0) commits.push(batch.commit());
+    await Promise.all(commits);
+
+    plotMarkers();
+    toast(`${aMarcar.length} marcadas en azul${noEncontradas ? ` · ${noEncontradas} no estaban en el mapa` : ''}`, 'ok');
+  } catch (err) {
+    toast('Error al procesar: ' + err.message, 'error');
+  } finally {
+    const inp = document.getElementById('file-marcar-azul');
+    if (inp) inp.value = '';
+  }
+}
+
+async function limpiarMarcasAzul() {
+  const marcadas = ordenes_.filter(o => o.marcadoAzul);
+  if (!marcadas.length) { toast('No hay marcas que quitar', 'warn'); return; }
+  try {
+    toast('Quitando marcas…', 'ok');
+    let batch = db.batch(), count = 0; const commits = [];
+    for (const o of marcadas) {
+      batch.update(db.collection('cambios_ordenes').doc(o.id), { marcadoAzul: false });
+      o.marcadoAzul = false;
+      if (++count === 499) { commits.push(batch.commit()); batch = db.batch(); count = 0; }
+    }
+    if (count > 0) commits.push(batch.commit());
+    await Promise.all(commits);
+
+    plotMarkers();
+    toast(`${marcadas.length} marcas quitadas`, 'ok');
+  } catch (err) {
+    toast('Error al limpiar: ' + err.message, 'error');
+  }
 }
