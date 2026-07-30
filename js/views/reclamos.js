@@ -1,6 +1,6 @@
 /**
  * js/views/reclamos.js
- * Área "Reclamos SIGET " — bitácora de trazabilidad.
+ * Área "Reclamos SIGET" — bitácora de trazabilidad.
  *
  * El técnico registra las órdenes que realiza (NC, WO, cliente,
  * concepto, detalle, serie); la fecha y el autor se guardan solos.
@@ -161,23 +161,23 @@ function renderLista() {
   }
   el.innerHTML = `<div style="display:flex;flex-direction:column;gap:8px">${
     arr.map(r => `
-      <div style="background:var(--bg-card);border:1px solid var(--border);border-left:3px solid #fbbf24;border-radius:10px;padding:12px 14px">
+      <div class="orden-card" style="flex-direction:column;align-items:stretch;cursor:default;border-left:3px solid #fbbf24">
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-          <div style="font-size:14px;font-weight:800;color:#fbbf24">WO ${r.wo || '—'}</div>
+          <div class="orden-wo" style="color:#fbbf24;font-size:14px">WO ${r.wo || '—'}</div>
           ${r.nc ? `<div style="font-size:11px;color:var(--text-3)">NC ${escapar(r.nc)}</div>` : ''}
-          ${r.cliente ? `<div style="font-size:12px;font-weight:600;color:var(--text-2);flex:1;min-width:120px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapar(r.cliente)}</div>` : '<div style="flex:1"></div>'}
+          ${r.cliente ? `<div class="orden-cliente" style="flex:1;min-width:120px">${escapar(r.cliente)}</div>` : '<div style="flex:1"></div>'}
           <div style="font-size:10px;color:var(--text-4)">${fmtFecha(r.fecha)}</div>
         </div>
-        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:6px">
-          ${r.concept ? `<span style="font-size:10px;font-weight:700;color:#93c5fd;background:rgba(59,130,246,.1);border:1px solid rgba(59,130,246,.25);border-radius:8px;padding:2px 8px">${escapar(r.concept)}</span>` : ''}
-          ${r.censoCarga ? `<span style="font-size:10px;font-weight:700;color:#34d399;background:rgba(52,211,153,.1);border:1px solid rgba(52,211,153,.3);border-radius:8px;padding:2px 8px">Censo${r.censoWo ? ' · WO ' + escapar(r.censoWo) : ''}</span>` : ''}
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:8px">
+          ${r.concept ? `<span class="estado-badge" style="color:#93c5fd;border-color:rgba(59,130,246,.25);background:rgba(59,130,246,.1)">${escapar(r.concept)}</span>` : ''}
+          ${r.censoCarga ? `<span class="estado-badge ok">Censo${r.censoWo ? ' · WO ' + escapar(r.censoWo) : ''}</span>` : ''}
           ${r.serie ? `<span style="font-size:10px;color:var(--text-4)">Serie ${escapar(r.serie)}</span>` : ''}
           ${r.tecnicoNombre ? `<span style="font-size:10px;color:var(--text-4);margin-left:auto;display:flex;align-items:center;gap:4px">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="10" height="10"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
             ${escapar(r.tecnicoNombre)}
           </span>` : ''}
         </div>
-        ${r.detalle ? `<div style="font-size:11px;color:var(--text-3);line-height:1.5;margin-top:6px;white-space:pre-wrap">${escapar(r.detalle)}</div>` : ''}
+        ${r.detalle ? `<div class="orden-dir" style="white-space:pre-wrap;margin-top:6px;overflow:visible">${escapar(r.detalle)}</div>` : ''}
       </div>`).join('')
   }</div>`;
 }
