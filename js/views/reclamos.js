@@ -168,6 +168,7 @@ function renderLista() {
         ${r.cliente ? `<div style="font-size:12px;font-weight:600;color:var(--text-2);margin-bottom:2px">${escapar(r.cliente)}</div>` : ''}
         <div style="font-size:10px;color:var(--text-4);margin-bottom:6px">${r.nc ? 'NC ' + escapar(r.nc) : ''}${r.serie ? ' · Serie ' + escapar(r.serie) : ''}</div>
         ${r.concept ? `<div style="display:inline-block;font-size:10px;font-weight:700;color:#93c5fd;background:rgba(59,130,246,.1);border:1px solid rgba(59,130,246,.25);border-radius:8px;padding:2px 8px;margin-bottom:6px">${escapar(r.concept)}</div>` : ''}
+        ${r.censoCarga ? `<div style="display:inline-block;font-size:10px;font-weight:700;color:#34d399;background:rgba(52,211,153,.1);border:1px solid rgba(52,211,153,.3);border-radius:8px;padding:2px 8px;margin-bottom:6px;margin-left:4px">Censo de carga${r.censoWo ? ' · WO ' + escapar(r.censoWo) : ''}</div>` : ''}
         ${r.detalle ? `<div style="font-size:12px;color:var(--text-2);line-height:1.5;margin-bottom:8px;white-space:pre-wrap">${escapar(r.detalle)}</div>` : ''}
         ${esAdmin_ ? `<div style="font-size:10px;color:var(--text-4);display:flex;align-items:center;gap:5px">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="11" height="11"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
@@ -212,6 +213,16 @@ function abrirNueva() {
       <textarea id="rc-detalle" rows="3" placeholder="Observaciones de lo que se hizo" style="width:100%;padding:12px;border-radius:12px;border:1px solid var(--border);background:var(--glass);color:var(--text-2);font-size:14px;font-family:inherit;outline:none;resize:vertical"></textarea>
     </div>
     ${campo('rc-serie', '# Serie', 'Serie del medidor', true)}
+    <div style="margin-bottom:12px;padding:12px;border-radius:12px;border:1px solid var(--border);background:var(--glass)">
+      <label style="display:flex;align-items:center;gap:10px;cursor:pointer">
+        <input type="checkbox" id="rc-censo" style="width:18px;height:18px;accent-color:#fbbf24;cursor:pointer"/>
+        <span style="font-size:13px;font-weight:600;color:var(--text-2)">Se hizo censo de carga</span>
+      </label>
+      <div id="rc-censo-wrap" style="display:none;margin-top:10px">
+        <div style="font-size:12px;font-weight:600;color:var(--text-3);margin-bottom:6px">WO del censo</div>
+        <input id="rc-censo-wo" type="text" placeholder="Número de orden del censo" style="width:100%;padding:12px;border-radius:12px;border:1px solid var(--border);background:var(--bg-card);color:var(--text-2);font-size:14px;font-family:inherit;outline:none"/>
+      </div>
+    </div>
     <div id="rc-err" style="display:none;color:#f87171;font-size:12px;margin-bottom:10px"></div>
     <div style="display:flex;gap:8px">
       <button id="rc-cancel" style="flex:1;padding:13px;border-radius:12px;border:1px solid var(--border);background:var(--glass);color:var(--text-3);font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">Cancelar</button>
@@ -222,6 +233,10 @@ function abrirNueva() {
   const selConcept = sheet.querySelector('#rc-concept');
   selConcept.onchange = () => {
     sheet.querySelector('#rc-otro-wrap').style.display = selConcept.value === 'Otro' ? 'block' : 'none';
+  };
+  const chkCenso = sheet.querySelector('#rc-censo');
+  chkCenso.onchange = () => {
+    sheet.querySelector('#rc-censo-wrap').style.display = chkCenso.checked ? 'block' : 'none';
   };
   sheet.querySelector('#rc-cancel').onclick = cerrarSheet;
   sheet.querySelector('#rc-guardar').onclick = guardar;
@@ -239,6 +254,8 @@ async function guardar() {
   const nc = val('#rc-nc'), wo = val('#rc-wo'), cliente = val('#rc-cliente');
   let concept = val('#rc-concept');
   const detalle = val('#rc-detalle'), serie = val('#rc-serie');
+  const censoCarga = sheet.querySelector('#rc-censo').checked;
+  const censoWo = censoCarga ? val('#rc-censo-wo') : '';
   const err = sheet.querySelector('#rc-err');
 
   const falta = [];
@@ -251,6 +268,7 @@ async function guardar() {
     if (!otro) falta.push('el concepto (Otro)');
     else concept = otro;
   }
+  if (censoCarga && !censoWo) falta.push('WO del censo');
   if (falta.length) { err.textContent = 'Falta: ' + falta.join(', '); err.style.display = 'block'; return; }
   err.style.display = 'none';
 
@@ -260,6 +278,7 @@ async function guardar() {
   try {
     const doc = {
       nc, wo, cliente, concept, detalle, serie,
+      censoCarga, censoWo,
       tecnicoUid: session_.uid,
       tecnicoNombre: session_.displayName,
       fecha: firebase.firestore.Timestamp.now(),
@@ -288,12 +307,14 @@ function descargarExcel() {
       'Concepto': r.concept || '',
       'Detalle': r.detalle || '',
       '# Serie': r.serie || '',
+      'Censo de carga': r.censoCarga ? 'Sí' : 'No',
+      'WO censo': r.censoWo || '',
       'Técnico': r.tecnicoNombre || '',
       'Fecha': fmtFecha(r.fecha),
     }));
     const headers = Object.keys(filas[0]);
     const ws = XLSX.utils.json_to_sheet(filas, { header: headers });
-    ws['!cols'] = [{wch:14},{wch:14},{wch:26},{wch:24},{wch:40},{wch:12},{wch:22},{wch:12}];
+    ws['!cols'] = [{wch:14},{wch:14},{wch:26},{wch:24},{wch:40},{wch:12},{wch:14},{wch:14},{wch:22},{wch:12}];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Reclamos SIGET');
     const hoy = new Date().toISOString().slice(0, 10);
@@ -329,6 +350,8 @@ const ALIAS_HIST = {
   detalle: ['woclass', 'detalle', 'clase', 'observaciones'],
   resp:    ['resp', 'responsable', 'tecnico'],
   cliente: ['cliente', 'nombre', 'nombrecliente'],
+  ordenExtra: ['ordenextra', 'extra'],
+  censoWo:    ['wo1', 'wo_1', 'woextra', 'wocenso'],
 };
 
 function mapearColsHist(rows) {
@@ -419,6 +442,12 @@ async function manejarHistorico(file) {
 
       const fecha = cols.fecha ? fechaDeExcel(r[cols.fecha]) : null;
 
+      // Censo de carga: la col J (segunda WO) trae el WO del censo; la col I
+      // ("Orden extra") suele decir "censo de carga". Si hay WO en J, hubo censo.
+      const censoWo = cols.censoWo ? String(r[cols.censoWo] ?? '').trim() : '';
+      const ordenExtra = cols.ordenExtra ? String(r[cols.ordenExtra] ?? '').trim() : '';
+      const censoCarga = !!censoWo || /censo/i.test(ordenExtra);
+
       nuevos.push({
         nc:      cols.nc ? String(r[cols.nc] ?? '').trim() : '',
         wo,
@@ -426,6 +455,7 @@ async function manejarHistorico(file) {
         concept: cols.concept ? String(r[cols.concept] ?? '').trim() : '',
         detalle: cols.detalle ? String(r[cols.detalle] ?? '').trim() : '',
         serie:   cols.serie ? String(r[cols.serie] ?? '').trim() : '',
+        censoCarga, censoWo,
         // El técnico: uid si cruzó; el nombre del Excel SIEMPRE se guarda
         tecnicoUid: u ? u.uid : null,
         tecnicoNombre: u ? u.displayName : (respNombre || 'Sin técnico'),
@@ -451,6 +481,7 @@ function previsualizarHistorico(nuevos, info) {
   }
   const conTec = nuevos.filter(n => n.tecnicoUid).length;
   const sinCruce = nuevos.length - conTec;
+  const conCenso = nuevos.filter(n => n.censoCarga).length;
 
   est.innerHTML = `
     <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:12px">
@@ -458,6 +489,7 @@ function previsualizarHistorico(nuevos, info) {
       <div class="flex-col gap-4" style="font-size:12px">
         <div style="display:flex;justify-content:space-between"><span style="color:var(--text-3)">Técnico enlazado a un usuario</span><span style="font-weight:700;color:#22c55e">${conTec}</span></div>
         <div style="display:flex;justify-content:space-between"><span style="color:var(--text-3)">Solo con nombre (sin enlazar)</span><span style="font-weight:700;color:${sinCruce?'#fbbf24':'var(--text-4)'}">${sinCruce}</span></div>
+        <div style="display:flex;justify-content:space-between"><span style="color:var(--text-3)">Con censo de carga</span><span style="font-weight:700;color:${conCenso?'#34d399':'var(--text-4)'}">${conCenso}</span></div>
         ${info.duplicados ? `<div style="display:flex;justify-content:space-between"><span style="color:var(--text-3)">WO ya existentes (omitidos)</span><span style="font-weight:700;color:var(--text-4)">${info.duplicados}</span></div>` : ''}
         ${info.sinWO ? `<div style="display:flex;justify-content:space-between"><span style="color:var(--text-3)">Filas sin WO (omitidas)</span><span style="font-weight:700;color:var(--text-4)">${info.sinWO}</span></div>` : ''}
       </div>
