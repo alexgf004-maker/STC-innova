@@ -470,37 +470,48 @@ function tarjetaOrden(o) {
   const porConfirmar = o.estado === 'por_confirmar';
   const confirmada = o.estado === 'confirmada';
   const visitas = Array.isArray(o.visitas) ? o.visitas : [];
-  const acento = confirmada ? '#22c55e' : porConfirmar ? '#fbbf24' : '#94a3b8';
+
+  const dotClase = confirmada ? 'ok' : porConfirmar ? 'warn' : 'muted';
+  const dotStyle = porConfirmar ? 'style="background:#fbbf24"' : o.esUPR && !confirmada && !porConfirmar ? 'style="background:#38bdf8"' : '';
 
   const badge = confirmada
-    ? `<div style="font-size:10px;font-weight:700;color:#22c55e;background:rgba(34,197,94,.12);border:1px solid rgba(34,197,94,.3);padding:3px 9px;border-radius:12px;white-space:nowrap">${o.logranoEn ? LOGRO_LABEL[o.logranoEn] : 'Sin lograr'}</div>`
+    ? `<div class="estado-badge ok">${o.logranoEn ? LOGRO_LABEL[o.logranoEn] : 'Sin lograr'}</div>`
     : porConfirmar
-    ? `<div style="font-size:10px;font-weight:700;color:#fbbf24;background:rgba(251,191,36,.12);border:1px solid rgba(251,191,36,.3);padding:3px 9px;border-radius:12px;white-space:nowrap">Falta revisar</div>`
-    : `<div style="font-size:10px;color:var(--text-4);background:var(--glass);border:1px solid var(--border);padding:3px 9px;border-radius:12px">${puntos} punto${puntos>1?'s':''}</div>`;
+    ? `<div class="estado-badge warn">Falta revisar</div>`
+    : `<div class="estado-badge muted">${puntos} punto${puntos>1?'s':''}</div>`;
 
   const badgeUPR = o.esUPR
-    ? `<div style="font-size:10px;font-weight:800;letter-spacing:.04em;color:#38bdf8;background:rgba(56,189,248,.14);border:1px solid rgba(56,189,248,.4);padding:3px 9px;border-radius:12px;white-space:nowrap">UPR</div>`
+    ? `<div class="pareja-chip" style="color:#38bdf8;border-color:rgba(56,189,248,.4);background:rgba(56,189,248,.14)">UPR</div>`
+    : '';
+
+  const detalle = (porConfirmar || confirmada) ? `
+    <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;font-size:10px;color:var(--text-4)">
+      ${o.logranoEn ? `<span>Hecha en <span style="color:#22c55e;font-weight:700">${LOGRO_LABEL[o.logranoEn]}</span></span>` : `<span style="color:#ef4444">Sin lograr</span>`}
+      ${visitas.length ? `<span>· <span style="color:#fbbf24;font-weight:700">${visitas.length} visita${visitas.length>1?'s':''}</span> (${visitas.map(v=>LOGRO_LABEL[v]).join(', ')})</span>` : ''}
+      ${o.pareja ? `<span>· ${o.pareja}</span>` : ''}
+    </div>` : '';
+
+  const botonConfirmar = (porConfirmar && esAdmin_)
+    ? `<button data-confirmar="${o.id}" class="btn-action" style="margin-top:10px;height:38px;background:rgba(34,197,94,.12);border:1px solid rgba(34,197,94,.3);color:#22c55e">Marcar como lista</button>`
     : '';
 
   return `
-    <div style="background:var(--bg-card);border:1px solid var(--border);border-left:3px solid ${o.esUPR ? '#38bdf8' : acento};border-radius:12px;padding:13px">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
-        <div style="flex:1;min-width:0">
-          <div style="font-size:13px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${t.nombre || o.ncTitular || '—'}</div>
-          <div style="font-size:10px;color:var(--text-4);margin-top:1px">NC ${o.ncTitular}${o.tarifa ? ' · ' + o.tarifa : ''}${t.direccion ? ' · ' + t.direccion.split(',')[0] : ''}</div>
+    <div class="orden-card" style="flex-direction:column;align-items:stretch;cursor:default${o.esUPR?';border-left:3px solid #38bdf8':''}">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px">
+        <div class="orden-card-left" style="align-items:flex-start">
+          <div class="status-dot ${dotClase}" ${dotStyle} style="margin-top:4px"></div>
+          <div class="orden-info">
+            <div class="orden-wo" style="font-weight:700">${t.nombre || o.ncTitular || '—'}</div>
+            <div class="orden-dir">NC ${o.ncTitular}${o.tarifa ? ' · ' + o.tarifa : ''}${t.direccion ? ' · ' + t.direccion.split(',')[0] : ''}</div>
+          </div>
         </div>
-        <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end;flex-shrink:0">
+        <div class="orden-card-right" style="flex-direction:column;align-items:flex-end;gap:4px">
           ${badgeUPR}
           ${badge}
         </div>
       </div>
-      ${(porConfirmar || confirmada) ? `
-        <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;font-size:10px;color:var(--text-4)">
-          ${o.logranoEn ? `<span>Hecha en <span style="color:#22c55e;font-weight:700">${LOGRO_LABEL[o.logranoEn]}</span></span>` : `<span style="color:#ef4444">Sin lograr</span>`}
-          ${visitas.length ? `<span>· <span style="color:#fbbf24;font-weight:700">${visitas.length} visita${visitas.length>1?'s':''}</span> (${visitas.map(v=>LOGRO_LABEL[v]).join(', ')})</span>` : ''}
-          ${o.pareja ? `<span>· ${o.pareja}</span>` : ''}
-        </div>` : ''}
-      ${(porConfirmar && esAdmin_) ? `<button data-confirmar="${o.id}" style="width:100%;margin-top:10px;padding:9px;border-radius:10px;border:none;background:#22c55e;color:#0a1628;font-size:12px;font-weight:800;cursor:pointer;font-family:inherit">Marcar como lista</button>` : ''}
+      ${detalle}
+      ${botonConfirmar}
     </div>`;
 }
 
