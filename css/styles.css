@@ -899,25 +899,30 @@ body {
 ════════════════════════════════════════════════ */
 
 /* Tabs */
-.cambios-tabs {
+.cambios-tabs, .area-tabs {
   display: flex; gap: 4px;
   background: rgba(255,255,255,.04);
   border: 1px solid var(--border);
   border-radius: 12px; padding: 4px;
   margin-bottom: 4px; position: relative;
 }
-.cambios-tab {
+.cambios-tab, .area-tab {
   flex: 1; height: 34px;
   display: flex; align-items: center; justify-content: center;
   font-size: 12px; font-weight: 700; color: var(--text-4);
   border-radius: 9px; cursor: pointer;
   transition: color .2s, background .2s;
   -webkit-tap-highlight-color: transparent;
+  border: none; background: transparent; font-family: inherit;
 }
 .cambios-tab.active {
   background: rgba(13,148,136,.15);
   color: var(--cm-light);
 }
+/* Pestañas por color de área (Caracterización roja, Reclamos amarillo) */
+.area-tab.active.cm { background: var(--cm-glass); color: var(--cm-light); }
+.area-tab.active.cr { background: var(--cr-glass); color: var(--cr-light); }
+.area-tab.active.rc { background: var(--rc-glass); color: var(--rc-light); }
 
 /* Panel header */
 .panel-header {
