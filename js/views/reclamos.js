@@ -1,6 +1,6 @@
 /**
  * js/views/reclamos.js
- * Área "Reclamos SIGET" — bitácora de trazabilidad.
+ * Área "Reclamos SIGET " — bitácora de trazabilidad.
  *
  * El técnico registra las órdenes que realiza (NC, WO, cliente,
  * concepto, detalle, serie); la fecha y el autor se guardan solos.
