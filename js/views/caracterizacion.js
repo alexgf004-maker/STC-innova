@@ -312,9 +312,9 @@ function renderResumen() {
         <div style="height:100%;width:${pct}%;background:#a78bfa;border-radius:4px"></div>
       </div>
       <div style="display:flex;gap:8px;margin-bottom:${totalVisitas?'12px':'0'}">
-        <div style="flex:1;text-align:center"><div style="font-size:18px;font-weight:800;color:#fbbf24">${pend}</div><div style="font-size:10px;color:var(--text-4)">Pendientes</div></div>
-        <div style="flex:1;text-align:center"><div style="font-size:18px;font-weight:800;color:#3b82f6">${porConfirmar}</div><div style="font-size:10px;color:var(--text-4)">Por confirmar</div></div>
-        <div style="flex:1;text-align:center"><div style="font-size:18px;font-weight:800;color:#22c55e">${confirmadas}</div><div style="font-size:10px;color:var(--text-4)">Confirmadas</div></div>
+        <div style="flex:1;text-align:center"><div style="font-size:18px;font-weight:800;color:var(--text-2)">${pend}</div><div style="font-size:10px;color:var(--text-4)">Por hacer</div></div>
+        <div style="flex:1;text-align:center"><div style="font-size:18px;font-weight:800;color:#fbbf24">${porConfirmar}</div><div style="font-size:10px;color:var(--text-4)">Falta revisar</div></div>
+        <div style="flex:1;text-align:center"><div style="font-size:18px;font-weight:800;color:#22c55e">${confirmadas}</div><div style="font-size:10px;color:var(--text-4)">Listas</div></div>
       </div>
       ${totalVisitas ? `<div style="display:flex;align-items:center;justify-content:space-between;padding-top:12px;border-top:1px solid var(--border)">
         <span style="font-size:12px;color:var(--text-3)">Visitas cobrables (total)</span>
@@ -405,9 +405,9 @@ function renderLista() {
     </div>
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:10px">${arr.map(tarjetaOrden).join('')}</div>` : '';
 
-  el.innerHTML = seccion('Por confirmar', porConfirmar, '#3b82f6')
-               + seccion('Pendientes', pend, '#fbbf24')
-               + seccion('Confirmadas', confirmadas, '#22c55e');
+  el.innerHTML = seccion('Hecha, falta revisar', porConfirmar, '#fbbf24')
+               + seccion('Por hacer', pend, '#94a3b8')
+               + seccion('Lista', confirmadas, '#22c55e');
 
   // Enganchar botones de confirmar
   el.querySelectorAll('[data-confirmar]').forEach(btn => {
@@ -421,12 +421,12 @@ function tarjetaOrden(o) {
   const porConfirmar = o.estado === 'por_confirmar';
   const confirmada = o.estado === 'confirmada';
   const visitas = Array.isArray(o.visitas) ? o.visitas : [];
-  const acento = confirmada ? '#22c55e' : porConfirmar ? '#3b82f6' : '#a78bfa';
+  const acento = confirmada ? '#22c55e' : porConfirmar ? '#fbbf24' : '#94a3b8';
 
   const badge = confirmada
     ? `<div style="font-size:10px;font-weight:700;color:#22c55e;background:rgba(34,197,94,.12);border:1px solid rgba(34,197,94,.3);padding:3px 9px;border-radius:12px;white-space:nowrap">${o.logranoEn ? LOGRO_LABEL[o.logranoEn] : 'Sin lograr'}</div>`
     : porConfirmar
-    ? `<div style="font-size:10px;font-weight:700;color:#3b82f6;background:rgba(59,130,246,.12);border:1px solid rgba(59,130,246,.3);padding:3px 9px;border-radius:12px;white-space:nowrap">Por confirmar</div>`
+    ? `<div style="font-size:10px;font-weight:700;color:#fbbf24;background:rgba(251,191,36,.12);border:1px solid rgba(251,191,36,.3);padding:3px 9px;border-radius:12px;white-space:nowrap">Falta revisar</div>`
     : `<div style="font-size:10px;color:var(--text-4);background:var(--glass);border:1px solid var(--border);padding:3px 9px;border-radius:12px">${puntos} punto${puntos>1?'s':''}</div>`;
 
   const badgeUPR = o.esUPR
@@ -451,7 +451,7 @@ function tarjetaOrden(o) {
           ${visitas.length ? `<span>· <span style="color:#fbbf24;font-weight:700">${visitas.length} visita${visitas.length>1?'s':''}</span> (${visitas.map(v=>LOGRO_LABEL[v]).join(', ')})</span>` : ''}
           ${o.pareja ? `<span>· ${o.pareja}</span>` : ''}
         </div>` : ''}
-      ${(porConfirmar && esAdmin_) ? `<button data-confirmar="${o.id}" style="width:100%;margin-top:10px;padding:9px;border-radius:10px;border:none;background:#22c55e;color:#0a1628;font-size:12px;font-weight:800;cursor:pointer;font-family:inherit">Confirmar orden</button>` : ''}
+      ${(porConfirmar && esAdmin_) ? `<button data-confirmar="${o.id}" style="width:100%;margin-top:10px;padding:9px;border-radius:10px;border:none;background:#22c55e;color:#0a1628;font-size:12px;font-weight:800;cursor:pointer;font-family:inherit">Marcar como lista</button>` : ''}
     </div>`;
 }
 
@@ -465,7 +465,7 @@ async function confirmarDesdeLista(ordenId) {
     });
     o.estado = 'confirmada'; o.confirmadaPor = session_.displayName;
     renderResumen(); renderLista();
-    toast('Orden confirmada', 'ok');
+    toast('Orden marcada como lista', 'ok');
   } catch (err) { toast('Error: ' + err.message, 'error'); }
 }
 
@@ -623,7 +623,7 @@ function fmtFechaHora(ts) {
   return `${p(d.getDate())}/${p(d.getMonth()+1)}/${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
-const ESTADO_LABEL = { pendiente:'Pendiente', por_confirmar:'Por confirmar', confirmada:'Confirmada' };
+const ESTADO_LABEL = { pendiente:'Por hacer', por_confirmar:'Hecha, falta revisar', confirmada:'Lista' };
 const PUNTO_LABEL = { titular:'Titular', suplente1:'Suplente 1', suplente2:'Suplente 2' };
 
 function generarExcelDia(clave, ordenes) {
