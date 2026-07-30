@@ -159,22 +159,25 @@ function renderLista() {
     }</div>`;
     return;
   }
-  el.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:10px">${
+  el.innerHTML = `<div style="display:flex;flex-direction:column;gap:8px">${
     arr.map(r => `
-      <div style="background:var(--bg-card);border:1px solid var(--border);border-left:3px solid #fbbf24;border-radius:12px;padding:13px">
-        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:4px">
+      <div style="background:var(--bg-card);border:1px solid var(--border);border-left:3px solid #fbbf24;border-radius:10px;padding:12px 14px">
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
           <div style="font-size:14px;font-weight:800;color:#fbbf24">WO ${r.wo || '—'}</div>
+          ${r.nc ? `<div style="font-size:11px;color:var(--text-3)">NC ${escapar(r.nc)}</div>` : ''}
+          ${r.cliente ? `<div style="font-size:12px;font-weight:600;color:var(--text-2);flex:1;min-width:120px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapar(r.cliente)}</div>` : '<div style="flex:1"></div>'}
           <div style="font-size:10px;color:var(--text-4)">${fmtFecha(r.fecha)}</div>
         </div>
-        ${r.cliente ? `<div style="font-size:12px;font-weight:600;color:var(--text-2);margin-bottom:2px">${escapar(r.cliente)}</div>` : ''}
-        <div style="font-size:10px;color:var(--text-4);margin-bottom:6px">${r.nc ? 'NC ' + escapar(r.nc) : ''}${r.serie ? ' · Serie ' + escapar(r.serie) : ''}</div>
-        ${r.concept ? `<div style="display:inline-block;font-size:10px;font-weight:700;color:#93c5fd;background:rgba(59,130,246,.1);border:1px solid rgba(59,130,246,.25);border-radius:8px;padding:2px 8px;margin-bottom:6px">${escapar(r.concept)}</div>` : ''}
-        ${r.censoCarga ? `<div style="display:inline-block;font-size:10px;font-weight:700;color:#34d399;background:rgba(52,211,153,.1);border:1px solid rgba(52,211,153,.3);border-radius:8px;padding:2px 8px;margin-bottom:6px;margin-left:4px">Censo de carga${r.censoWo ? ' · WO ' + escapar(r.censoWo) : ''}</div>` : ''}
-        ${r.detalle ? `<div style="font-size:12px;color:var(--text-2);line-height:1.5;margin-bottom:8px;white-space:pre-wrap">${escapar(r.detalle)}</div>` : ''}
-        ${esAdmin_ ? `<div style="font-size:10px;color:var(--text-4);display:flex;align-items:center;gap:5px">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="11" height="11"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-          ${escapar(r.tecnicoNombre || 'Técnico')}
-        </div>` : ''}
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:6px">
+          ${r.concept ? `<span style="font-size:10px;font-weight:700;color:#93c5fd;background:rgba(59,130,246,.1);border:1px solid rgba(59,130,246,.25);border-radius:8px;padding:2px 8px">${escapar(r.concept)}</span>` : ''}
+          ${r.censoCarga ? `<span style="font-size:10px;font-weight:700;color:#34d399;background:rgba(52,211,153,.1);border:1px solid rgba(52,211,153,.3);border-radius:8px;padding:2px 8px">Censo${r.censoWo ? ' · WO ' + escapar(r.censoWo) : ''}</span>` : ''}
+          ${r.serie ? `<span style="font-size:10px;color:var(--text-4)">Serie ${escapar(r.serie)}</span>` : ''}
+          ${r.tecnicoNombre ? `<span style="font-size:10px;color:var(--text-4);margin-left:auto;display:flex;align-items:center;gap:4px">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="10" height="10"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+            ${escapar(r.tecnicoNombre)}
+          </span>` : ''}
+        </div>
+        ${r.detalle ? `<div style="font-size:11px;color:var(--text-3);line-height:1.5;margin-top:6px;white-space:pre-wrap">${escapar(r.detalle)}</div>` : ''}
       </div>`).join('')
   }</div>`;
 }
