@@ -1046,11 +1046,21 @@ function renderResumenRetiros() {
   const retirados = retiros_.filter(r => r.estado === 'retirado').length;
   const noPudo = retiros_.filter(r => r.estado === 'no_retirado').length;
   const pend = total - retirados - noPudo;
+  const pct = total ? Math.round((retirados / total) * 100) : 0;
   el.innerHTML = `
-    <div style="display:flex;gap:8px;background:var(--glass);border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:14px">
-      <div style="flex:1;text-align:center"><div style="font-size:18px;font-weight:800;color:var(--text-2)">${pend}</div><div style="font-size:10px;color:var(--text-4)">Por retirar</div></div>
-      <div style="flex:1;text-align:center"><div style="font-size:18px;font-weight:800;color:#22c55e">${retirados}</div><div style="font-size:10px;color:var(--text-4)">Retirados</div></div>
-      <div style="flex:1;text-align:center"><div style="font-size:18px;font-weight:800;color:${noPudo?'#ef4444':'var(--text-4)'}">${noPudo}</div><div style="font-size:10px;color:var(--text-4)">No se pudo</div></div>
+    <div class="progress-card" style="margin-bottom:16px">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px">
+        <div style="font-size:13px;font-weight:700">${esAdmin_ ? 'Avance de retiros' : 'Tus retiros'}</div>
+        <div style="font-size:12px;color:var(--text-4)">${retirados} de ${total} · ${pct}%</div>
+      </div>
+      <div class="progress-bar-bg">
+        <div class="progress-bar-fill" style="width:${pct}%;background:#f59e0b"></div>
+      </div>
+      <div class="progress-stats" style="margin-top:10px">
+        <span><span class="stat-dot" style="background:#f59e0b"></span>${pend} por retirar</span>
+        <span><span class="stat-dot ok"></span>${retirados} retirados</span>
+        ${noPudo ? `<span><span class="stat-dot" style="background:#ef4444"></span>${noPudo} no se pudo</span>` : ''}
+      </div>
     </div>`;
 }
 
@@ -1067,19 +1077,30 @@ function renderListaRetiros() {
   const noPudo = retiros_.filter(r => r.estado === 'no_retirado');
 
   const tarjeta = (r) => {
-    const color = r.estado === 'retirado' ? '#22c55e' : r.estado === 'no_retirado' ? '#ef4444' : '#f59e0b';
+    const dotClase = r.estado === 'retirado' ? 'ok' : r.estado === 'no_retirado' ? 'crit' : 'warn';
+    const dotStyle = r.estado === 'pendiente' || !r.estado ? 'style="background:#f59e0b"' : r.estado === 'no_retirado' ? 'style="background:#ef4444"' : '';
+    const badgeClase = r.estado === 'retirado' ? 'ok' : r.estado === 'no_retirado' ? 'crit' : 'warn';
     const etiqueta = r.estado === 'retirado' ? 'Retirado' : r.estado === 'no_retirado' ? 'No se pudo' : 'Por retirar';
+    const color = r.estado === 'retirado' ? '#22c55e' : r.estado === 'no_retirado' ? '#ef4444' : '#f59e0b';
+    const meta = (r.estado === 'retirado' || r.estado === 'no_retirado')
+      ? `${r.hechoPor ? 'Por ' + r.hechoPor : ''}${r.fechaHecho ? ' · ' + fmtFechaHora(r.fechaHecho) : ''}${r.pareja ? ' · ' + r.pareja : ''}`
+      : (r.pareja || '');
     return `
-      <div style="background:var(--bg-card);border:1px solid var(--border);border-left:3px solid ${color};border-radius:12px;padding:13px">
-        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
-          <div style="flex:1;min-width:0">
-            <div style="font-size:13px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${r.nombre || r.nc}</div>
-            <div style="font-size:10px;color:var(--text-4);margin-top:1px">NC ${r.nc}${r.direccion ? ' · ' + r.direccion.split(',')[0] : ''}</div>
+      <div class="orden-card" style="flex-direction:column;align-items:stretch;cursor:default;border-left:3px solid ${color}">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px">
+          <div class="orden-card-left" style="align-items:flex-start">
+            <div class="status-dot ${dotClase}" ${dotStyle} style="margin-top:4px"></div>
+            <div class="orden-info">
+              <div class="orden-wo" style="font-weight:700">${r.nombre || r.nc}</div>
+              <div class="orden-dir">NC ${r.nc}${r.direccion ? ' · ' + r.direccion.split(',')[0] : ''}</div>
+            </div>
           </div>
-          <div style="font-size:10px;font-weight:700;color:${color};background:${color}1f;border:1px solid ${color}55;padding:3px 9px;border-radius:12px;white-space:nowrap">${etiqueta}</div>
+          <div class="orden-card-right">
+            <div class="estado-badge ${badgeClase}">${etiqueta}</div>
+          </div>
         </div>
-        ${r.estado === 'no_retirado' && r.motivo ? `<div style="font-size:11px;color:#f87171;margin-top:6px">Motivo: ${r.motivo}</div>` : ''}
-        ${(r.estado === 'retirado' || r.estado === 'no_retirado') ? `<div style="font-size:10px;color:var(--text-4);margin-top:6px">${r.hechoPor ? 'Por ' + r.hechoPor : ''}${r.fechaHecho ? ' · ' + fmtFechaHora(r.fechaHecho) : ''}${r.pareja ? ' · ' + r.pareja : ''}</div>` : (r.pareja ? `<div style="font-size:10px;color:var(--text-4);margin-top:6px">${r.pareja}</div>` : '')}
+        ${r.estado === 'no_retirado' && r.motivo ? `<div style="font-size:11px;color:#f87171;margin-top:8px">Motivo: ${r.motivo}</div>` : ''}
+        ${meta ? `<div style="font-size:10px;color:var(--text-4);margin-top:8px">${meta}</div>` : ''}
       </div>`;
   };
 
@@ -1089,7 +1110,7 @@ function renderListaRetiros() {
       <div style="flex:1;height:1px;background:var(--border)"></div>
       <div style="font-size:11px;color:var(--text-4)">${arr.length}</div>
     </div>
-    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:10px">${arr.map(tarjeta).join('')}</div>` : '';
+    <div style="display:flex;flex-direction:column;gap:8px">${arr.map(tarjeta).join('')}</div>` : '';
 
   el.innerHTML = seccion('Por retirar', pend, '#f59e0b')
                + seccion('Retirados', retirados, '#22c55e')
