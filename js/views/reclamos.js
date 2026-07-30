@@ -40,7 +40,7 @@ export async function init(container, session) {
       <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:16px">
         <div>
           <div class="section-title">Reclamos SIGET</div>
-          <div style="font-size:12px;color:var(--text-4);margin-top:2px">${esAdmin_ ? 'Historial de órdenes registradas' : 'Tus órdenes registradas'}</div>
+          <div style="font-size:12px;color:var(--text-4);margin-top:2px">Historial de órdenes registradas</div>
         </div>
         <div style="display:flex;gap:8px">
           ${esAdmin_ ? `
@@ -57,11 +57,10 @@ export async function init(container, session) {
         </div>
       </div>
 
-      ${esAdmin_ ? `
       <div style="position:relative;margin-bottom:14px">
         <svg viewBox="0 0 24 24" fill="none" stroke="var(--text-4)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" style="position:absolute;left:12px;top:50%;transform:translateY(-50%)"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-        <input id="rc-buscar" type="text" placeholder="Buscar por WO, NC, cliente, técnico…" style="width:100%;padding:11px 12px 11px 36px;border-radius:12px;border:1px solid var(--border);background:var(--glass);color:var(--text-2);font-size:13px;font-family:inherit;outline:none"/>
-      </div>` : ''}
+        <input id="rc-buscar" type="text" placeholder="Buscar por WO, NC, cliente, censo…" style="width:100%;padding:11px 12px 11px 36px;border-radius:12px;border:1px solid var(--border);background:var(--glass);color:var(--text-2);font-size:13px;font-family:inherit;outline:none"/>
+      </div>
 
       <div id="rc-estado"></div>
       <div id="rc-resumen"></div>
@@ -76,11 +75,12 @@ export async function init(container, session) {
     const file = container.querySelector('#rc-file');
     container.querySelector('#rc-historico').onclick = () => file.click();
     file.onchange = (e) => manejarHistorico(e.target.files[0]);
-    const buscar = container.querySelector('#rc-buscar');
-    buscar.oninput = (e) => { filtro_ = e.target.value.trim().toLowerCase(); renderLista(); };
   } else {
     container.querySelector('#rc-nueva').onclick = abrirNueva;
   }
+  // El buscador está disponible para todos (el técnico consulta el histórico)
+  const buscar = container.querySelector('#rc-buscar');
+  buscar.oninput = (e) => { filtro_ = e.target.value.trim().toLowerCase(); renderLista(); };
 
   await cargar();
 }
@@ -89,9 +89,9 @@ async function cargar() {
   const lista = container_.querySelector('#rc-lista');
   if (lista) lista.innerHTML = `<div style="text-align:center;padding:24px"><div class="spinner" style="margin:0 auto 8px"></div><div style="font-size:12px;color:var(--text-4)">Cargando…</div></div>`;
   try {
-    let query = db.collection('reclamos_siget');
-    if (!esAdmin_) query = query.where('tecnicoUid', '==', session_.uid);
-    const snap = await query.get();
+    // Todos ven todo el historial. El técnico solo consulta (no edita);
+    // el admin/asistente pueden registrar y descargar.
+    const snap = await db.collection('reclamos_siget').get();
     registros_ = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     registros_.sort((a, b) => (msDe(b.fecha) - msDe(a.fecha)));
     renderResumen();
@@ -121,7 +121,7 @@ function renderResumen() {
     <div style="display:flex;gap:10px;margin-bottom:16px">
       <div style="flex:1;background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:14px;text-align:center">
         <div style="font-size:22px;font-weight:800;color:#fbbf24">${total}</div>
-        <div style="font-size:10px;color:var(--text-4)">${esAdmin_ ? 'Total registradas' : 'Tus órdenes'}</div>
+        <div style="font-size:10px;color:var(--text-4)">Total registradas</div>
       </div>
       <div style="flex:1;background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:14px;text-align:center">
         <div style="font-size:22px;font-weight:800;color:#2dd4bf">${delMes}</div>
@@ -141,14 +141,15 @@ function renderLista() {
   const el = container_.querySelector('#rc-lista');
   if (!el) return;
   let arr = registros_;
-  if (esAdmin_ && filtro_) {
+  if (filtro_) {
     arr = arr.filter(r =>
       String(r.wo || '').toLowerCase().includes(filtro_) ||
       String(r.nc || '').toLowerCase().includes(filtro_) ||
       String(r.cliente || '').toLowerCase().includes(filtro_) ||
       String(r.tecnicoNombre || '').toLowerCase().includes(filtro_) ||
       String(r.concept || '').toLowerCase().includes(filtro_) ||
-      String(r.detalle || '').toLowerCase().includes(filtro_)
+      String(r.detalle || '').toLowerCase().includes(filtro_) ||
+      String(r.censoWo || '').toLowerCase().includes(filtro_)
     );
   }
   if (!arr.length) {
