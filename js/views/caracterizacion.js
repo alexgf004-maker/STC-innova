@@ -24,6 +24,8 @@ let container_ = null;
 let esAdmin_   = false;
 let padron_    = null;   // { NC: {nc,nombre,direccion,ds,medidor,lat,lng,sup1?,sup2?} }
 let ordenes_   = [];
+let retiros_   = [];     // puntos de retiro (colección caracterizacion_retiros)
+let pestana_   = 'instalacion';   // 'instalacion' | 'retiro'
 
 // ── Carga del padrón (una vez, cacheado en memoria) ──
 async function cargarPadron() {
@@ -240,33 +242,51 @@ export async function init(container, session) {
           <button class="icon-btn" id="crc-cargar" title="Cargar órdenes del día">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
           </button>
+          <button class="icon-btn" id="crc-cargar-retiro" title="Subir retiros" style="color:#f59e0b;border-color:rgba(245,158,11,.35);background:rgba(245,158,11,.1)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/></svg>
+          </button>
         </div>
         <input type="file" id="crc-file" accept=".xlsx,.xls" style="display:none"/>
-        <input type="file" id="crc-file-comp" accept=".xlsx,.xls" style="display:none"/>` : `
+        <input type="file" id="crc-file-comp" accept=".xlsx,.xls" style="display:none"/>
+        <input type="file" id="crc-file-retiro" accept=".xlsx,.xls" style="display:none"/>` : `
         <button class="icon-btn" id="crc-mapa-tec" title="Ver mapa" style="flex-shrink:0">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg>
         </button>`}
       </div>
+
+      <!-- Pestañas Instalación / Retiro -->
+      <div style="display:flex;gap:6px;background:var(--glass);border:1px solid var(--border);border-radius:12px;padding:4px;margin-bottom:14px">
+        <button class="crc-tab" data-tab="instalacion" style="flex:1;padding:9px;border-radius:9px;border:none;background:transparent;color:var(--text-3);font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">Instalación</button>
+        <button class="crc-tab" data-tab="retiro" style="flex:1;padding:9px;border-radius:9px;border:none;background:transparent;color:var(--text-3);font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">Retiro</button>
+      </div>
+
       <div id="crc-resumen"></div>
       <div id="crc-lista"></div>
       <div id="crc-estado"></div>
     </div>`;
 
+  // Pestañas
+  const tabs = container.querySelectorAll('.crc-tab');
+  tabs.forEach(t => t.onclick = () => setPestana(t.dataset.tab));
+
   if (esAdmin_) {
     const fileInput = container.querySelector('#crc-file');
     container.querySelector('#crc-cargar').onclick = () => fileInput.click();
     container.querySelector('#crc-mapa').onclick = () => window.__router.navigateTo('caracterizacion_mapa');
-    container.querySelector('#crc-excel').onclick = abrirDescargaExcel;
+    container.querySelector('#crc-excel').onclick = () => pestana_ === 'retiro' ? descargarExcelRetiros() : abrirDescargaExcel();
     const fileComp = container.querySelector('#crc-file-comp');
     container.querySelector('#crc-complemento').onclick = () => fileComp.click();
     fileComp.onchange = (e) => manejarComplemento(e.target.files[0]);
     fileInput.onchange = (e) => manejarArchivo(e.target.files[0]);
+    const fileRet = container.querySelector('#crc-file-retiro');
+    container.querySelector('#crc-cargar-retiro').onclick = () => fileRet.click();
+    fileRet.onchange = (e) => manejarArchivoRetiro(e.target.files[0]);
     cargarPadron().catch(()=>{});
   } else {
     container.querySelector('#crc-mapa-tec').onclick = () => window.__router.navigateTo('caracterizacion_mapa');
   }
 
-  await cargarOrdenes();
+  setPestana(pestana_);
 }
 
 // ── Cargar y renderizar las órdenes del día ──
@@ -282,12 +302,45 @@ async function cargarOrdenes() {
       todas = miPareja ? todas.filter(o => o.pareja === miPareja) : [];
     }
     ordenes_ = todas;
-    renderResumen();
-    renderLista();
+    if (pestana_ === 'instalacion') { renderResumen(); renderLista(); }
   } catch (err) {
     if (lista) lista.innerHTML = `<div style="color:#ef4444;font-size:12px;padding:16px">Error cargando órdenes: ${err.message}</div>`;
   }
 }
+
+async function cargarRetiros() {
+  const lista = container_.querySelector('#crc-lista');
+  if (lista && pestana_ === 'retiro') lista.innerHTML = `<div style="text-align:center;padding:24px"><div class="spinner" style="margin:0 auto 8px"></div><div style="font-size:12px;color:var(--text-4)">Cargando retiros…</div></div>`;
+  try {
+    const snap = await db.collection('caracterizacion_retiros').get();
+    let todos = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    if (!esAdmin_) {
+      const miPareja = session_.asignacionActual?.destino || null;
+      todos = miPareja ? todos.filter(r => r.pareja === miPareja) : [];
+    }
+    retiros_ = todos;
+    if (pestana_ === 'retiro') { renderResumenRetiros(); renderListaRetiros(); }
+  } catch (err) {
+    if (lista && pestana_ === 'retiro') lista.innerHTML = `<div style="color:#ef4444;font-size:12px;padding:16px">Error cargando retiros: ${err.message}</div>`;
+  }
+}
+
+function setPestana(tab) {
+  pestana_ = tab;
+  // Resaltar la pestaña activa
+  container_.querySelectorAll('.crc-tab').forEach(t => {
+    const activa = t.dataset.tab === tab;
+    t.style.background = activa ? (tab === 'retiro' ? 'rgba(245,158,11,.15)' : 'var(--cr-glass, rgba(239,68,68,.1))') : 'transparent';
+    t.style.color = activa ? (tab === 'retiro' ? '#f59e0b' : '#ef4444') : 'var(--text-3)';
+  });
+  // Limpiar y cargar la pestaña elegida
+  container_.querySelector('#crc-resumen').innerHTML = '';
+  container_.querySelector('#crc-lista').innerHTML = '';
+  container_.querySelector('#crc-estado').innerHTML = '';
+  if (tab === 'retiro') cargarRetiros();
+  else cargarOrdenes();
+}
+
 
 function renderResumen() {
   const el = container_.querySelector('#crc-resumen');
@@ -848,4 +901,219 @@ function mostrarPrevisualizacionComplemento(cambios, totalArchivo, sinUsar, cols
       toast('Error al aplicar: ' + err.message, 'error');
     }
   };
+}
+
+// ══════════════════════════════════════════════════════════════
+//  RETIROS — fase paralela a la instalación
+//  Se sube un Excel (NC, NOMBRE, DIRECCIÓN, DS, MEDIDOR, LAT, LNG).
+//  Lo que falte se completa con el padrón por NC. Sin cascada:
+//  cada punto se marca "Retirado" o "No se pudo retirar" (con motivo).
+//  Colección: caracterizacion_retiros.
+// ══════════════════════════════════════════════════════════════
+
+const ALIAS_RETIRO = {
+  nc:        ['nc','contrato','id','idsorteado','nic','numerocliente'],
+  nombre:    ['nombre','nombredepila','nombrecliente','titular','cliente'],
+  direccion: ['direccion','dir','domicilio'],
+  ds:        ['ds','ubicaciontecnica','ubicacion'],
+  medidor:   ['medidor','aparato','nromedidor'],
+  lat:       ['latitud','lat','y'],
+  lng:       ['longitud','long','lng','lon','x'],
+};
+
+function mapearColumnasRetiro(rows) {
+  const claves = Object.keys(rows[0] || {});
+  const enc = {};
+  for (const campo of Object.keys(ALIAS_RETIRO)) {
+    for (const k of claves) {
+      if (ALIAS_RETIRO[campo].includes(normHeader(k))) { enc[campo] = k; break; }
+    }
+  }
+  return enc;
+}
+
+function numeroONull(v) {
+  const n = parseFloat(String(v ?? '').trim());
+  return Number.isFinite(n) ? n : null;
+}
+
+async function manejarArchivoRetiro(file) {
+  if (!file) return;
+  const est = container_.querySelector('#crc-estado');
+  est.innerHTML = `<div style="text-align:center;padding:20px"><div class="spinner" style="margin:0 auto 8px"></div><div style="font-size:12px;color:var(--text-4)">Leyendo el archivo de retiros…</div></div>`;
+
+  try {
+    await cargarPadron().catch(()=>{});
+    const buf = await file.arrayBuffer();
+    const wb = XLSX.read(buf, { type: 'array' });
+    const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: '' });
+    if (!rows.length) throw new Error('El archivo está vacío.');
+
+    const cols = mapearColumnasRetiro(rows);
+    if (!cols.nc) throw new Error('No encontré la columna del NC.');
+
+    const nuevos = [];
+    const sinCoord = [];
+    for (const r of rows) {
+      const nc = String(r[cols.nc] ?? '').trim();
+      if (!nc) continue;
+
+      // Datos del archivo, con respaldo al padrón para lo que falte
+      const base = padron_ && padron_[nc] ? padron_[nc] : {};
+      const nombre    = String(r[cols.nombre]    ?? '').trim() || base.nombre    || '';
+      const direccion = String(r[cols.direccion] ?? '').trim() || base.direccion || '';
+      const ds        = String(r[cols.ds]        ?? '').trim() || base.ds        || '';
+      const medidor   = String(r[cols.medidor]   ?? '').trim() || base.medidor   || '';
+      let lat = cols.lat ? numeroONull(r[cols.lat]) : null;
+      let lng = cols.lng ? numeroONull(r[cols.lng]) : null;
+      if (lat == null || lng == null) {
+        if (base.lat != null && base.lng != null) { lat = base.lat; lng = base.lng; }
+      }
+      if (lat == null || lng == null) sinCoord.push(nc);
+
+      nuevos.push({
+        nc, nombre, direccion, ds, medidor, lat, lng,
+        estado: 'pendiente',   // pendiente | retirado | no_retirado
+        pareja: null,
+        motivo: '',
+      });
+    }
+
+    if (!nuevos.length) throw new Error('No se encontraron filas con NC válido.');
+    previsualizarRetiros(nuevos, sinCoord);
+  } catch (err) {
+    est.innerHTML = `<div style="background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.3);border-radius:10px;padding:14px;font-size:12px;color:#f87171">${err.message}</div>`;
+  } finally {
+    const inp = container_.querySelector('#crc-file-retiro');
+    if (inp) inp.value = '';
+  }
+}
+
+function previsualizarRetiros(nuevos, sinCoord) {
+  const est = container_.querySelector('#crc-estado');
+  const existentesNC = new Set(retiros_.map(r => r.nc));
+  const aCrear = nuevos.filter(n => !existentesNC.has(n.nc));
+  const yaExisten = nuevos.length - aCrear.length;
+
+  est.innerHTML = `
+    <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:12px">
+      <div style="font-size:15px;font-weight:800;margin-bottom:10px">${aCrear.length} retiros a cargar</div>
+      <div class="flex-col gap-4" style="font-size:12px">
+        <div style="display:flex;justify-content:space-between"><span style="color:var(--text-3)">Nuevos</span><span style="font-weight:700;color:#f59e0b">${aCrear.length}</span></div>
+        ${yaExisten ? `<div style="display:flex;justify-content:space-between"><span style="color:var(--text-3)">Ya estaban cargados</span><span style="font-weight:700;color:var(--text-4)">${yaExisten}</span></div>` : ''}
+        <div style="display:flex;justify-content:space-between"><span style="color:var(--text-3)">Sin coordenadas</span><span style="font-weight:700;color:${sinCoord.length?'#fbbf24':'var(--text-4)'}">${sinCoord.length}</span></div>
+      </div>
+      ${sinCoord.length ? `<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);font-size:10px;color:var(--text-4)">Los que no tienen coordenadas (ni en el archivo ni en el padrón) no aparecerán en el mapa, pero sí en la lista.</div>` : ''}
+    </div>
+    ${aCrear.length ? `<button class="btn-primary full" id="crc-ret-confirmar" style="border-color:rgba(245,158,11,.4);color:#f59e0b;background:rgba(245,158,11,.1)"><span id="crc-ret-lbl">Cargar ${aCrear.length} retiros</span></button>` : ''}`;
+
+  const btn = est.querySelector('#crc-ret-confirmar');
+  if (btn) btn.onclick = async () => {
+    btn.disabled = true;
+    est.querySelector('#crc-ret-lbl').textContent = 'Guardando…';
+    try {
+      let batch = db.batch(), count = 0; const commits = [];
+      for (const r of aCrear) {
+        const ref = db.collection('caracterizacion_retiros').doc();
+        batch.set(ref, { ...r, cargadoEn: firebase.firestore.Timestamp.now() });
+        if (++count === 499) { commits.push(batch.commit()); batch = db.batch(); count = 0; }
+      }
+      if (count > 0) commits.push(batch.commit());
+      await Promise.all(commits);
+      est.innerHTML = '';
+      toast(`${aCrear.length} retiros cargados`, 'ok');
+      await cargarRetiros();
+    } catch (err) {
+      btn.disabled = false;
+      est.querySelector('#crc-ret-lbl').textContent = 'Reintentar';
+      toast('Error al guardar: ' + err.message, 'error');
+    }
+  };
+}
+
+function renderResumenRetiros() {
+  const el = container_.querySelector('#crc-resumen');
+  if (!el) return;
+  const total = retiros_.length;
+  if (!total) { el.innerHTML = ''; return; }
+  const retirados = retiros_.filter(r => r.estado === 'retirado').length;
+  const noPudo = retiros_.filter(r => r.estado === 'no_retirado').length;
+  const pend = total - retirados - noPudo;
+  el.innerHTML = `
+    <div style="display:flex;gap:8px;background:var(--glass);border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:14px">
+      <div style="flex:1;text-align:center"><div style="font-size:18px;font-weight:800;color:var(--text-2)">${pend}</div><div style="font-size:10px;color:var(--text-4)">Por retirar</div></div>
+      <div style="flex:1;text-align:center"><div style="font-size:18px;font-weight:800;color:#22c55e">${retirados}</div><div style="font-size:10px;color:var(--text-4)">Retirados</div></div>
+      <div style="flex:1;text-align:center"><div style="font-size:18px;font-weight:800;color:${noPudo?'#ef4444':'var(--text-4)'}">${noPudo}</div><div style="font-size:10px;color:var(--text-4)">No se pudo</div></div>
+    </div>`;
+}
+
+function renderListaRetiros() {
+  const el = container_.querySelector('#crc-lista');
+  if (!el) return;
+  if (!retiros_.length) {
+    el.innerHTML = `<div style="text-align:center;padding:32px 16px;color:var(--text-4);font-size:13px">${esAdmin_ ? 'No hay retiros cargados. Usa el botón naranja para subir el Excel.' : 'No tienes retiros asignados.'}</div>`;
+    return;
+  }
+
+  const pend = retiros_.filter(r => r.estado === 'pendiente' || !r.estado);
+  const retirados = retiros_.filter(r => r.estado === 'retirado');
+  const noPudo = retiros_.filter(r => r.estado === 'no_retirado');
+
+  const tarjeta = (r) => {
+    const color = r.estado === 'retirado' ? '#22c55e' : r.estado === 'no_retirado' ? '#ef4444' : '#f59e0b';
+    const etiqueta = r.estado === 'retirado' ? 'Retirado' : r.estado === 'no_retirado' ? 'No se pudo' : 'Por retirar';
+    return `
+      <div style="background:var(--bg-card);border:1px solid var(--border);border-left:3px solid ${color};border-radius:12px;padding:13px">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+          <div style="flex:1;min-width:0">
+            <div style="font-size:13px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${r.nombre || r.nc}</div>
+            <div style="font-size:10px;color:var(--text-4);margin-top:1px">NC ${r.nc}${r.direccion ? ' · ' + r.direccion.split(',')[0] : ''}</div>
+          </div>
+          <div style="font-size:10px;font-weight:700;color:${color};background:${color}1f;border:1px solid ${color}55;padding:3px 9px;border-radius:12px;white-space:nowrap">${etiqueta}</div>
+        </div>
+        ${r.estado === 'no_retirado' && r.motivo ? `<div style="font-size:11px;color:#f87171;margin-top:6px">Motivo: ${r.motivo}</div>` : ''}
+        ${(r.estado === 'retirado' || r.estado === 'no_retirado') ? `<div style="font-size:10px;color:var(--text-4);margin-top:6px">${r.hechoPor ? 'Por ' + r.hechoPor : ''}${r.fechaHecho ? ' · ' + fmtFechaHora(r.fechaHecho) : ''}${r.pareja ? ' · ' + r.pareja : ''}</div>` : (r.pareja ? `<div style="font-size:10px;color:var(--text-4);margin-top:6px">${r.pareja}</div>` : '')}
+      </div>`;
+  };
+
+  const seccion = (titulo, arr, color) => arr.length ? `
+    <div style="display:flex;align-items:center;gap:8px;margin:14px 0 8px">
+      <div style="font-size:11px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:${color}">${titulo}</div>
+      <div style="flex:1;height:1px;background:var(--border)"></div>
+      <div style="font-size:11px;color:var(--text-4)">${arr.length}</div>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:10px">${arr.map(tarjeta).join('')}</div>` : '';
+
+  el.innerHTML = seccion('Por retirar', pend, '#f59e0b')
+               + seccion('Retirados', retirados, '#22c55e')
+               + seccion('No se pudo', noPudo, '#ef4444');
+}
+
+function descargarExcelRetiros() {
+  try {
+    if (!retiros_.length) { toast('No hay retiros para exportar', 'warn'); return; }
+    const ESTADO_RET = { pendiente:'Por retirar', retirado:'Retirado', no_retirado:'No se pudo' };
+    const filas = retiros_.map(r => ({
+      'NC': r.nc || '',
+      'Nombre': r.nombre || '',
+      'Dirección': r.direccion || '',
+      'DS': r.ds || '',
+      'Medidor': r.medidor || '',
+      'Pareja': r.pareja || 'Sin asignar',
+      'Estado': ESTADO_RET[r.estado] || 'Por retirar',
+      'Motivo': r.motivo || '',
+      'Hecho por': r.hechoPor || '',
+      'Fecha': r.fechaHecho ? fmtFechaHora(r.fechaHecho) : '',
+    }));
+    const headers = Object.keys(filas[0]);
+    const ws = XLSX.utils.json_to_sheet(filas, { header: headers });
+    ws['!cols'] = headers.map(h => ({ wch: Math.max(12, Math.min(34, h.length + 4)) }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Retiros');
+    const hoy = new Date().toISOString().slice(0, 10);
+    XLSX.writeFile(wb, `Retiros_${hoy}.xlsx`);
+    toast('Excel de retiros descargado', 'ok');
+  } catch (err) {
+    toast('Error al generar el Excel: ' + err.message, 'error');
+  }
 }

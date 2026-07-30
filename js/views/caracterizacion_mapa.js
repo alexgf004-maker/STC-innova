@@ -20,7 +20,9 @@ let container_ = null;
 let role_ = null;
 let esAdmin_ = false;
 let ordenes_ = [];
+let retiros_ = [];          // puntos de retiro (cuadrados ámbar)
 let markers_ = {};          // ordenId -> { titular, suplente1, suplente2, linea }
+let markersRet_ = {};       // retiroId -> marker
 let selected_ = null;       // { ordenId, nivel }  nivel: 'titular'|'suplente1'|'suplente2'
 let geoMarker_ = null, geoCircle_ = null, watchId_ = null;
 
@@ -30,6 +32,7 @@ let puntos_ = [], poliPreview_ = null, zonaPoligono_ = null;
 const NIVEL_LABEL = { titular:'Titular', suplente1:'Suplente 1', suplente2:'Suplente 2' };
 const NIVEL_COLOR = { titular:'#a78bfa', suplente1:'#fbbf24', suplente2:'#f472b6' };
 const UPR_COLOR = '#38bdf8';   // celeste: punto UPR (sin suplentes)
+const RETIRO_COLOR = '#f59e0b';  // ámbar: retiros (cuadrado)
 
 export async function init(container, session) {
   container_ = container;
@@ -56,6 +59,10 @@ export async function init(container, session) {
   container.innerHTML = `
     <div style="position:fixed;top:var(--topbar-h,62px);left:0;right:0;bottom:var(--navbar-h,72px);z-index:1">
       <div id="crc-leaflet" style="width:100%;height:100%"></div>
+      <div id="crc-leyenda" style="position:absolute;bottom:16px;left:12px;z-index:500;display:none;flex-direction:column;gap:4px;background:rgba(13,17,23,.85);border:1px solid var(--border);border-radius:10px;padding:8px 10px;pointer-events:none">
+        <div style="display:flex;align-items:center;gap:6px"><div style="width:11px;height:11px;border-radius:50%;background:#a78bfa;border:1.5px solid rgba(255,255,255,.8)"></div><span style="font-size:10px;color:var(--text-3)">Instalación</span></div>
+        <div style="display:flex;align-items:center;gap:6px"><div style="width:11px;height:11px;border-radius:3px;background:#f59e0b;border:1.5px solid rgba(255,255,255,.8)"></div><span style="font-size:10px;color:var(--text-3)">Retiro</span></div>
+      </div>
 
       <div style="position:absolute;top:12px;left:12px;right:12px;z-index:500;display:flex;gap:8px;align-items:center;pointer-events:none">
         <div style="background:rgba(13,17,23,.9);border:1px solid var(--border);border-radius:12px;padding:8px 14px;pointer-events:auto">
@@ -117,6 +124,19 @@ async function cargarOrdenes() {
     toast('Error cargando órdenes: ' + err.message, 'error');
     ordenes_ = [];
   }
+
+  // Retiros (fase paralela): se pintan en el mismo mapa como cuadrados ámbar
+  try {
+    const snapR = await db.collection('caracterizacion_retiros').get();
+    let rets = snapR.docs.map(d => ({ id: d.id, ...d.data() }));
+    if (!esAdmin_) {
+      const miPareja = session_.asignacionActual?.destino || null;
+      rets = miPareja ? rets.filter(r => r.pareja === miPareja) : [];
+    }
+    retiros_ = rets;
+  } catch (err) {
+    retiros_ = [];
+  }
 }
 
 function initMap() {
@@ -136,6 +156,12 @@ function initMap() {
 
   // Pintar solo los titulares al inicio (cascada)
   ordenes_.forEach(o => pintarOrden(o));
+  // Pintar los retiros (cuadrados ámbar)
+  retiros_.forEach(r => pintarRetiro(r));
+  if (retiros_.length) {
+    const ley = container_.querySelector('#crc-leyenda');
+    if (ley) ley.style.display = 'flex';
+  }
   updateStat();
 
   // Tocar el mapa (fuera de un marcador) cierra cualquier hoja abierta,
@@ -236,6 +262,133 @@ function crearMarcador(p, color, texto, activo, destacar, atenuado) {
   });
   return L.marker([p.lat, p.lng], { icon });
 }
+
+// ── RETIROS: cuadrado ámbar (verde si retirado, rojo si no se pudo) ──
+function pintarRetiro(r) {
+  if (markersRet_[r.id]) { map_.removeLayer(markersRet_[r.id]); delete markersRet_[r.id]; }
+  if (r.lat == null || r.lng == null) return;
+
+  const color = r.estado === 'retirado' ? '#22c55e'
+              : r.estado === 'no_retirado' ? '#ef4444'
+              : RETIRO_COLOR;
+  const atenuado = r.estado === 'retirado';   // los hechos se ven más tenues
+  const marca = r.estado === 'retirado' ? '&#10003;' : r.estado === 'no_retirado' ? '&#10007;' : '';
+
+  const icon = L.divIcon({
+    className: '',
+    html: `<div style="position:relative;display:flex;align-items:center;justify-content:center;${atenuado?'opacity:.5;':''}">
+      <div style="width:15px;height:15px;background:${color};border:2px solid rgba(255,255,255,.9);border-radius:3px;box-shadow:0 2px 6px rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:800;color:#0a1628;line-height:1">${marca}</div>
+    </div>`,
+    iconSize: [15, 15], iconAnchor: [7.5, 7.5],
+  });
+  const m = L.marker([r.lat, r.lng], { icon });
+  m.on('click', () => abrirDetalleRetiro(r.id));
+  m.addTo(map_);
+  markersRet_[r.id] = m;
+}
+
+function abrirDetalleRetiro(retiroId) {
+  const r = retiros_.find(x => x.id === retiroId);
+  if (!r) return;
+  cerrarTodasLasHojas();
+  const sheet = container_.querySelector('#crc-sheet');
+  const hecho = r.estado === 'retirado' || r.estado === 'no_retirado';
+
+  sheet.innerHTML = `
+    <div style="width:36px;height:4px;background:var(--border);border-radius:2px;margin:0 auto 14px"></div>
+    <div style="display:inline-flex;align-items:center;gap:6px;background:rgba(245,158,11,.14);border:1px solid rgba(245,158,11,.4);border-radius:8px;padding:3px 10px;margin-bottom:10px">
+      <div style="width:9px;height:9px;background:${RETIRO_COLOR};border-radius:2px"></div>
+      <span style="font-size:11px;font-weight:800;letter-spacing:.04em;color:${RETIRO_COLOR}">RETIRO</span>
+    </div>
+    <div style="font-size:15px;font-weight:800;margin-bottom:2px">${r.nombre || r.nc}</div>
+    <div style="font-size:11px;color:var(--text-4);margin-bottom:12px">NC ${r.nc}${r.pareja ? ' · ' + r.pareja : ''}</div>
+
+    <div style="font-size:11px;color:var(--text-3);line-height:1.6;margin-bottom:14px">
+      ${r.direccion ? `<div>${r.direccion}</div>` : ''}
+      ${r.medidor ? `<div>Medidor: <span style="color:var(--text-2)">${r.medidor}</span></div>` : ''}
+      ${r.ds ? `<div>DS: <span style="color:var(--text-2)">${r.ds}</span></div>` : ''}
+    </div>
+
+    ${hecho ? `
+      <div style="background:var(--glass);border:1px solid var(--border);border-radius:12px;padding:12px;margin-bottom:8px">
+        <div style="font-size:12px;font-weight:700;color:${r.estado === 'retirado' ? '#22c55e' : '#ef4444'}">${r.estado === 'retirado' ? 'Retirado' : 'No se pudo retirar'}</div>
+        ${r.motivo ? `<div style="font-size:11px;color:#f87171;margin-top:4px">${r.motivo}</div>` : ''}
+        ${r.hechoPor ? `<div style="font-size:10px;color:var(--text-4);margin-top:6px">Por ${r.hechoPor}${r.fechaHecho ? ' · ' + fmtFechaCorta(r.fechaHecho) : ''}</div>` : ''}
+      </div>
+      ${!esAdmin_ ? `<button id="crc-ret-deshacer" style="width:100%;padding:11px;border-radius:12px;border:1px solid var(--border);background:var(--glass);color:var(--text-3);font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">Volver a marcar</button>` : ''}
+    ` : `
+      <div style="display:flex;gap:8px">
+        <button id="crc-ret-nopudo" style="flex:1;padding:13px;border-radius:12px;border:1px solid rgba(239,68,68,.4);background:rgba(239,68,68,.1);color:#f87171;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">No se pudo</button>
+        <button id="crc-ret-ok" style="flex:2;padding:13px;border-radius:12px;border:none;background:#22c55e;color:#0a1628;font-size:13px;font-weight:800;cursor:pointer;font-family:inherit">Retirado</button>
+      </div>
+    `}
+  `;
+  sheet.classList.add('abierta');
+
+  if (!hecho) {
+    sheet.querySelector('#crc-ret-ok').onclick = () => marcarRetiro(retiroId, 'retirado');
+    sheet.querySelector('#crc-ret-nopudo').onclick = () => pedirMotivoRetiro(retiroId);
+  } else if (!esAdmin_) {
+    const btn = sheet.querySelector('#crc-ret-deshacer');
+    if (btn) btn.onclick = () => marcarRetiro(retiroId, 'pendiente');
+  }
+}
+
+function pedirMotivoRetiro(retiroId) {
+  const sheet = container_.querySelector('#crc-sheet');
+  sheet.innerHTML = `
+    <div style="width:36px;height:4px;background:var(--border);border-radius:2px;margin:0 auto 14px"></div>
+    <div style="font-size:15px;font-weight:800;margin-bottom:6px">No se pudo retirar</div>
+    <div style="font-size:12px;color:var(--text-3);margin-bottom:12px">¿Por qué no se pudo? (breve)</div>
+    <textarea id="crc-ret-motivo" rows="3" placeholder="Ej: portón cerrado, cliente ausente, dirección no existe…" style="width:100%;padding:12px;border-radius:12px;border:1px solid var(--border);background:var(--glass);color:var(--text-2);font-size:14px;font-family:inherit;outline:none;resize:vertical;margin-bottom:12px"></textarea>
+    <div style="display:flex;gap:8px">
+      <button id="crc-ret-cancel" style="flex:1;padding:13px;border-radius:12px;border:1px solid var(--border);background:var(--glass);color:var(--text-3);font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">Cancelar</button>
+      <button id="crc-ret-guardar" style="flex:2;padding:13px;border-radius:12px;border:none;background:#ef4444;color:#fff;font-size:13px;font-weight:800;cursor:pointer;font-family:inherit">Guardar</button>
+    </div>
+  `;
+  setTimeout(() => sheet.querySelector('#crc-ret-motivo')?.focus(), 250);
+  sheet.querySelector('#crc-ret-cancel').onclick = () => abrirDetalleRetiro(retiroId);
+  sheet.querySelector('#crc-ret-guardar').onclick = () => {
+    const motivo = sheet.querySelector('#crc-ret-motivo').value.trim();
+    marcarRetiro(retiroId, 'no_retirado', motivo);
+  };
+}
+
+async function marcarRetiro(retiroId, estado, motivo) {
+  const r = retiros_.find(x => x.id === retiroId);
+  if (!r) return;
+  try {
+    const patch = { estado };
+    if (estado === 'pendiente') {
+      patch.motivo = '';
+      patch.hechoPor = '';
+      patch.fechaHecho = null;
+    } else {
+      patch.motivo = motivo || '';
+      patch.hechoPor = session_.displayName;
+      patch.fechaHecho = firebase.firestore.Timestamp.now();
+    }
+    await db.collection('caracterizacion_retiros').doc(retiroId).update(patch);
+    Object.assign(r, patch);
+    pintarRetiro(r);
+    cerrarTodasLasHojas();
+    updateStat();
+    const msg = estado === 'retirado' ? 'Marcado como retirado'
+              : estado === 'no_retirado' ? 'Registrado: no se pudo'
+              : 'Retiro reabierto';
+    toast(msg, 'ok');
+  } catch (err) {
+    toast('Error: ' + err.message, 'error');
+  }
+}
+
+function fmtFechaCorta(ts) {
+  if (!ts) return '';
+  const d = ts.toDate ? ts.toDate() : new Date(ts);
+  const p = n => String(n).padStart(2, '0');
+  return `${p(d.getDate())}/${p(d.getMonth()+1)} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
 
 function quitarMarcadores(ordenId) {
   const g = markers_[ordenId];
@@ -443,7 +596,10 @@ function updateStat() {
   const total = ordenes_.length;
   const hechas = ordenes_.filter(o => o.estado === 'por_confirmar' || o.estado === 'confirmada').length;
   const pend = ordenes_.filter(o => !o.estado || o.estado === 'pendiente').length;
-  el.textContent = `${pend} pendientes · ${hechas} hechas`;
+  const retPend = retiros_.filter(r => !r.estado || r.estado === 'pendiente').length;
+  let txt = `${pend} pendientes · ${hechas} hechas`;
+  if (retiros_.length) txt += ` · ${retPend} retiros`;
+  el.textContent = txt;
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -529,16 +685,21 @@ function cerrarPoligono() {
 
   const dentro = ordenes_.filter(o => o.titular?.lat != null &&
     pointInPolygon(L.latLng(o.titular.lat, o.titular.lng), puntos_));
+  const dentroRet = retiros_.filter(r => r.lat != null &&
+    pointInPolygon(L.latLng(r.lat, r.lng), puntos_));
 
-  abrirSheetZona(dentro.length);
+  abrirSheetZona(dentro.length, dentroRet.length);
 }
 
-function abrirSheetZona(cuantas) {
+function abrirSheetZona(cuantas, cuantosRet) {
   const sheet = container_.querySelector('#crc-sheet-zona');
+  const detalle = cuantosRet
+    ? `${cuantas} instalación${cuantas!==1?'es':''} y ${cuantosRet} retiro${cuantosRet!==1?'s':''} en esta zona`
+    : `${cuantas} orden${cuantas!==1?'es':''} en esta zona (por titular)`;
   sheet.innerHTML = `
     <div style="width:36px;height:4px;background:var(--border);border-radius:2px;margin:0 auto 14px"></div>
     <div style="font-size:16px;font-weight:800;margin-bottom:4px">Asignar zona</div>
-    <div style="font-size:12px;color:var(--text-4);margin-bottom:16px">${cuantas} orden${cuantas!==1?'es':''} en esta zona (por titular)</div>
+    <div style="font-size:12px;color:var(--text-4);margin-bottom:16px">${detalle}</div>
     <div class="form-label" style="margin-bottom:8px">Pareja</div>
     <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px" id="crc-zona-parejas">
       ${PAREJAS_CRC.map(p => `<div class="crc-zp" data-val="${p}" style="cursor:pointer;padding:9px 16px;border-radius:20px;border:1px solid var(--border);background:var(--glass);font-size:13px;font-weight:700">${p}</div>`).join('')}
@@ -574,7 +735,9 @@ async function confirmarZona(pareja) {
   if (!pareja) { err.textContent = 'Selecciona una pareja o "Sin pareja".'; err.style.display = 'block'; return; }
   const dentro = ordenes_.filter(o => o.titular?.lat != null &&
     pointInPolygon(L.latLng(o.titular.lat, o.titular.lng), puntos_));
-  if (!dentro.length) { err.textContent = 'No hay órdenes en esa zona.'; err.style.display = 'block'; return; }
+  const dentroRet = retiros_.filter(r => r.lat != null &&
+    pointInPolygon(L.latLng(r.lat, r.lng), puntos_));
+  if (!dentro.length && !dentroRet.length) { err.textContent = 'No hay puntos en esa zona.'; err.style.display = 'block'; return; }
 
   const val = pareja === 'null' ? null : pareja;
   const btn = container_.querySelector('#crc-zona-ok');
@@ -582,6 +745,7 @@ async function confirmarZona(pareja) {
   container_.querySelector('#crc-zona-ok-lbl').textContent = 'Asignando…';
   try {
     const ts = firebase.firestore.Timestamp.now();
+    // Instalaciones
     for (let i = 0; i < dentro.length; i += 400) {
       const batch = db.batch();
       dentro.slice(i, i + 400).forEach(o => {
@@ -589,9 +753,21 @@ async function confirmarZona(pareja) {
       });
       await batch.commit();
     }
+    // Retiros
+    for (let i = 0; i < dentroRet.length; i += 400) {
+      const batch = db.batch();
+      dentroRet.slice(i, i + 400).forEach(r => {
+        batch.update(db.collection('caracterizacion_retiros').doc(r.id), { pareja: val, asignadoEn: ts });
+      });
+      await batch.commit();
+    }
     dentro.forEach(o => { o.pareja = val; pintarOrden(o); });
+    dentroRet.forEach(r => { r.pareja = val; pintarRetiro(r); });
     cancelarZona();
-    toast(`${dentro.length} órdenes asignadas${val ? ' a ' + val : ' (sin pareja)'}`, 'ok');
+    const partes = [];
+    if (dentro.length) partes.push(`${dentro.length} instalaciones`);
+    if (dentroRet.length) partes.push(`${dentroRet.length} retiros`);
+    toast(`${partes.join(' y ')} asignados${val ? ' a ' + val : ' (sin pareja)'}`, 'ok');
   } catch (e) {
     btn.disabled = false;
     container_.querySelector('#crc-zona-ok-lbl').textContent = 'Reintentar';
