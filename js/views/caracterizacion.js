@@ -355,23 +355,20 @@ function renderResumen() {
 
   el.innerHTML = `
     ${esAdmin_ ? panelParejas() : ''}
-    <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:16px">
+    <div class="progress-card" style="margin-bottom:16px">
       <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px">
         <div style="font-size:13px;font-weight:700">${esAdmin_ ? 'Avance del día' : 'Tu avance del día'}</div>
         <div style="font-size:12px;color:var(--text-4)">${listas} de ${total} · ${pct}%</div>
       </div>
-      <div style="height:8px;border-radius:4px;background:var(--glass);overflow:hidden;margin-bottom:12px">
-        <div style="height:100%;width:${pct}%;background:#a78bfa;border-radius:4px"></div>
+      <div class="progress-bar-bg">
+        <div class="progress-bar-fill cr" style="width:${pct}%"></div>
       </div>
-      <div style="display:flex;gap:8px;margin-bottom:${totalVisitas?'12px':'0'}">
-        <div style="flex:1;text-align:center"><div style="font-size:18px;font-weight:800;color:var(--text-2)">${pend}</div><div style="font-size:10px;color:var(--text-4)">Por hacer</div></div>
-        <div style="flex:1;text-align:center"><div style="font-size:18px;font-weight:800;color:#fbbf24">${porConfirmar}</div><div style="font-size:10px;color:var(--text-4)">Falta revisar</div></div>
-        <div style="flex:1;text-align:center"><div style="font-size:18px;font-weight:800;color:#22c55e">${confirmadas}</div><div style="font-size:10px;color:var(--text-4)">Listas</div></div>
+      <div class="progress-stats" style="margin-top:10px">
+        <span><span class="stat-dot muted"></span>${pend} por hacer</span>
+        <span><span class="stat-dot warn" style="background:#fbbf24"></span>${porConfirmar} falta revisar</span>
+        <span><span class="stat-dot ok"></span>${confirmadas} listas</span>
+        ${totalVisitas ? `<span><span class="stat-dot" style="background:#fbbf24"></span>${totalVisitas} visitas cobrables</span>` : ''}
       </div>
-      ${totalVisitas ? `<div style="display:flex;align-items:center;justify-content:space-between;padding-top:12px;border-top:1px solid var(--border)">
-        <span style="font-size:12px;color:var(--text-3)">Visitas cobrables (total)</span>
-        <span style="font-size:16px;font-weight:800;color:#fbbf24">${totalVisitas}</span>
-      </div>` : ''}
     </div>`;
 }
 
@@ -402,32 +399,32 @@ function panelParejas() {
 
   return `
     <div style="margin-bottom:16px">
-      <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:var(--text-4);margin-bottom:8px">Avance por pareja · meta diaria ${META_PAREJA}</div>
+      <div class="section-label" style="margin-bottom:8px">Avance por pareja · meta diaria ${META_PAREJA}</div>
       <div style="display:grid;grid-template-columns:repeat(${Math.min(nombres.length,3)},1fr);gap:10px">
         ${nombres.map(nombre => {
           const d = parejas[nombre];
           const color = PAREJA_COLOR[nombre] || '#94a3b8';
           const pct = Math.min(100, Math.round((d.ejecutadas / META_PAREJA) * 100));
           const cumplida = d.ejecutadas >= META_PAREJA;
+          const acc = cumplida ? '#22c55e' : color;
           return `
-            <div style="background:var(--bg-card);border:1px solid ${cumplida?'rgba(34,197,94,.4)':'var(--border)'};border-radius:12px;padding:13px">
-              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-                <div style="display:flex;align-items:center;gap:7px">
-                  <div style="width:9px;height:9px;border-radius:50%;background:${color}"></div>
-                  <span style="font-size:13px;font-weight:700">${nombre}</span>
+            <div class="pareja-card" style="border-color:${cumplida?'rgba(34,197,94,.4)':'var(--border)'};background:var(--bg-card)">
+              <div class="pareja-card-header">
+                <div class="pareja-name" style="color:${acc};display:flex;align-items:center;gap:7px">
+                  <span style="width:9px;height:9px;border-radius:50%;background:${color};display:inline-block"></span>${nombre}
                 </div>
-                ${cumplida ? `<span style="font-size:10px;font-weight:800;color:#22c55e">META &#10003;</span>` : ''}
+                <div style="display:flex;align-items:baseline;gap:4px">
+                  <div style="font-size:24px;font-weight:900;color:${acc};line-height:1">${d.ejecutadas}</div>
+                  <div style="font-size:10px;color:var(--text-4);font-weight:600">/ ${META_PAREJA} hoy</div>
+                </div>
               </div>
-              <div style="display:flex;align-items:baseline;gap:4px;margin-bottom:8px">
-                <span style="font-size:26px;font-weight:800;color:${cumplida?'#22c55e':color}">${d.ejecutadas}</span>
-                <span style="font-size:13px;color:var(--text-4)">/ ${META_PAREJA} hoy</span>
+              <div class="progress-bar-bg" style="margin:8px 0">
+                <div class="progress-bar-fill" style="width:${pct}%;background:${acc}"></div>
               </div>
-              <div style="height:6px;border-radius:3px;background:var(--glass);overflow:hidden;margin-bottom:8px">
-                <div style="height:100%;width:${pct}%;background:${cumplida?'#22c55e':color};border-radius:3px"></div>
-              </div>
-              <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text-4)">
+              <div class="pareja-stats">
                 <span>${d.asignadas} asignadas</span>
-                <span style="color:#fbbf24;font-weight:700">${d.visitas} visita${d.visitas!==1?'s':''}</span>
+                ${d.visitas ? `<span style="color:#fbbf24">· ${d.visitas} visita${d.visitas!==1?'s':''}</span>` : ''}
+                ${cumplida ? `<span style="color:#22c55e;font-weight:700">· META &#10003;</span>` : ''}
               </div>
             </div>`;
         }).join('')}
