@@ -331,7 +331,7 @@ async function marcarHecha(ordenId, nivel) {
     pintarOrden(o);
     cerrarSheet(); updateStat();
     const nv = visitas.length;
-    toast(`Hecha en ${NIVEL_LABEL[nivel]}${nv ? ` (${nv} visita${nv>1?'s':''})` : ''} · por confirmar`, 'ok');
+    toast(`Hecha en ${NIVEL_LABEL[nivel]}${nv ? ` (${nv} visita${nv>1?'s':''})` : ''} · falta revisar`, 'ok');
   } catch (err) { toast('Error: ' + err.message, 'error'); }
 }
 
@@ -427,7 +427,7 @@ async function marcarVisita(ordenId, nivel) {
       o.estado = 'por_confirmar';
       pintarOrden(o);
       cerrarSheet(); updateStat();
-      toast(`${visitas.length} visita${visitas.length>1?'s':''}, ningún punto logrado · por confirmar`, 'warn');
+      toast(`${visitas.length} visita${visitas.length>1?'s':''}, ningún punto logrado · falta revisar`, 'warn');
     } catch (err) { toast('Error: ' + err.message, 'error'); }
   }
 }
@@ -619,8 +619,8 @@ function abrirConfirmar(ordenId) {
     </div>
 
     <div style="display:flex;gap:8px">
-      <button id="crc-conf-rech" style="flex:1;padding:12px;border-radius:12px;border:1px solid rgba(239,68,68,.4);background:rgba(239,68,68,.1);color:#f87171;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">Regresar a pendiente</button>
-      <button id="crc-conf-ok" style="flex:2;padding:12px;border-radius:12px;border:none;background:#22c55e;color:#0a1628;font-size:13px;font-weight:800;cursor:pointer;font-family:inherit"><span id="crc-conf-lbl">Confirmar</span></button>
+      <button id="crc-conf-rech" style="flex:1;padding:12px;border-radius:12px;border:1px solid rgba(239,68,68,.4);background:rgba(239,68,68,.1);color:#f87171;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">Regresar a por hacer</button>
+      <button id="crc-conf-ok" style="flex:2;padding:12px;border-radius:12px;border:none;background:#22c55e;color:#0a1628;font-size:13px;font-weight:800;cursor:pointer;font-family:inherit"><span id="crc-conf-lbl">Marcar como lista</span></button>
     </div>`;
   sheet.classList.add('abierta');
 
@@ -639,7 +639,7 @@ async function confirmarOrden(ordenId, sheet) {
     const o = ordenes_.find(x => x.id === ordenId);
     if (o) { o.estado = 'confirmada'; pintarOrden(o); }
     sheet.classList.remove('abierta');
-    toast('Orden confirmada', 'ok');
+    toast('Orden marcada como lista', 'ok');
   } catch (err) {
     btn.disabled = false; sheet.querySelector('#crc-conf-lbl').textContent = 'Reintentar';
     toast('Error: ' + err.message, 'error');
