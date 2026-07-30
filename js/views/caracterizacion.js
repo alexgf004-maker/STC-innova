@@ -255,9 +255,9 @@ export async function init(container, session) {
       </div>
 
       <!-- Pestañas Instalación / Retiro -->
-      <div style="display:flex;gap:6px;background:var(--glass);border:1px solid var(--border);border-radius:12px;padding:4px;margin-bottom:14px">
-        <button class="crc-tab" data-tab="instalacion" style="flex:1;padding:9px;border-radius:9px;border:none;background:transparent;color:var(--text-3);font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">Instalación</button>
-        <button class="crc-tab" data-tab="retiro" style="flex:1;padding:9px;border-radius:9px;border:none;background:transparent;color:var(--text-3);font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">Retiro</button>
+      <div class="area-tabs" style="margin-bottom:14px">
+        <button class="area-tab crc-tab" data-tab="instalacion">Instalación</button>
+        <button class="area-tab crc-tab" data-tab="retiro">Retiro</button>
       </div>
 
       <div id="crc-resumen"></div>
@@ -327,11 +327,10 @@ async function cargarRetiros() {
 
 function setPestana(tab) {
   pestana_ = tab;
-  // Resaltar la pestaña activa
+  // Resaltar la pestaña activa con la clase estándar (color del área)
   container_.querySelectorAll('.crc-tab').forEach(t => {
-    const activa = t.dataset.tab === tab;
-    t.style.background = activa ? (tab === 'retiro' ? 'rgba(245,158,11,.15)' : 'var(--cr-glass, rgba(239,68,68,.1))') : 'transparent';
-    t.style.color = activa ? (tab === 'retiro' ? '#f59e0b' : '#ef4444') : 'var(--text-3)';
+    t.classList.toggle('active', t.dataset.tab === tab);
+    t.classList.toggle('cr', t.dataset.tab === tab);
   });
   // Limpiar y cargar la pestaña elegida
   container_.querySelector('#crc-resumen').innerHTML = '';
