@@ -330,14 +330,18 @@ const PAREJA_COLOR = { 'Pareja 1':'#2dd4bf', 'Pareja 2':'#fbbf24', 'Pareja 3':'#
 
 function panelParejas() {
   // Agrupar por pareja. "Ejecutada" = el técnico la marcó hecha (logró un punto),
-  // esté por_confirmar o confirmada.
+  // esté por_confirmar o confirmada. La META es DIARIA: solo cuenta las
+  // ejecutadas HOY (por fechaHecha), igual que en Cambio de Medidores.
+  const hoy = claveDia(firebase.firestore.Timestamp.now());
   const parejas = {};
   for (const o of ordenes_) {
     const p = o.pareja;
     if (!p) continue;
     if (!parejas[p]) parejas[p] = { ejecutadas: 0, visitas: 0, asignadas: 0 };
     parejas[p].asignadas++;
-    const ejecutada = (o.estado === 'por_confirmar' || o.estado === 'confirmada') && o.logranoEn;
+    const ejecutada = (o.estado === 'por_confirmar' || o.estado === 'confirmada')
+      && o.logranoEn
+      && o.fechaHecha && claveDia(o.fechaHecha) === hoy;
     if (ejecutada) parejas[p].ejecutadas++;
     parejas[p].visitas += Array.isArray(o.visitas) ? o.visitas.length : 0;
   }
@@ -346,7 +350,7 @@ function panelParejas() {
 
   return `
     <div style="margin-bottom:16px">
-      <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:var(--text-4);margin-bottom:8px">Avance por pareja · meta ${META_PAREJA}</div>
+      <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:var(--text-4);margin-bottom:8px">Avance por pareja · meta diaria ${META_PAREJA}</div>
       <div style="display:grid;grid-template-columns:repeat(${Math.min(nombres.length,3)},1fr);gap:10px">
         ${nombres.map(nombre => {
           const d = parejas[nombre];
@@ -364,7 +368,7 @@ function panelParejas() {
               </div>
               <div style="display:flex;align-items:baseline;gap:4px;margin-bottom:8px">
                 <span style="font-size:26px;font-weight:800;color:${cumplida?'#22c55e':color}">${d.ejecutadas}</span>
-                <span style="font-size:13px;color:var(--text-4)">/ ${META_PAREJA} ejecutadas</span>
+                <span style="font-size:13px;color:var(--text-4)">/ ${META_PAREJA} hoy</span>
               </div>
               <div style="height:6px;border-radius:3px;background:var(--glass);overflow:hidden;margin-bottom:8px">
                 <div style="height:100%;width:${pct}%;background:${cumplida?'#22c55e':color};border-radius:3px"></div>
