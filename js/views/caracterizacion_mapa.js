@@ -70,7 +70,10 @@ export async function init(container, session) {
           <div style="font-size:10px;color:var(--text-4)" id="crc-map-stat">Cargando…</div>
         </div>
         <div style="flex:1"></div>
-        ${esAdmin_ ? `<button id="crc-zona" style="pointer-events:auto;height:40px;padding:0 14px;border-radius:12px;border:1px solid rgba(167,139,250,.5);background:rgba(13,17,23,.9);color:#a78bfa;font-size:12px;font-weight:700;display:flex;align-items:center;gap:6px;cursor:pointer;font-family:inherit">
+        ${esAdmin_ ? `<button id="crc-reset-asig" title="Quitar todas las asignaciones" style="pointer-events:auto;height:40px;width:40px;border-radius:12px;border:1px solid var(--border);background:rgba(13,17,23,.9);color:var(--text-3);display:flex;align-items:center;justify-content:center;cursor:pointer;margin-right:8px">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="17" height="17"><path d="M3 12a9 9 0 1 0 9-9 9 9 0 0 0-6.7 3"/><path d="M3 3v5h5"/></svg>
+        </button>
+        <button id="crc-zona" style="pointer-events:auto;height:40px;padding:0 14px;border-radius:12px;border:1px solid rgba(167,139,250,.5);background:rgba(13,17,23,.9);color:#a78bfa;font-size:12px;font-weight:700;display:flex;align-items:center;gap:6px;cursor:pointer;font-family:inherit">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><polygon points="12 2 15 8.3 22 9.3 17 14 18 21 12 17.8 6 21 7 14 2 9.3 9 8.3 12 2"/></svg>
           Asignar zona
         </button>` : `
@@ -91,6 +94,7 @@ export async function init(container, session) {
 
   if (esAdmin_) {
     container.querySelector('#crc-zona').onclick = activarModoZona;
+    container.querySelector('#crc-reset-asig').onclick = resetearAsignaciones;
   } else {
     initGPS();
     container.querySelector('#crc-gps').onclick = () => {
@@ -268,9 +272,11 @@ function pintarRetiro(r) {
   if (markersRet_[r.id]) { map_.removeLayer(markersRet_[r.id]); delete markersRet_[r.id]; }
   if (r.lat == null || r.lng == null) return;
 
+  // Pendiente: gris si no tiene pareja, color de su pareja si está asignado.
+  // Retirado = verde, No se pudo = rojo (el estado manda sobre la asignación).
   const color = r.estado === 'retirado' ? '#22c55e'
               : r.estado === 'no_retirado' ? '#ef4444'
-              : RETIRO_COLOR;
+              : r.pareja ? colorPareja(r.pareja) : '#64748b';
   const atenuado = r.estado === 'retirado';   // los hechos se ven más tenues
   const marca = r.estado === 'retirado' ? '&#10003;' : r.estado === 'no_retirado' ? '&#10007;' : '';
 
@@ -838,12 +844,21 @@ function abrirAsignarIndividual(ordenId) {
   const o = ordenes_.find(x => x.id === ordenId);
   if (!o) return;
   const t = o.titular || {};
+  const nSup = [o.suplente1, o.suplente2].filter(s => s && s.nc).length;
+  const dato = (etq, val) => val ? `<div style="display:flex;justify-content:space-between;gap:12px;font-size:12px;margin-bottom:3px"><span style="color:var(--text-4)">${etq}</span><span style="color:var(--text-2);text-align:right">${val}</span></div>` : '';
   const sheet = container_.querySelector('#crc-sheet-zona');
   sheet.innerHTML = `
     <div style="width:36px;height:4px;background:var(--border);border-radius:2px;margin:0 auto 14px"></div>
-    ${o.esUPR ? `<div style="display:inline-block;font-size:11px;font-weight:800;letter-spacing:.06em;color:${UPR_COLOR};background:rgba(56,189,248,.14);border:1px solid rgba(56,189,248,.45);border-radius:8px;padding:3px 9px;margin-bottom:8px">UPR</div>` : ''}
+    ${o.esUPR ? `<div style="display:inline-block;font-size:11px;font-weight:800;letter-spacing:.06em;color:${UPR_COLOR};background:rgba(56,189,248,.14);border:1px solid rgba(56,189,248,.45);border-radius:8px;padding:3px 9px;margin-bottom:8px">UPR${o.tarifa ? ' · ' + o.tarifa : ''}</div>` : ''}
     <div style="font-size:15px;font-weight:800;margin-bottom:2px">${t.nombre || o.ncTitular}</div>
-    <div style="font-size:11px;color:var(--text-4);margin-bottom:16px">NC ${o.ncTitular}${o.pareja ? ' · ' + o.pareja : ' · sin asignar'}</div>
+    <div style="font-size:11px;color:var(--text-4);margin-bottom:12px">NC ${o.ncTitular} · ${o.pareja ? o.pareja : 'sin asignar'}</div>
+    <div style="background:var(--glass);border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:14px">
+      ${dato('Dirección', t.direccion)}
+      ${dato('Medidor', t.medidor)}
+      ${dato('DS', t.ds)}
+      ${!o.esUPR ? dato('Tarifa', o.tarifa) : ''}
+      ${dato('Suplentes', nSup ? `${nSup} suplente${nSup>1?'s':''}` : 'Sin suplentes')}
+    </div>
     <div class="form-label" style="margin-bottom:8px">Asignar a</div>
     <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px" id="crc-ind-parejas">
       ${PAREJAS_CRC.map(p => `<div class="crc-ip" data-val="${p}" style="cursor:pointer;padding:9px 16px;border-radius:20px;border:1px solid ${o.pareja===p?'#a78bfa':'var(--border)'};background:${o.pareja===p?'rgba(167,139,250,.15)':'var(--glass)'};font-size:13px;font-weight:700">${p}</div>`).join('')}
@@ -862,6 +877,45 @@ function abrirAsignarIndividual(ordenId) {
     } catch (e) { toast('Error: ' + e.message, 'error'); }
   });
   sheet.querySelector('#crc-ind-cerrar').onclick = () => { sheet.classList.remove('abierta'); };
+}
+
+// ── Quitar todas las asignaciones (admin) ──
+// Deja en "sin asignar" (gris) todas las instalaciones y retiros que
+// tengan pareja. Útil cuando se asignó una zona por error.
+async function resetearAsignaciones() {
+  const inst = ordenes_.filter(o => o.pareja);
+  const rets = retiros_.filter(r => r.pareja);
+  const total = inst.length + rets.length;
+  if (!total) { toast('No hay asignaciones que quitar', 'warn'); return; }
+
+  if (!confirm(`Se quitará la asignación de ${total} punto${total>1?'s':''} (${inst.length} instalaciones, ${rets.length} retiros).\n\nTodos volverán a "sin asignar" (gris). Esto no borra las órdenes ni su avance.\n\n¿Continuar?`)) return;
+
+  try {
+    toast('Quitando asignaciones…', 'ok');
+    // Instalaciones
+    for (let i = 0; i < inst.length; i += 400) {
+      const batch = db.batch();
+      inst.slice(i, i + 400).forEach(o => {
+        batch.update(db.collection('caracterizacion_ordenes').doc(o.id), { pareja: null });
+      });
+      await batch.commit();
+    }
+    // Retiros
+    for (let i = 0; i < rets.length; i += 400) {
+      const batch = db.batch();
+      rets.slice(i, i + 400).forEach(r => {
+        batch.update(db.collection('caracterizacion_retiros').doc(r.id), { pareja: null });
+      });
+      await batch.commit();
+    }
+    // Actualizar en memoria y repintar
+    inst.forEach(o => { o.pareja = null; pintarOrden(o); });
+    rets.forEach(r => { r.pareja = null; pintarRetiro(r); });
+    updateStat();
+    toast(`${total} asignaciones quitadas`, 'ok');
+  } catch (err) {
+    toast('Error: ' + err.message, 'error');
+  }
 }
 
 // ── GPS (idéntico a Cambios) ──
