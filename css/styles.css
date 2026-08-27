@@ -923,6 +923,7 @@ body {
 .area-tab.active.cm { background: var(--cm-glass); color: var(--cm-light); }
 .area-tab.active.cr { background: var(--cr-glass); color: var(--cr-light); }
 .area-tab.active.rc { background: var(--rc-glass); color: var(--rc-light); }
+.area-tab.active.am { background: rgba(139,92,246,.15); color: #a78bfa; }
 
 /* Panel header */
 .panel-header {
