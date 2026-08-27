@@ -36,6 +36,12 @@ const NAV_CONFIGS = {
     { id: 'reclamos', label: 'Reclamos', icon: 'list', color: 'cm' },
     { id: 'bodega',   label: 'Bodega',  icon: 'box'  },
   ],
+  tecnico_ami: [
+    { id: 'home',     label: 'Inicio',  icon: 'home' },
+    { id: 'ami',      label: 'Órdenes', icon: 'list', color: 'am' },
+    { id: 'ami_mapa', label: 'Mapa',    icon: 'map',  color: 'am' },
+    { id: 'bodega',   label: 'Bodega',  icon: 'box'  },
+  ],
   tecnico_none: [
     { id: 'home', label: 'Inicio', icon: 'home' },
   ],
@@ -98,7 +104,7 @@ export async function navigateTo(tabId, _esRegreso) {
 
   // 'cambios' y 'caracterizacion' viven bajo la pestaña 'areas'
   // (admin/asistente no tienen pestaña propia de cada área).
-  const bajoAreas = ['cambios','caracterizacion','caracterizacion_mapa','reclamos'];
+  const bajoAreas = ['cambios','caracterizacion','caracterizacion_mapa','reclamos','ami','ami_mapa'];
   const tabResaltado = bajoAreas.includes(tabId) ? 'areas' : tabId;
   document.querySelectorAll('.nav-item').forEach(el => {
     el.classList.toggle('active', el.dataset.tab === tabResaltado);
@@ -190,6 +196,7 @@ function buildNavbar(session) {
     configKey = area === 'CAMBIOS' ? 'tecnico_cambios'
               : area === 'Caracterizacion' ? 'tecnico_caracterizacion'
               : area === 'Reclamos' ? 'tecnico_reclamos'
+              : area === 'AMI' ? 'tecnico_ami'
               : 'tecnico_none';
   }
 
