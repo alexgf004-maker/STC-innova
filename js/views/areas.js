@@ -37,6 +37,14 @@ const AREAS_DISPONIBLES = [
     color: '#fbbf24',
     icon: '<path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/>',
   },
+  {
+    id: 'ami',
+    tab: 'ami',
+    label: 'AMI',
+    sub: 'Medidores telegestionados (remotos)',
+    color: '#a78bfa',
+    icon: '<path d="M4.9 16.1a10 10 0 010-8.2"/><path d="M7.8 13.8a6 6 0 010-3.6"/><path d="M19.1 7.9a10 10 0 010 8.2"/><path d="M16.2 10.2a6 6 0 010 3.6"/><circle cx="12" cy="12" r="2"/>',
+  },
 ];
 
 export function init(container, session) {
