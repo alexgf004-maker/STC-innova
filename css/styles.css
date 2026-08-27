@@ -33,6 +33,9 @@
   --cr-light:   #ef4444;
   --cr-glass:   rgba(239,68,68,.08);
   --cr-border:  rgba(239,68,68,.22);
+  --am-light:   #a78bfa;
+  --am-glass:   rgba(139,92,246,.10);
+  --am-border:  rgba(139,92,246,.30);
   /* Reclamos SIGET (amarillo) */
   --rc:         #d97706;
   --rc-light:   #fbbf24;
@@ -400,6 +403,7 @@ body {
 .nav-item.active       { color: var(--cm-light);  background: rgba(45,212,191,.06); }
 .nav-item.active.otc   { color: var(--otc-light); background: rgba(96,165,250,.06); }
 .nav-item.active.cr    { color: var(--cr-light);  background: rgba(239,68,68,.06); }
+.nav-item.active.am    { color: var(--am-light);  background: rgba(139,92,246,.06); }
 .nav-item.active.rc    { color: var(--rc-light);  background: rgba(251,191,36,.06); }
 .nav-item .nav-badge {
   position: absolute; top: 8px; right: calc(50% - 14px);
@@ -460,6 +464,7 @@ body {
 .welcome-card.cm     { background: var(--cm-glass);  border-color: var(--cm-border);  color: var(--cm-light); }
 .welcome-card.otc    { background: var(--otc-glass); border-color: var(--otc-border); color: var(--otc-light); }
 .welcome-card.cr     { background: var(--cr-glass);  border-color: var(--cr-border);  color: var(--cr-light); }
+.welcome-card.am     { background: var(--am-glass);  border-color: var(--am-border);  color: var(--am-light); }
 .welcome-card.rc     { background: var(--rc-glass);  border-color: var(--rc-border);  color: var(--rc-light); }
 .welcome-card.office { background: var(--glass);     border-color: var(--border);     color: var(--text-2); }
 .welcome-card::before {
@@ -488,6 +493,8 @@ body {
 .stat-chip.otc-accent .val { color: var(--otc-light); }
 .stat-chip.cr-accent     { border-color: var(--cr-border);     background: var(--cr-glass); }
 .stat-chip.cr-accent .val  { color: var(--cr-light); }
+.stat-chip.am-accent     { border-color: var(--am-border);     background: var(--am-glass); }
+.stat-chip.am-accent .val  { color: var(--am-light); }
 .stat-chip.rc-accent     { border-color: var(--rc-border);     background: var(--rc-glass); }
 .stat-chip.rc-accent .val  { color: var(--rc-light); }
 .stat-chip.warn-accent   { border-color: rgba(245,158,11,.2);  background: rgba(245,158,11,.06); }
@@ -794,6 +801,7 @@ body {
 .user-avatar.cm  { background: var(--cm-glass);  border-color: var(--cm-border);  color: var(--cm-light); }
 .user-avatar.otc { background: var(--otc-glass); border-color: var(--otc-border); color: var(--otc-light); }
 .user-avatar.cr  { background: var(--cr-glass);  border-color: var(--cr-border);  color: var(--cr-light); }
+.user-avatar.am  { background: var(--am-glass);  border-color: var(--am-border);  color: var(--am-light); }
 .user-avatar.rc  { background: var(--rc-glass);  border-color: var(--rc-border);  color: var(--rc-light); }
 
 /* User info */
@@ -810,6 +818,7 @@ body {
 .user-asign.cm  { color: var(--cm-light); }
 .user-asign.otc { color: var(--otc-light); }
 .user-asign.cr  { color: var(--cr-light); }
+.user-asign.am  { color: var(--am-light); }
 .user-asign.rc  { color: var(--rc-light); }
 .sin-asign { color: var(--text-4); font-style: italic; }
 .dot-sep { opacity: .4; }
@@ -947,6 +956,7 @@ body {
 .progress-bar-fill.cm  { background: var(--cm-light); }
 .progress-bar-fill.otc { background: var(--otc-light); }
 .progress-bar-fill.cr  { background: var(--cr-light); }
+.progress-bar-fill.am  { background: var(--am-light); }
 .progress-bar-fill.rc  { background: var(--rc-light); }
 .progress-stats {
   display: flex; gap: 12px; margin-top: 10px;
@@ -1483,6 +1493,8 @@ body {
 .stat-chip.otc-accent .val { color: var(--otc-light); }
 .stat-chip.cr-accent   { background: var(--cr-glass);  border-color: var(--cr-border); }
 .stat-chip.cr-accent .val { color: var(--cr-light); }
+.stat-chip.am-accent   { background: var(--am-glass);  border-color: var(--am-border); }
+.stat-chip.am-accent .val { color: var(--am-light); }
 .stat-chip.rc-accent   { background: var(--rc-glass);  border-color: var(--rc-border); }
 .stat-chip.rc-accent .val { color: var(--rc-light); }
 .stat-chip.warn-accent { background: rgba(245,158,11,.08); border-color: rgba(245,158,11,.25); }
