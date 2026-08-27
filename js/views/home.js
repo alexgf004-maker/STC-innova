@@ -106,7 +106,7 @@ function intentarPintarPendientes(intento){
 }
 
 const CAMP_LABEL_HOME = { CAMBIOS:'Cambio de Medidores', AMI:'AMI', Caracterizacion:'Caracterización', ReclamosSIGET:'Reclamos SIGET' };
-const CAMP_COLOR_HOME = { CAMBIOS:'#2dd4bf', AMI:'#fbbf24', Caracterizacion:'#a78bfa', ReclamosSIGET:'#f472b6' };
+const CAMP_COLOR_HOME = { CAMBIOS:'#2dd4bf', AMI:'#a78bfa', Caracterizacion:'#ef4444', ReclamosSIGET:'#f472b6' };
 
 function renderDespachosPendientesTecnico(cont) {
   document.getElementById('despachos-pend-tec')?.remove();
@@ -318,8 +318,9 @@ async function cargarDatosTecnico(session, area, destino) {
     // Órdenes de la pareja
     const col = area === 'CAMBIOS' ? 'cambios_ordenes'
               : area === 'Caracterizacion' ? 'caracterizacion_ordenes'
+              : area === 'AMI' ? 'ami_ordenes'
               : 'otc_ordenes';
-    const campo = (area === 'CAMBIOS' || area === 'Caracterizacion') ? 'pareja' : 'tecnicoDestino';
+    const campo = (area === 'CAMBIOS' || area === 'Caracterizacion' || area === 'AMI') ? 'pareja' : 'tecnicoDestino';
     const snap = await db.collection(col).where(campo, '==', destino).get();
     const ordenes = snap.docs.map(d => ({ id: d.id, ...d.data() }));
 
@@ -328,6 +329,11 @@ async function cargarDatosTecnico(session, area, destino) {
       total      = ordenes.length;
       aprobadas  = ordenes.filter(o => o.estado === 'hecha').length;
       pendientes = ordenes.filter(o => o.estado !== 'hecha' && o.estado !== 'no_hecha').length;
+      pct        = total ? Math.round((aprobadas / total) * 100) : 0;
+    } else if (area === 'AMI') {
+      total      = ordenes.length;
+      aprobadas  = ordenes.filter(o => o.estado === 'hecha' || o.estado === 'confirmada').length;
+      pendientes = ordenes.filter(o => o.estado !== 'hecha' && o.estado !== 'confirmada').length;
       pct        = total ? Math.round((aprobadas / total) * 100) : 0;
     } else {
       total      = ordenes.length;
@@ -495,9 +501,10 @@ function renderHomeTecnico(container, session, area, destino) {
 
   const isCambios   = area === 'CAMBIOS';
   const isCaract    = area === 'Caracterizacion';
-  const color       = isCambios ? 'cm' : isCaract ? 'cr' : 'otc';
-  const accentColor = isCambios ? '#2dd4bf' : isCaract ? '#ef4444' : '#60a5fa';
-  const rgbAccent   = isCambios ? '13,148,136' : isCaract ? '239,68,68' : '37,99,235';
+  const isAMI       = area === 'AMI';
+  const color       = isCambios ? 'cm' : isCaract ? 'cr' : isAMI ? 'am' : 'otc';
+  const accentColor = isCambios ? '#2dd4bf' : isCaract ? '#ef4444' : isAMI ? '#a78bfa' : '#60a5fa';
+  const rgbAccent   = isCambios ? '13,148,136' : isCaract ? '239,68,68' : isAMI ? '139,92,246' : '37,99,235';
   const areaLabel   = CAMP_LABEL_HOME[area] || 'Órdenes de campo';
 
   const hoy = new Date().toLocaleDateString('es-SV', { weekday:'long', day:'numeric', month:'long' });
