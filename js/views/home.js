@@ -332,8 +332,8 @@ async function cargarDatosTecnico(session, area, destino) {
       pct        = total ? Math.round((aprobadas / total) * 100) : 0;
     } else if (area === 'AMI') {
       total      = ordenes.length;
-      aprobadas  = ordenes.filter(o => o.estado === 'hecha' || o.estado === 'confirmada').length;
-      pendientes = ordenes.filter(o => o.estado !== 'hecha' && o.estado !== 'confirmada').length;
+      aprobadas  = ordenes.filter(o => o.estadoCampo === 'aprobada' || o.estadoCampo === 'hecha').length;
+      pendientes = ordenes.filter(o => !o.estadoCampo).length;
       pct        = total ? Math.round((aprobadas / total) * 100) : 0;
     } else {
       total      = ordenes.length;
