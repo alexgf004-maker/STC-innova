@@ -102,7 +102,16 @@ function setTab(tab) {
   });
   const cont = container_.querySelector('#ami-content');
   if (!cont) return;
-  if (tab === 'mapa')      cont.innerHTML = bloquePreparacion('Mapa de órdenes AMI', 'Aquí se verán las órdenes ubicadas en el mapa, con las cuadrillas y el avance, igual que en Cambios.');
+  if (tab === 'mapa') {
+    // Montar el mapa real (mismo módulo que usa el técnico)
+    cont.innerHTML = '';
+    import('./ami_mapa.js')
+      .then(mod => mod.init(cont, session_))
+      .catch(err => {
+        cont.innerHTML = bloquePreparacion('No se pudo cargar el mapa', 'Intenta de nuevo en un momento.');
+        console.warn('[ami] Error cargando ami_mapa:', err.message);
+      });
+  }
   else if (tab === 'ordenes') cont.innerHTML = renderOrdenes();
   else                     cont.innerHTML = renderPanel();
 }
@@ -110,8 +119,8 @@ function setTab(tab) {
 // ── Panel (resumen del área) ──────────────────────
 function renderPanel() {
   const total = ordenes_.length;
-  const hechas = ordenes_.filter(o => o.estado === 'hecha' || o.estado === 'confirmada').length;
-  const pend = total - hechas;
+  const hechas = ordenes_.filter(o => o.estadoCampo === 'hecha' || o.estadoCampo === 'aprobada').length;
+  const pend = ordenes_.filter(o => !o.estadoCampo).length;
   const pct = total ? Math.round((hechas / total) * 100) : 0;
 
   return `
@@ -156,7 +165,7 @@ function renderOrdenes() {
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
           <div class="orden-wo" style="color:${ACCENT}">NC ${o.nc || '—'}</div>
           ${o.cliente ? `<div class="orden-cliente" style="flex:1;min-width:120px">${o.cliente}</div>` : '<div style="flex:1"></div>'}
-          <div class="estado-badge ${o.estado === 'hecha' || o.estado === 'confirmada' ? 'ok' : 'muted'}">${o.estado || 'pendiente'}</div>
+          <div class="estado-badge ${o.estadoCampo === 'hecha' || o.estadoCampo === 'aprobada' ? 'ok' : 'muted'}">${o.estadoCampo || 'pendiente'}</div>
         </div>
         ${o.direccion ? `<div class="orden-dir" style="margin-top:6px">${o.direccion}</div>` : ''}
       </div>`).join('')
