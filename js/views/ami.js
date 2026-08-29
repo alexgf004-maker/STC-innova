@@ -37,6 +37,28 @@ function colorPareja(pareja) {
   return PALETA_PAREJA[(n - 1) % PALETA_PAREJA.length] || '#94a3b8';
 }
 
+// ── Residuos (órdenes arrastradas de rutas anteriores) ──
+// Una orden es "residuo" si sigue pendiente y su fechaRuta es de un día
+// anterior a hoy. La ruta que DELSUR manda cada día trae fechaRuta = ese día.
+function claveDiaAMI(ts) {
+  const d = ts?.toDate ? ts.toDate() : (ts instanceof Date ? ts : (ts ? new Date(ts) : null));
+  if (!d) return null;
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+function diasArrastrada(o) {
+  const clave = claveDiaAMI(o.fechaRuta);
+  if (!clave) return 0;
+  const [y,m,d] = clave.split('-').map(Number);
+  const ruta = new Date(y, m-1, d); ruta.setHours(0,0,0,0);
+  const hoy = new Date(); hoy.setHours(0,0,0,0);
+  const dias = Math.round((hoy - ruta) / 86400000);
+  return dias > 0 ? dias : 0;
+}
+function esResiduo(o) {
+  const hecha = o.estadoCampo === 'hecha' || o.estadoCampo === 'aprobada';
+  return !hecha && diasArrastrada(o) > 0;
+}
+
 // ── Estado del módulo ─────────────────────────────
 let container_, session_, role_, pareja_;
 let ordenes_ = [];
@@ -60,12 +82,22 @@ export async function init(container, session) {
 // ── Cargar órdenes (lee la colección; aún puede estar vacía) ──
 async function cargarOrdenes() {
   try {
+    // Cargar el padrón de NC ya cambiados (para marcar/esconder)
+    let padron = new Set();
+    try {
+      const pad = await db.collection('ami_cambiados').get();
+      padron = new Set(pad.docs.map(d => String(d.data().nc ?? d.id).trim()));
+    } catch (e) { /* si no existe aún, padrón vacío */ }
+
     const snap = await db.collection(COLECCION).get();
     let todas = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     // El técnico ve solo las órdenes de su pareja
     if (!esAdmin_) {
       todas = pareja_ ? todas.filter(o => o.pareja === pareja_) : [];
     }
+    // Cruce con el padrón: marcar ya cambiadas; al técnico se le esconden
+    todas.forEach(o => { o._yaCambiada = padron.has(String(o.nc ?? '').trim()); });
+    if (!esAdmin_) todas = todas.filter(o => !o._yaCambiada);
     ordenes_ = todas;
   } catch (err) {
     // Si la colección aún no existe o no hay permisos, no rompemos el cascarón
@@ -120,7 +152,9 @@ function setTab(tab) {
 function renderPanel() {
   const total = ordenes_.length;
   const hechas = ordenes_.filter(o => o.estadoCampo === 'hecha' || o.estadoCampo === 'aprobada').length;
-  const pend = ordenes_.filter(o => !o.estadoCampo).length;
+  const pend = ordenes_.filter(o => !o.estadoCampo && !o._yaCambiada).length;
+  const residuos = ordenes_.filter(esResiduo).length;
+  const yaCambiadas = ordenes_.filter(o => o._yaCambiada).length;
   const pct = total ? Math.round((hechas / total) * 100) : 0;
 
   return `
@@ -149,6 +183,8 @@ function renderPanel() {
         <div class="progress-stats" style="margin-top:10px">
           <span><span class="stat-dot muted"></span>${pend} pendientes</span>
           <span><span class="stat-dot ok"></span>${hechas} hechas</span>
+          ${residuos ? `<span><span class="stat-dot" style="background:#f59e0b"></span>${residuos} arrastradas</span>` : ''}
+          ${yaCambiadas ? `<span><span class="stat-dot" style="background:#16a34a"></span>${yaCambiadas} ya cambiadas</span>` : ''}
         </div>
       </div>`}`;
 }
@@ -159,17 +195,35 @@ function renderOrdenes() {
     return bloquePreparacion('Sin órdenes por ahora',
       'El listado de órdenes AMI se cargará más adelante. Cada orden se identificará por su NC (estos medidores no traen WO).');
   }
-  return `<div style="display:flex;flex-direction:column;gap:8px">${
-    ordenes_.map(o => `
-      <div class="orden-card" style="flex-direction:column;align-items:stretch;cursor:default;border-left:3px solid ${ACCENT}">
+  const residuos = ordenes_.filter(esResiduo);
+  const resto = ordenes_.filter(o => !esResiduo(o));
+
+  const tarjeta = (o) => {
+    const dias = diasArrastrada(o);
+    const residuo = esResiduo(o);
+    return `
+      <div class="orden-card" style="flex-direction:column;align-items:stretch;cursor:default;border-left:3px solid ${o._yaCambiada ? '#16a34a' : residuo ? '#f59e0b' : ACCENT}">
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
           <div class="orden-wo" style="color:${ACCENT}">NC ${o.nc || '—'}</div>
           ${o.cliente ? `<div class="orden-cliente" style="flex:1;min-width:120px">${o.cliente}</div>` : '<div style="flex:1"></div>'}
+          ${o._yaCambiada ? `<span class="estado-badge ok" style="background:rgba(22,163,74,.15);border-color:rgba(22,163,74,.4);color:#16a34a">Ya cambiada</span>` : ''}
+          ${residuo && !o._yaCambiada ? `<span class="estado-badge warn">Arrastrada &middot; ${dias} d&iacute;a${dias>1?'s':''}</span>` : ''}
           <div class="estado-badge ${o.estadoCampo === 'hecha' || o.estadoCampo === 'aprobada' ? 'ok' : 'muted'}">${o.estadoCampo || 'pendiente'}</div>
         </div>
         ${o.direccion ? `<div class="orden-dir" style="margin-top:6px">${o.direccion}</div>` : ''}
-      </div>`).join('')
-  }</div>`;
+      </div>`;
+  };
+
+  const seccion = (titulo, arr, color) => arr.length ? `
+    <div style="display:flex;align-items:center;gap:8px;margin:14px 0 8px">
+      <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:${color}">${titulo}</div>
+      <div style="flex:1;height:1px;background:var(--border)"></div>
+      <div style="font-size:11px;color:var(--text-4)">${arr.length}</div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:8px">${arr.map(tarjeta).join('')}</div>` : '';
+
+  return seccion('Arrastradas (rutas anteriores)', residuos, '#f59e0b')
+       + seccion('Ruta actual', resto, ACCENT);
 }
 
 // ── Bloque "en preparación" reutilizable ──────────
