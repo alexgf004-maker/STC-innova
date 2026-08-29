@@ -123,12 +123,16 @@ function renderShell(container) {
 
       <!-- Controles superiores -->
       <div class="mapa-controls-top">
-        <div class="mapa-stat-chip" id="mapa-stat">
-          <div class="mapa-stat-dot"></div>
+        <div class="mapa-stat-chip" id="mapa-stat" style="border-color:rgba(139,92,246,.4);background:rgba(139,92,246,.12)">
+          <div class="mapa-stat-dot" style="background:#a78bfa"></div>
           <span id="mapa-stat-txt">Cargando…</span>
         </div>
+        <div style="display:flex;align-items:center;gap:6px;height:36px;padding:0 12px;border-radius:12px;background:rgba(139,92,246,.18);border:1px solid rgba(139,92,246,.5);color:#a78bfa;font-size:13px;font-weight:800;letter-spacing:.06em;font-family:'Outfit',sans-serif">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M4.9 16.1a10 10 0 010-8.2"/><path d="M7.8 13.8a6 6 0 010-3.6"/><path d="M19.1 7.9a10 10 0 010 8.2"/><path d="M16.2 10.2a6 6 0 010 3.6"/><circle cx="12" cy="12" r="2"/></svg>
+          AMI
+        </div>
         ${!isTecnico ? `
-        <button class="mapa-btn" id="btn-asignar-zona" title="Asignar zona a pareja">
+        <button class="mapa-btn" id="btn-asignar-zona" title="Asignar zona a pareja" style="border-color:rgba(139,92,246,.4);color:#a78bfa">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
             <path d="M3 3h7v7H3zM14 3h7v7h-7zM14 14h7v7h-7zM3 14h7v7H3z"/>
           </svg>
@@ -164,9 +168,9 @@ function renderShell(container) {
           display:flex;align-items:center;gap:8px;
           height:44px;padding:0 20px;
           border-radius:22px;
-          border:1px solid rgba(45,212,191,.4);
+          border:1px solid rgba(139,92,246,.4);
           background:rgba(13,31,53,.92);
-          color:var(--cm-light);
+          color:#a78bfa;
           font-size:13px;font-weight:600;
           font-family:'Outfit',sans-serif;
           cursor:pointer;
@@ -1279,7 +1283,7 @@ function activarModoZona() {
     btnCerrar = document.createElement('button');
     btnCerrar.id = 'btn-cerrar-poligono';
     btnCerrar.textContent = 'Cerrar polígono';
-    btnCerrar.style.cssText = 'position:fixed;bottom:100px;left:50%;transform:translateX(-50%);z-index:500;background:var(--cm-light);color:#0d1117;border:none;border-radius:20px;padding:10px 24px;font-size:13px;font-weight:700;font-family:Outfit,sans-serif;cursor:pointer;display:none;box-shadow:0 4px 20px rgba(0,0,0,.4)';
+    btnCerrar.style.cssText = 'position:fixed;bottom:100px;left:50%;transform:translateX(-50%);z-index:500;background:#a78bfa;color:#0d1117;border:none;border-radius:20px;padding:10px 24px;font-size:13px;font-weight:700;font-family:Outfit,sans-serif;cursor:pointer;display:none;box-shadow:0 4px 20px rgba(0,0,0,.4)';
     document.body.appendChild(btnCerrar);
     btnCerrar.addEventListener('click', cerrarPoligono);
   }
@@ -1299,11 +1303,11 @@ function onMapClick_(e) {
 
   if (puntos_.length === 1) {
     poliPreview_ = L.circleMarker(puntos_[0], {
-      radius: 5, color: '#2dd4bf', fillColor: '#2dd4bf', fillOpacity: 1, weight: 2
+      radius: 5, color: '#a78bfa', fillColor: '#a78bfa', fillOpacity: 1, weight: 2
     }).addTo(map_);
   } else {
     poliPreview_ = L.polygon(puntos_, {
-      color: '#2dd4bf', weight: 2, fillOpacity: 0.1, dashArray: '6,4'
+      color: '#a78bfa', weight: 2, fillOpacity: 0.1, dashArray: '6,4'
     }).addTo(map_);
   }
 
@@ -1329,7 +1333,7 @@ function cerrarPoligono() {
   if (poliPreview_) { map_.removeLayer(poliPreview_); poliPreview_ = null; }
 
   zonaPoligono_ = L.polygon(puntos_, {
-    color: '#2dd4bf', weight: 2, fillOpacity: 0.12
+    color: '#a78bfa', weight: 2, fillOpacity: 0.12
   }).addTo(map_);
   zonaActual_ = zonaPoligono_;
 
