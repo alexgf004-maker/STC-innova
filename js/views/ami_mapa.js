@@ -676,13 +676,13 @@ function updateStatChip() {
   if (!txt) return;
 
   if (sinAsig > 0) {
-    txt.textContent = `${sinAsig} sin asignar · ${hechas}/${total} pendientes`;
+    txt.textContent = `${sinAsig} sin asig · ${total} pend`;
     document.querySelector('.mapa-stat-dot').style.background = '#f59e0b';
   } else if (total === 0) {
-    txt.textContent = `${aprobadas} órdenes aprobadas`;
+    txt.textContent = `${aprobadas} aprob`;
     document.querySelector('.mapa-stat-dot').style.background = '#22c55e';
   } else {
-    txt.textContent = `${hechas} realizadas · ${total - hechas} pendientes · ${aprobadas} aprobadas`;
+    txt.textContent = `${hechas} hechas · ${total - hechas} pend`;
     document.querySelector('.mapa-stat-dot').style.background = '#22c55e';
   }
 }
