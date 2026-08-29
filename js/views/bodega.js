@@ -822,7 +822,7 @@ function renderInventario() {
       <div class="panel-header anim-up">
         <div><div class="section-title">Inventario</div><div class="section-sub">${items.length} items · ${agotados} agotados · ${bajos} bajo mínimo</div></div>
         <div style="display:flex;gap:8px">
-          <button class="icon-btn bod" onclick="window.__bodega.exportarInventario()" title="Exportar a Excel">
+          <button class="icon-btn bod" onclick="window.__bodega.exportarInventario()" title="Descargar existencias">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
           </button>
           <button class="icon-btn bod" onclick="window.__bodega.abrirImportar()" title="Importar Excel">
@@ -2640,27 +2640,22 @@ function exportarInventario() {
   const items = allItems_.filter(i => i.area === campana).sort((a,b)=>safeStr(a.name).localeCompare(safeStr(b.name)));
   if (!items.length) { toast('No hay materiales en esta campaña', 'error'); return; }
 
-  // Encabezados EXACTOS que el importador reconoce. La columna Stock va vacía
-  // para escribir lo que entra. NO se agregan columnas extra: el importador
-  // busca por inclusión ("stock", "ax") y una columna de más rompe el mapeo.
+  // Reporte de EXISTENCIAS: qué hay y cuánto, para enviar. Solo lo esencial.
   const filas = items.map(i => ({
-    Nombre:  safeStr(i.name,''),
-    Unidad:  safeStr(i.unit,''),
-    SAP:     safeStr(i.sapCode,''),
-    AX:      safeStr(i.axCode,''),
-    Stock:   '',                       // <- escribe aquí lo que llega
-    Minimo:  safeNum(i.minStock)||5,
+    Nombre: safeStr(i.name,''),
+    Stock:  safeNum(i.stock),
+    Unidad: safeStr(i.unit,''),
   }));
 
-  const ws = XLSX.utils.json_to_sheet(filas, { header:['Nombre','Unidad','SAP','AX','Stock','Minimo'] });
-  ws['!cols'] = [{wch:40},{wch:10},{wch:14},{wch:14},{wch:10},{wch:8}];
+  const ws = XLSX.utils.json_to_sheet(filas, { header:['Nombre','Stock','Unidad'] });
+  ws['!cols'] = [{wch:40},{wch:10},{wch:12}];
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, campana.substring(0,28));
 
   const label = (CAMPANA_COLORS[campana]?.label || campana).replace(/[^\w]/g,'_');
   const hoy = new Date().toISOString().split('T')[0];
-  XLSX.writeFile(wb, `Inventario_${label}_${hoy}.xlsx`);
-  toast('Excel exportado', 'ok');
+  XLSX.writeFile(wb, `Existencias_${label}_${hoy}.xlsx`);
+  toast('Existencias exportadas', 'ok');
 }
 
 function abrirImportar() {
