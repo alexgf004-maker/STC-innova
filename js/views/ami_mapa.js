@@ -125,24 +125,20 @@ function renderShell(container) {
       <div class="mapa-controls-top">
         <div class="mapa-stat-chip" id="mapa-stat" style="border-color:rgba(139,92,246,.4);background:rgba(139,92,246,.12)">
           <div class="mapa-stat-dot" style="background:#a78bfa"></div>
+          <span style="font-weight:800;color:#a78bfa;letter-spacing:.04em;margin-right:2px">AMI</span>
           <span id="mapa-stat-txt">Cargando…</span>
         </div>
-        <div style="display:flex;align-items:center;gap:6px;height:36px;padding:0 12px;border-radius:12px;background:rgba(139,92,246,.18);border:1px solid rgba(139,92,246,.5);color:#a78bfa;font-size:13px;font-weight:800;letter-spacing:.06em;font-family:'Outfit',sans-serif">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M4.9 16.1a10 10 0 010-8.2"/><path d="M7.8 13.8a6 6 0 010-3.6"/><path d="M19.1 7.9a10 10 0 010 8.2"/><path d="M16.2 10.2a6 6 0 010 3.6"/><circle cx="12" cy="12" r="2"/></svg>
-          AMI
-        </div>
         ${!isTecnico ? `
-        <button class="mapa-btn" id="btn-asignar-zona" title="Asignar zona a pareja" style="border-color:rgba(139,92,246,.4);color:#a78bfa">
+        <button class="mapa-btn-icon" id="btn-asignar-zona" title="Asignar zona a pareja" style="border-color:rgba(139,92,246,.4);color:#a78bfa">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
             <path d="M3 3h7v7H3zM14 3h7v7h-7zM14 14h7v7h-7zM3 14h7v7H3z"/>
           </svg>
-          Asignar zona
         </button>
         <button class="mapa-btn" id="btn-subir-cambiados" title="Subir NC ya cambiados" style="background:rgba(22,163,74,.2);border-color:rgba(22,163,74,.4);color:#16a34a">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
             <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
           </svg>
-          NC cambiados
+          NC
         </button>
         <input type="file" id="file-cambiados" accept=".xlsx,.xls" style="display:none"/>` : ''}
         <button class="mapa-btn-icon" id="btn-mi-ubicacion" title="Mi ubicación">
