@@ -49,6 +49,18 @@ function isBlocked_(orden) {
     return Math.abs((fecha - hoy) / (1000*60*60*24)) <= 2;
   });
 }
+
+// Residuo: orden pendiente cuya ruta (fechaRuta) es de un día anterior a hoy.
+function esResiduoAMI(orden) {
+  if (orden.estadoCampo) return false;   // ya tiene estado = no es residuo pendiente
+  const ts = orden.fechaRuta;
+  const d = ts?.toDate ? ts.toDate() : (ts ? new Date(ts) : null);
+  if (!d) return false;
+  d.setHours(0,0,0,0);
+  const hoy = new Date(); hoy.setHours(0,0,0,0);
+  return (hoy - d) / 86400000 >= 1;
+}
+
 let markers_ = [];
 let markersContiguos_ = [];   // marcadores temporales de contiguos
 let contiguosData_ = null;     // caché del JSON de contiguos
@@ -58,6 +70,7 @@ let drawnItems_ = null;
 let drawControl_ = null;
 let session_, role_, pareja_;
 let ordenes_ = [];
+let padronCambiados_ = new Set();   // NC ya cambiados (padrón permanente)
 let selectedOrden_ = null;
 
 // ── Entry point ───────────────────────────────────
@@ -71,6 +84,9 @@ export async function init(container, session) {
   if (map_) { map_.remove(); map_ = null; markers_ = []; markersContiguos_ = []; }
 
   renderShell(container);
+
+  // Cargar el padrón de NC ya cambiados ANTES de suscribir, para poder cruzar
+  await cargarPadronCambiados();
 
   // Iniciar listener en tiempo real ANTES de initMap
   suscribirOrdenes();
@@ -117,7 +133,14 @@ function renderShell(container) {
             <path d="M3 3h7v7H3zM14 3h7v7h-7zM14 14h7v7h-7zM3 14h7v7H3z"/>
           </svg>
           Asignar zona
-        </button>` : ''}
+        </button>
+        <button class="mapa-btn" id="btn-subir-cambiados" title="Subir NC ya cambiados" style="background:rgba(22,163,74,.2);border-color:rgba(22,163,74,.4);color:#16a34a">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
+            <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+          </svg>
+          NC cambiados
+        </button>
+        <input type="file" id="file-cambiados" accept=".xlsx,.xls" style="display:none"/>` : ''}
         <button class="mapa-btn-icon" id="btn-mi-ubicacion" title="Mi ubicación">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
             <circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/>
@@ -226,6 +249,9 @@ function renderShell(container) {
 
   // Eventos del mapa-wrapper
   document.getElementById('btn-asignar-zona')?.addEventListener('click', activarModoZona);
+  const fileCambiados = document.getElementById('file-cambiados');
+  document.getElementById('btn-subir-cambiados')?.addEventListener('click', () => fileCambiados?.click());
+  if (fileCambiados) fileCambiados.onchange = (e) => procesarCambiadosExcel(e.target.files[0]);
   document.getElementById('btn-mi-ubicacion')?.addEventListener('click', () => {
     if (geoMarker_) {
       map_.setView(geoMarker_.getLatLng(), 17);
@@ -303,11 +329,85 @@ function suscribirOrdenes() {
           && lng > -92 && lng < -87;
       });
 
+    // Cruce con el padrón de NC ya cambiados: marcar y (para el técnico) esconder.
+    ordenes_.forEach(o => { o._yaCambiada = padronCambiados_.has(String(o.nc ?? '').trim()); });
+    if (role_ === 'tecnico') {
+      ordenes_ = ordenes_.filter(o => !o._yaCambiada);
+    }
+
     plotMarkers();
     updateStatChip();
   }, err => {
     console.error('[mapa] Error en listener:', err);
   });
+}
+
+// Cargar el padrón de NC ya cambiados (colección ami_cambiados)
+async function cargarPadronCambiados() {
+  try {
+    const snap = await db.collection('ami_cambiados').get();
+    padronCambiados_ = new Set(snap.docs.map(d => String(d.data().nc ?? d.id).trim()));
+  } catch (err) {
+    console.warn('[ami] No se pudo cargar padrón de cambiados:', err.message);
+    padronCambiados_ = new Set();
+  }
+}
+
+// Subir Excel de NC ya cambiados → agrega al padrón permanente ami_cambiados.
+// Detecta la columna de NC de forma flexible. Acumula (no borra los previos).
+async function procesarCambiadosExcel(file) {
+  if (!file) return;
+  try {
+    const buf = await file.arrayBuffer();
+    const wb = XLSX.read(buf, { type: 'array' });
+    const matriz = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, defval: '' });
+    if (!matriz.length) { toast('El archivo está vacío', 'error'); return; }
+
+    // Buscar la columna de NC (encabezado que contenga "nc" o "contrato")
+    const norm = s => String(s ?? '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[\s._-]/g,'');
+    let headerRow = matriz.findIndex(r => r.some(c => ['nc','contrato','nic'].includes(norm(c))));
+    let colIdx = 0;
+    if (headerRow === -1) { headerRow = -1; colIdx = 0; }   // sin encabezado: primera columna
+    else colIdx = matriz[headerRow].findIndex(c => ['nc','contrato','nic'].includes(norm(c)));
+
+    const filas = matriz.slice(headerRow + 1);
+    const ncs = new Set();
+    for (const r of filas) {
+      const nc = String(r[colIdx] ?? '').trim();
+      if (nc) ncs.add(nc);
+    }
+    if (!ncs.size) { toast('No se encontraron NC en el archivo', 'error'); return; }
+
+    // Cuántos son nuevos respecto al padrón actual
+    const nuevos = [...ncs].filter(nc => !padronCambiados_.has(nc));
+    if (!confirm(`Se encontraron ${ncs.size} NC en el archivo.\n${nuevos.length} son nuevos (no estaban en el padrón).\n\n¿Agregar al padrón de ya cambiados?`)) return;
+
+    toast('Guardando NC cambiados…', 'ok');
+    const lista = [...ncs];
+    for (let i = 0; i < lista.length; i += 400) {
+      const batch = db.batch();
+      lista.slice(i, i + 400).forEach(nc => {
+        // El id del doc es el NC → evita duplicados automáticamente
+        batch.set(db.collection('ami_cambiados').doc(nc), {
+          nc, cargadoEn: firebase.firestore.Timestamp.now(), cargadoPor: session_.displayName,
+        }, { merge: true });
+      });
+      await batch.commit();
+    }
+
+    // Actualizar el padrón en memoria y re-cruzar
+    lista.forEach(nc => padronCambiados_.add(nc));
+    ordenes_.forEach(o => { o._yaCambiada = padronCambiados_.has(String(o.nc ?? '').trim()); });
+    if (role_ === 'tecnico') ordenes_ = ordenes_.filter(o => !o._yaCambiada);
+    plotMarkers();
+    updateStatChip();
+    toast(`Padrón actualizado: ${nuevos.length} NC nuevos`, 'ok');
+  } catch (err) {
+    toast('Error al procesar: ' + err.message, 'error');
+  } finally {
+    const inp = document.getElementById('file-cambiados');
+    if (inp) inp.value = '';
+  }
 }
 
 async function loadOrdenes() {
@@ -469,7 +569,9 @@ function plotMarkers() {
     if (!orden.latitud || !orden.longitud) return;
 
     const bloqueada = !orden.estadoCampo && isBlocked_(orden);
-    const color = bloqueada
+    const color = orden._yaCambiada
+      ? '#16a34a'
+      : bloqueada
       ? '#4b5563'
       : ESTADO_COLORS[orden.estadoCampo] || PAREJA_COLORS[orden.pareja] || PAREJA_COLORS[null];
     const size  = orden.estadoCampo === 'hecha' ? 10 : 14;
@@ -539,9 +641,9 @@ function plotMarkers() {
           <div style="
             width:${size}px;height:${size}px;
             background:${color};
-            border:2px solid rgba(255,255,255,.8);
+            border:2px solid ${esResiduoAMI(orden) ? '#f59e0b' : 'rgba(255,255,255,.8)'};
             border-radius:50%;
-            box-shadow:0 2px 6px rgba(0,0,0,.4);
+            box-shadow:${esResiduoAMI(orden) ? '0 0 0 2px rgba(245,158,11,.5), ' : ''}0 2px 6px rgba(0,0,0,.4);
             ${orden.estadoCampo === 'hecha' ? 'opacity:0.6' : ''}
           "></div>
           ${labelHtml}
@@ -622,6 +724,8 @@ function verOrden(id) {
       </div>
       <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0">
         ${o.pareja ? `<div class="pareja-chip" style="color:${c};border-color:${c}33;background:${c}15">${o.pareja}</div>` : ''}
+        ${o._yaCambiada ? `<div class="estado-badge ok" style="background:rgba(22,163,74,.15);border-color:rgba(22,163,74,.4);color:#16a34a">Ya cambiada</div>` : ''}
+        ${esResiduoAMI(o) ? `<div class="estado-badge warn">Arrastrada</div>` : ''}
         ${o.estadoCampo === 'hecha'  ? '<div class="estado-badge ok">Realizada</div>'    : ''}
         ${o.estadoCampo === 'visita' ? '<div class="estado-badge warn">Visita</div>'     : ''}
         ${!o.estadoCampo             ? '<div class="estado-badge muted">Pendiente</div>' : ''}
