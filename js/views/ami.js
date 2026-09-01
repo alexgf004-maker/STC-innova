@@ -145,7 +145,16 @@ function setTab(tab) {
       });
   }
   else if (tab === 'ordenes') cont.innerHTML = renderOrdenes();
-  else                     cont.innerHTML = renderPanel();
+  else {
+    cont.innerHTML = renderPanel();
+    // Enganchar el botón de importar ruta (solo admin)
+    const btn = cont.querySelector('#ami-btn-importar');
+    const file = cont.querySelector('#ami-file-importar');
+    if (btn && file) {
+      btn.onclick = () => file.click();
+      file.onchange = (e) => importarRuta(e.target.files[0]);
+    }
+  }
 }
 
 // ── Panel (resumen del área) ──────────────────────
@@ -167,6 +176,15 @@ function renderPanel() {
         Cambio de medidores remotos, en campaña separada. Las órdenes se identifican por NC.
       </div>
     </div>
+
+    ${esAdmin_ ? `
+    <div style="display:flex;gap:8px;margin-bottom:16px">
+      <button id="ami-btn-importar" style="flex:1;display:flex;align-items:center;justify-content:center;gap:8px;padding:12px;border-radius:12px;border:1px solid ${ACCENT_BORDER};background:${ACCENT_GLASS};color:${ACCENT};font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        Cargar ruta (Excel)
+      </button>
+      <input type="file" id="ami-file-importar" accept=".xlsx,.xls" style="display:none"/>
+    </div>` : ''}
 
     ${total === 0
       ? bloquePreparacion('Aún no hay órdenes cargadas',
@@ -226,7 +244,104 @@ function renderOrdenes() {
        + seccion('Ruta actual', resto, ACCENT);
 }
 
-// ── Bloque "en preparación" reutilizable ──────────
+// ── Importar ruta diaria (Excel) ──────────────────
+// Columnas: NC, NOMBRE, DIRECCIÓN, DS, MEDIDOR, LATITUD, LONGITUD.
+// NC nuevo -> crea orden con fechaRuta = hoy. NC existente -> actualiza datos
+// pero CONSERVA su fechaRuta original (para no perder los días de arrastre).
+async function importarRuta(file) {
+  if (!file) return;
+  try {
+    const buf = await file.arrayBuffer();
+    const wb = XLSX.read(buf, { type: 'array' });
+    const matriz = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, defval: '' });
+    if (!matriz.length) { toast('El archivo está vacío', 'error'); return; }
+
+    const norm = s => String(s ?? '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[\s._-]/g,'');
+    // Buscar fila de encabezados (la que tenga "nc")
+    let hIdx = matriz.findIndex(r => r.some(c => norm(c) === 'nc'));
+    if (hIdx === -1) { toast('No se encontró la columna NC', 'error'); return; }
+    const head = matriz[hIdx].map(norm);
+    const col = (...alias) => head.findIndex(h => alias.includes(h));
+    const idx = {
+      nc:  col('nc'),
+      nombre: col('nombre','cliente'),
+      direccion: col('direccion','direccin','direc'),
+      ds: col('ds'),
+      medidor: col('medidor','serie'),
+      lat: col('latitud','lat'),
+      lng: col('longitud','long','lng'),
+    };
+
+    const filas = matriz.slice(hIdx + 1);
+    const registros = [];
+    for (const r of filas) {
+      const nc = String(r[idx.nc] ?? '').trim();
+      if (!nc) continue;
+      registros.push({
+        nc,
+        nombre: idx.nombre>=0 ? String(r[idx.nombre] ?? '').trim() : '',
+        direccion: idx.direccion>=0 ? String(r[idx.direccion] ?? '').trim() : '',
+        ds: idx.ds>=0 ? String(r[idx.ds] ?? '').trim() : '',
+        medidor: idx.medidor>=0 ? String(r[idx.medidor] ?? '').trim() : '',
+        latitud: idx.lat>=0 ? String(r[idx.lat] ?? '').trim() : '',
+        longitud: idx.lng>=0 ? String(r[idx.lng] ?? '').trim() : '',
+      });
+    }
+    if (!registros.length) { toast('No se encontraron órdenes con NC', 'error'); return; }
+
+    // Traer las órdenes existentes para saber cuáles ya están (por NC)
+    const snap = await db.collection(COLECCION).get();
+    const existentesPorNC = new Map();
+    snap.docs.forEach(d => { const nc = String(d.data().nc ?? '').trim(); if (nc) existentesPorNC.set(nc, d.id); });
+
+    const nuevos = registros.filter(r => !existentesPorNC.has(r.nc));
+    const actualizar = registros.filter(r => existentesPorNC.has(r.nc));
+
+    if (!confirm(`Ruta con ${registros.length} órdenes:\n${nuevos.length} nuevas (se crean con fecha de hoy)\n${actualizar.length} ya existían (se actualizan sus datos)\n\n¿Continuar?`)) return;
+
+    toast('Cargando ruta…', 'ok');
+    const ahora = firebase.firestore.Timestamp.now();
+
+    // Crear nuevas
+    for (let i = 0; i < nuevos.length; i += 400) {
+      const batch = db.batch();
+      nuevos.slice(i, i + 400).forEach(r => {
+        const ref = db.collection(COLECCION).doc();
+        batch.set(ref, {
+          nc: r.nc, nombre: r.nombre, cliente: r.nombre,
+          direccion: r.direccion, ds: r.ds, medidor: r.medidor,
+          latitud: r.latitud, longitud: r.longitud,
+          pareja: null, estadoCampo: null,
+          fechaRuta: ahora, importadaEn: ahora,
+        });
+      });
+      await batch.commit();
+    }
+    // Actualizar existentes (conservando fechaRuta y estado)
+    for (let i = 0; i < actualizar.length; i += 400) {
+      const batch = db.batch();
+      actualizar.slice(i, i + 400).forEach(r => {
+        batch.update(db.collection(COLECCION).doc(existentesPorNC.get(r.nc)), {
+          nombre: r.nombre, cliente: r.nombre,
+          direccion: r.direccion, ds: r.ds, medidor: r.medidor,
+          latitud: r.latitud, longitud: r.longitud,
+        });
+      });
+      await batch.commit();
+    }
+
+    toast(`Ruta cargada: ${nuevos.length} nuevas, ${actualizar.length} actualizadas`, 'ok');
+    await cargarOrdenes();
+    setTab('panel');
+    window.dispatchEvent(new CustomEvent('ami:updated'));
+  } catch (err) {
+    toast('Error al cargar: ' + err.message, 'error');
+  } finally {
+    const inp = container_.querySelector('#ami-file-importar');
+    if (inp) inp.value = '';
+  }
+}
+
 function bloquePreparacion(titulo, texto) {
   return `
     <div style="text-align:center;padding:36px 20px;border:1px dashed var(--border);border-radius:16px;background:var(--glass)">
