@@ -260,6 +260,14 @@ export async function init(container, session) {
         <button class="area-tab crc-tab" data-tab="retiro">Retiro</button>
       </div>
 
+      ${esAdmin_ ? `
+      <div style="margin-bottom:14px">
+        <input id="crc-buscar" type="text" placeholder="Buscar por NC, medidor o nombre…"
+          style="width:100%;box-sizing:border-box;padding:11px 14px;border-radius:12px;border:1px solid var(--border);background:var(--glass);color:var(--text-1);font-size:13px;font-family:inherit;outline:none"/>
+        <div style="font-size:11px;color:var(--text-4);margin-top:4px">Busca en instalaciones y retiros. Deja vacío para ver la lista normal.</div>
+      </div>
+      <div id="crc-busqueda"></div>` : ''}
+
       <div id="crc-resumen"></div>
       <div id="crc-lista"></div>
       <div id="crc-estado"></div>
@@ -281,12 +289,127 @@ export async function init(container, session) {
     const fileRet = container.querySelector('#crc-file-retiro');
     container.querySelector('#crc-cargar-retiro').onclick = () => fileRet.click();
     fileRet.onchange = (e) => manejarArchivoRetiro(e.target.files[0]);
+    const inpBuscar = container.querySelector('#crc-buscar');
+    if (inpBuscar) {
+      let tb = null;
+      inpBuscar.oninput = () => { clearTimeout(tb); const v = inpBuscar.value; tb = setTimeout(() => buscarOrdenes(v), 250); };
+    }
     cargarPadron().catch(()=>{});
   } else {
     container.querySelector('#crc-mapa-tec').onclick = () => window.__router.navigateTo('caracterizacion_mapa');
   }
 
   setPestana(pestana_);
+}
+
+// ── Buscador global (admin): NC, medidor o nombre en instalaciones y retiros ──
+async function buscarOrdenes(texto) {
+  const cont = container_.querySelector('#crc-busqueda');
+  const resumen = container_.querySelector('#crc-resumen');
+  const lista = container_.querySelector('#crc-lista');
+  if (!cont) return;
+  const q = String(texto || '').trim().toLowerCase();
+
+  if (!q) {
+    // Sin búsqueda: restaurar la vista normal de la pestaña
+    cont.innerHTML = '';
+    if (resumen) resumen.style.display = '';
+    if (lista) lista.style.display = '';
+    return;
+  }
+  if (resumen) resumen.style.display = 'none';
+  if (lista) lista.style.display = 'none';
+  cont.innerHTML = `<div style="text-align:center;padding:20px;color:var(--text-4);font-size:12px">Buscando…</div>`;
+
+  // Asegurar que ambas colecciones estén cargadas (el admin puede buscar
+  // sin haber abierto la pestaña de retiros todavía).
+  try {
+    if (!ordenes_.length) {
+      const s1 = await db.collection('caracterizacion_ordenes').get();
+      ordenes_ = s1.docs.map(d => ({ id: d.id, ...d.data() }));
+    }
+    if (!retiros_.length) {
+      const s2 = await db.collection('caracterizacion_retiros').get();
+      retiros_ = s2.docs.map(d => ({ id: d.id, ...d.data() }));
+    }
+  } catch (e) { /* seguimos con lo que haya */ }
+
+  const norm = s => String(s ?? '').toLowerCase();
+  const coincide = (...campos) => campos.some(c => norm(c).includes(q));
+
+  // Instalaciones que coinciden
+  const inst = ordenes_.filter(o => {
+    const t = o.titular || {};
+    return coincide(o.ncTitular, t.nombre, t.medidor);
+  });
+  // Retiros que coinciden
+  const rets = retiros_.filter(r => coincide(r.nc, r.nombre, r.medidor));
+
+  const estadoInst = (o) => o.estado === 'confirmada' ? 'Realizada'
+    : o.estado === 'por_confirmar' ? 'Falta revisar' : 'Pendiente';
+  const estadoRet = (r) => r.estado === 'retirado' ? 'Retirado'
+    : r.estado === 'no_retirado' ? 'No se pudo' : 'Pendiente';
+  const badgeClase = (txt) => txt === 'Realizada' || txt === 'Retirado' ? 'ok'
+    : txt === 'Falta revisar' ? 'warn' : txt === 'No se pudo' ? 'crit' : 'muted';
+
+  const fila = (etq, val) => val ? `<div style="display:flex;justify-content:space-between;gap:12px;font-size:11px;margin-bottom:2px"><span style="color:var(--text-4)">${etq}</span><span style="color:var(--text-2);text-align:right">${val}</span></div>` : '';
+
+  const tarjetaInst = (o) => {
+    const t = o.titular || {};
+    const est = estadoInst(o);
+    return `
+      <div class="orden-card" style="flex-direction:column;align-items:stretch;cursor:default;border-left:3px solid #ef4444">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px">
+          <div class="orden-wo" style="color:#ef4444">NC ${o.ncTitular || '—'}</div>
+          <div style="flex:1"></div>
+          ${o.esUPR ? '<span class="pareja-chip" style="color:#38bdf8;border-color:rgba(56,189,248,.4);background:rgba(56,189,248,.14)">UPR</span>' : ''}
+          <span class="estado-badge ${badgeClase(est)}">${est}</span>
+        </div>
+        <div style="background:var(--glass);border-radius:8px;padding:8px 10px">
+          ${fila('Tipo', 'Instalación')}
+          ${fila('Nombre', t.nombre)}
+          ${fila('Medidor', t.medidor)}
+          ${fila('Dirección', t.direccion)}
+          ${fila('Pareja', o.pareja)}
+        </div>
+      </div>`;
+  };
+  const tarjetaRet = (r) => {
+    const est = estadoRet(r);
+    return `
+      <div class="orden-card" style="flex-direction:column;align-items:stretch;cursor:default;border-left:3px solid #f59e0b">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px">
+          <div class="orden-wo" style="color:#f59e0b">NC ${r.nc || '—'}</div>
+          <div style="flex:1"></div>
+          <span class="estado-badge ${badgeClase(est)}">${est}</span>
+        </div>
+        <div style="background:var(--glass);border-radius:8px;padding:8px 10px">
+          ${fila('Tipo', 'Retiro')}
+          ${fila('Nombre', r.nombre)}
+          ${fila('Medidor', r.medidor)}
+          ${fila('Dirección', r.direccion)}
+          ${fila('Pareja', r.pareja)}
+        </div>
+      </div>`;
+  };
+
+  const total = inst.length + rets.length;
+  if (!total) {
+    cont.innerHTML = `<div style="text-align:center;padding:24px;color:var(--text-4);font-size:13px">Sin resultados para "${texto}"</div>`;
+    return;
+  }
+  const seccion = (titulo, arr, html, color) => arr.length ? `
+    <div style="display:flex;align-items:center;gap:8px;margin:8px 0 8px">
+      <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:${color}">${titulo}</div>
+      <div style="flex:1;height:1px;background:var(--border)"></div>
+      <div style="font-size:11px;color:var(--text-4)">${arr.length}</div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:8px">${arr.map(html).join('')}</div>` : '';
+
+  cont.innerHTML = `
+    <div style="font-size:11px;color:var(--text-4);margin-bottom:4px">${total} resultado${total>1?'s':''}</div>
+    ${seccion('Instalaciones', inst, tarjetaInst, '#ef4444')}
+    ${seccion('Retiros', rets, tarjetaRet, '#f59e0b')}`;
 }
 
 // ── Cargar y renderizar las órdenes del día ──
@@ -332,9 +455,16 @@ function setPestana(tab) {
     t.classList.toggle('active', t.dataset.tab === tab);
     t.classList.toggle('cr', t.dataset.tab === tab);
   });
+  // Al cambiar de pestaña, limpiar la búsqueda y restaurar la vista normal
+  const inpBuscar = container_.querySelector('#crc-buscar');
+  const busq = container_.querySelector('#crc-busqueda');
+  if (inpBuscar) inpBuscar.value = '';
+  if (busq) busq.innerHTML = '';
   // Limpiar y cargar la pestaña elegida
-  container_.querySelector('#crc-resumen').innerHTML = '';
-  container_.querySelector('#crc-lista').innerHTML = '';
+  const resumenEl = container_.querySelector('#crc-resumen');
+  const listaEl = container_.querySelector('#crc-lista');
+  if (resumenEl) { resumenEl.innerHTML = ''; resumenEl.style.display = ''; }
+  if (listaEl) { listaEl.innerHTML = ''; listaEl.style.display = ''; }
   container_.querySelector('#crc-estado').innerHTML = '';
   if (tab === 'retiro') cargarRetiros();
   else cargarOrdenes();
