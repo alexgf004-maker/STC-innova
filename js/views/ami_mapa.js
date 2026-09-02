@@ -110,6 +110,10 @@ function renderShell(container) {
 
   container.innerHTML = `
     <style>
+      /* Ocultar contenedores de control de Leaflet vacíos (arriba-izq),
+         que dejan un recuadro blanco fantasma. El zoom vive abajo-derecha. */
+      #leaflet-map .leaflet-top.leaflet-left { display: none; }
+      #leaflet-map .leaflet-control-attribution { display: none; }
     </style>
     <div id="mapa-wrapper" style="
       position:fixed;
