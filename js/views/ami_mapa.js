@@ -16,6 +16,8 @@ const PAREJA_COLORS = {
   'Pareja 2': '#f472b6',
   'Pareja 3': '#a78bfa',
   'Pareja 4': '#fbbf24',
+  'Pareja 5': '#60a5fa',
+  'Pareja 6': '#fb923c',
   null:       '#6b7280',
 };
 
@@ -1622,6 +1624,8 @@ function sheetsMapaHTML() {
             <div class="select-chip" data-val="Pareja 2">Pareja 2</div>
             <div class="select-chip" data-val="Pareja 3">Pareja 3</div>
             <div class="select-chip" data-val="Pareja 4">Pareja 4</div>
+            <div class="select-chip" data-val="Pareja 5">Pareja 5</div>
+            <div class="select-chip" data-val="Pareja 6">Pareja 6</div>
             <div class="select-chip" data-val="null" style="color:var(--text-4)">Sin pareja</div>
           </div>
           <div id="indiv-error" class="form-error"></div>
@@ -1648,6 +1652,8 @@ function sheetsMapaHTML() {
             <div class="select-chip" data-val="Pareja 2">Pareja 2</div>
             <div class="select-chip" data-val="Pareja 3">Pareja 3</div>
             <div class="select-chip" data-val="Pareja 4">Pareja 4</div>
+            <div class="select-chip" data-val="Pareja 5">Pareja 5</div>
+            <div class="select-chip" data-val="Pareja 6">Pareja 6</div>
             <div class="select-chip" data-val="null" style="color:var(--text-4)">Sin pareja</div>
           </div>
           <div id="zona-error" class="form-error"></div>

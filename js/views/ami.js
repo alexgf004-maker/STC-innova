@@ -1,365 +1,421 @@
 /**
- * js/views/ami_mapa.js
- * Mapa de campo — Leaflet + Google Maps Hybrid.
+ * js/views/ami.js
+ * Módulo AMI (medidores telegestionados / remotos).
+ *
+ * AMI es, en el fondo, un cambio de medidores igual que el área "Cambios",
+ * pero para medidores telegestionados y en campaña separada. Diferencias:
+ *   - Las órdenes NO traen WO; se identifican solo por NC.
+ *   - Versión más sencilla: sin órdenes urgentes ni cargas de listados aparte.
+ *
+ * Este archivo es por ahora el CASCARÓN del área: deja el espacio creado,
+ * las pestañas y la identidad visual (morado) listas, pero la lógica de
+ * órdenes (importador, mapa, marcar hechas) se conecta cuando tengamos el
+ * archivo real de órdenes de AMI. Así el área ya existe sin cargar todo de una.
+ *
  * Exporta: init(container, session)
  *
  * Roles:
- *   tecnico  → solo su pareja, panel inferior al tocar marcador
- *   admin/asistente → todas las parejas, asignación por zona
+ *   admin / asistente → Panel de gestión + todas las parejas
+ *   tecnico (AMI)     → Solo su pareja
  */
 
 import { db } from '../firebase.js';
 import { toast } from '../ui.js';
 
-const PAREJA_COLORS = {
-  'Pareja 1': '#2dd4bf',
-  'Pareja 2': '#f472b6',
-  'Pareja 3': '#a78bfa',
-  'Pareja 4': '#fbbf24',
-  null:       '#6b7280',
-};
+// ── Identidad del área ────────────────────────────
+const AREA = 'AMI';
+const COLECCION = 'ami_ordenes';        // colección propia en Firestore
+const ACCENT = '#a78bfa';               // morado/violeta (distinto de las otras áreas)
+const ACCENT_GLASS = 'rgba(139,92,246,.12)';
+const ACCENT_BORDER = 'rgba(139,92,246,.35)';
 
-const ESTADO_COLORS = {
-  'hecha':        '#22c55e',
-  'aprobada':     '#22c55e',
-  'visita':       '#111827',
-  'ya_cambiado':  '#f97316',
-  'mal_ubicado':  '#8b5cf6',
-  null:           null,
-};
-
-let map_ = null;
-let calendario_ = []; // lecturas cargadas desde Firestore
-
-function isBlocked_(orden) {
-  if (!orden.unidadLectura || !calendario_.length) return false;
-  const hoy = new Date(); hoy.setHours(0,0,0,0);
-  return calendario_.some(cal => {
-    if (!orden.unidadLectura.startsWith(cal.mru)) return false;
-    let fecha;
-    if (cal.fechaLectura?.toDate) {
-      fecha = cal.fechaLectura.toDate();
-    } else if (typeof cal.fechaLectura === 'string') {
-      const [y,m,d] = cal.fechaLectura.split('-').map(Number);
-      fecha = new Date(y, m-1, d);
-    } else {
-      fecha = new Date(cal.fechaLectura);
-    }
-    fecha.setHours(0,0,0,0);
-    return Math.abs((fecha - hoy) / (1000*60*60*24)) <= 2;
-  });
+// Parejas (mismas que Cambios; se ajustará si AMI usa otras cuadrillas)
+const PAREJAS = ['Pareja 1', 'Pareja 2', 'Pareja 3', 'Pareja 4', 'Pareja 5', 'Pareja 6'];
+const PALETA_PAREJA = ['#2dd4bf', '#f472b6', '#a78bfa', '#fbbf24', '#60a5fa', '#fb923c'];
+function colorPareja(pareja) {
+  const n = parseInt(String(pareja).replace(/\D/g, ''), 10);
+  return PALETA_PAREJA[(n - 1) % PALETA_PAREJA.length] || '#94a3b8';
 }
 
-// Residuo: orden pendiente cuya ruta (fechaRuta) es de un día anterior a hoy.
-function esResiduoAMI(orden) {
-  if (orden.estadoCampo) return false;   // ya tiene estado = no es residuo pendiente
-  const ts = orden.fechaRuta;
-  const d = ts?.toDate ? ts.toDate() : (ts ? new Date(ts) : null);
-  if (!d) return false;
-  d.setHours(0,0,0,0);
+// ── Residuos (órdenes arrastradas de rutas anteriores) ──
+// Una orden es "residuo" si sigue pendiente y su fechaRuta es de un día
+// anterior a hoy. La ruta que DELSUR manda cada día trae fechaRuta = ese día.
+function claveDiaAMI(ts) {
+  const d = ts?.toDate ? ts.toDate() : (ts instanceof Date ? ts : (ts ? new Date(ts) : null));
+  if (!d) return null;
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+function diasArrastrada(o) {
+  const clave = claveDiaAMI(o.fechaRuta);
+  if (!clave) return 0;
+  const [y,m,d] = clave.split('-').map(Number);
+  const ruta = new Date(y, m-1, d); ruta.setHours(0,0,0,0);
   const hoy = new Date(); hoy.setHours(0,0,0,0);
-  return (hoy - d) / 86400000 >= 1;
+  const dias = Math.round((hoy - ruta) / 86400000);
+  return dias > 0 ? dias : 0;
+}
+function esResiduo(o) {
+  const hecha = o.estadoCampo === 'hecha' || o.estadoCampo === 'aprobada';
+  return !hecha && diasArrastrada(o) > 0;
 }
 
-let markers_ = [];
-let markersContiguos_ = [];   // marcadores temporales de contiguos
-let contiguosData_ = null;     // caché del JSON de contiguos
-let contiguosIndex_ = null;    // índice NC -> posición
-let contiguosLoading_ = false;
-let drawnItems_ = null;
-let drawControl_ = null;
-let session_, role_, pareja_;
+// Cuántas órdenes marcó una pareja HOY (por fechaHecha), cuenten o no como
+// arrastradas. Es el avance hacia la meta diaria.
+function hechasHoyPorPareja(pareja) {
+  const hoy = claveDiaAMI(firebase.firestore.Timestamp.now());
+  return ordenes_.filter(o => {
+    if (o.pareja !== pareja) return false;
+    if (o.estadoCampo !== 'hecha' && o.estadoCampo !== 'aprobada') return false;
+    return claveDiaAMI(o.fechaHecha) === hoy;
+  }).length;
+}
+
+// Sección de metas: admin ve todas las parejas (editable), técnico ve la suya.
+function seccionMetas() {
+  const parejas = esAdmin_ ? PAREJAS : (pareja_ ? [pareja_] : []);
+  if (!parejas.length) return '';
+
+  const tarjeta = (p) => {
+    const meta = Number(metas_[p] || 0);
+    const hechas = hechasHoyPorPareja(p);
+    const pct = meta > 0 ? Math.min(100, Math.round((hechas / meta) * 100)) : 0;
+    const col = colorPareja(p);
+    const cumplida = meta > 0 && hechas >= meta;
+    return `
+      <div class="progress-card" style="margin-bottom:10px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <div style="display:flex;align-items:center;gap:8px">
+            <span style="width:9px;height:9px;border-radius:50%;background:${col}"></span>
+            <span style="font-size:13px;font-weight:700">${p}</span>
+            ${cumplida ? '<span class="estado-badge ok" style="font-size:10px">Meta cumplida</span>' : ''}
+          </div>
+          ${esAdmin_ ? `
+            <div style="display:flex;align-items:center;gap:6px">
+              <span style="font-size:11px;color:var(--text-4)">Meta</span>
+              <input type="number" min="0" class="ami-meta-input" data-pareja="${p}" value="${meta || ''}" placeholder="0"
+                style="width:56px;padding:5px 8px;border-radius:8px;border:1px solid var(--border);background:var(--glass);color:var(--text-1);font-size:13px;font-family:inherit;text-align:center;outline:none"/>
+            </div>` : `<span style="font-size:12px;color:var(--text-4)">Meta: ${meta || '—'}</span>`}
+        </div>
+        <div class="progress-bar-bg">
+          <div class="progress-bar-fill" style="width:${pct}%;background:${cumplida ? '#22c55e' : col}"></div>
+        </div>
+        <div style="display:flex;justify-content:space-between;margin-top:6px;font-size:11px;color:var(--text-4)">
+          <span>${hechas} hechas hoy</span>
+          <span>${meta > 0 ? pct + '%' : 'sin meta'}</span>
+        </div>
+      </div>`;
+  };
+
+  return `
+    <div style="display:flex;align-items:center;gap:8px;margin:4px 0 10px">
+      <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:${ACCENT}">${esAdmin_ ? 'Metas del día por pareja' : 'Tu meta de hoy'}</div>
+      <div style="flex:1;height:1px;background:var(--border)"></div>
+    </div>
+    ${parejas.map(tarjeta).join('')}
+    ${esAdmin_ ? `<div style="font-size:11px;color:var(--text-4);margin-top:2px">Escribe la meta de cada pareja. Se guarda sola y se mantiene hasta que la cambies.</div>` : ''}`;
+}
+
+// ── Estado del módulo ─────────────────────────────
+let container_, session_, role_, pareja_;
 let ordenes_ = [];
-let padronCambiados_ = new Set();   // NC ya cambiados (padrón permanente)
-let selectedOrden_ = null;
+let activeTab_ = 'panel';   // 'panel' | 'ordenes' | 'mapa'
+let esAdmin_ = false;
+let metas_ = {};            // { "Pareja 1": 25, ... } — meta diaria por pareja
 
 // ── Entry point ───────────────────────────────────
 export async function init(container, session) {
-  session_ = session;
-  role_    = session.role;
-  pareja_  = session.asignacionActual?.destino || null;
+  container_ = container;
+  session_   = session;
+  role_      = session.role;
+  esAdmin_   = role_ === 'admin' || role_ === 'asistente';
+  pareja_    = session.asignacionActual?.destino || null;
+  activeTab_ = esAdmin_ ? 'panel' : 'resumen';
 
-  // Cancelar listener anterior si el módulo se reinicia
-  if (unsubscribe_) { unsubscribe_(); unsubscribe_ = null; }
-  if (map_) { map_.remove(); map_ = null; markers_ = []; markersContiguos_ = []; }
+  renderShell();
+  await cargarOrdenes();
+  setTab(activeTab_);
+}
 
-  renderShell(container);
-
-  // Cargar el padrón de NC ya cambiados ANTES de suscribir, para poder cruzar
-  await cargarPadronCambiados();
-
-  // Iniciar listener en tiempo real ANTES de initMap
-  suscribirOrdenes();
-
-  // Esperar primera carga antes de inicializar el mapa
-  await loadOrdenes();
-
-  // Cargar calendario de lecturas para bloqueos visuales
+// ── Cargar órdenes (lee la colección; aún puede estar vacía) ──
+async function cargarOrdenes() {
   try {
-    const calSnap = await db.collection('cambios_calendario').get();
-    calendario_ = calSnap.docs.map(d => d.data());
-  } catch(err) {
-    console.warn('[mapa] Error cargando calendario:', err);
-  }
-  initMap();
-}
+    // Cargar el padrón de NC ya cambiados (para marcar/esconder)
+    let padron = new Set();
+    try {
+      const pad = await db.collection('ami_cambiados').get();
+      padron = new Set(pad.docs.map(d => String(d.data().nc ?? d.id).trim()));
+    } catch (e) { /* si no existe aún, padrón vacío */ }
 
-// ── Shell ─────────────────────────────────────────
-function renderShell(container) {
-  const isTecnico = role_ === 'tecnico';
-
-  container.innerHTML = `
-    <style>
-      /* Ocultar contenedores de control de Leaflet vacíos (arriba-izq),
-         que dejan un recuadro blanco fantasma. El zoom vive abajo-derecha. */
-      #leaflet-map .leaflet-top.leaflet-left { display: none; }
-      #leaflet-map .leaflet-control-attribution { display: none; }
-    </style>
-    <div id="mapa-wrapper" style="
-      position:fixed;
-      top: var(--topbar-h, 62px);
-      left:0; right:0;
-      bottom: var(--navbar-h, 72px);
-      z-index:1;
-    ">
-      <!-- Mapa -->
-      <div id="leaflet-map" style="width:100%;height:100%;"></div>
-
-      <!-- Controles superiores -->
-      <div class="mapa-controls-top">
-        <div class="mapa-stat-chip" id="mapa-stat" style="border-color:rgba(139,92,246,.4);background:rgba(139,92,246,.12)">
-          <div class="mapa-stat-dot" style="background:#a78bfa"></div>
-          <span style="font-weight:800;color:#a78bfa;letter-spacing:.04em;margin-right:2px">AMI</span>
-          <span id="mapa-stat-txt">Cargando…</span>
-        </div>
-        ${!isTecnico ? `
-        <button class="mapa-btn-icon" id="btn-asignar-zona" title="Asignar zona a pareja" style="border-color:rgba(139,92,246,.4);color:#a78bfa">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
-            <path d="M3 3h7v7H3zM14 3h7v7h-7zM14 14h7v7h-7zM3 14h7v7H3z"/>
-          </svg>
-        </button>
-        <button class="mapa-btn" id="btn-subir-cambiados" title="Subir NC ya cambiados" style="background:rgba(22,163,74,.2);border-color:rgba(22,163,74,.4);color:#16a34a">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
-            <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
-          </svg>
-          NC
-        </button>
-        <input type="file" id="file-cambiados" accept=".xlsx,.xls" style="display:none"/>` : ''}
-        <button class="mapa-btn-icon" id="btn-mi-ubicacion" title="Mi ubicación">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
-            <circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/>
-          </svg>
-        </button>
-        ${role_ === 'tecnico' ? `
-        <button class="mapa-btn-icon" id="btn-reset-norte" title="Volver al norte" style="display:none">
-          <svg id="brujula-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
-            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
-          </svg>
-        </button>` : ''}
-      </div>
-
-      ${isTecnico ? `
-      <!-- Botón flotante generar orden -->
-      <button id="btn-generar-orden-mapa" onclick="window.__mapa.abrirGenerarOrden()"
-        style="
-          position:absolute;
-          bottom:24px;left:50%;transform:translateX(-50%);
-          z-index:800;
-          display:flex;align-items:center;gap:8px;
-          height:44px;padding:0 20px;
-          border-radius:22px;
-          border:1px solid rgba(139,92,246,.4);
-          background:rgba(13,31,53,.92);
-          color:#a78bfa;
-          font-size:13px;font-weight:600;
-          font-family:'Outfit',sans-serif;
-          cursor:pointer;
-          box-shadow:0 4px 16px rgba(0,0,0,.4);
-          backdrop-filter:blur(8px);
-        ">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="15" height="15">
-          <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
-        </svg>
-        Generar orden
-      </button>` : ''}
-
-      <!-- Leyenda -->
-      <div class="mapa-leyenda" id="mapa-leyenda">
-        ${isTecnico ? '' : Object.entries(PAREJA_COLORS)
-          .filter(([k]) => k !== 'null')
-          .map(([p, c]) => `
-            <div class="leyenda-item">
-              <div class="leyenda-dot" style="background:${c}"></div>
-              <span>${p}</span>
-            </div>
-          `).join('')}
-        <div class="leyenda-item">
-          <div class="leyenda-dot" style="background:#22c55e"></div>
-          <span>Realizada</span>
-        </div>
-        <div class="leyenda-item">
-          <div class="leyenda-dot" style="background:#111827;border:1.5px solid #4b5563"></div>
-          <span>Visita</span>
-        </div>
-        <div class="leyenda-item">
-          <div class="leyenda-dot" style="background:#f97316;border-radius:4px"></div>
-          <span>Ya cambiado</span>
-        </div>
-        <div class="leyenda-item">
-          <div class="leyenda-dot" style="background:#8b5cf6;border-radius:4px"></div>
-          <span>Mal ubicado</span>
-        </div>
-      </div>
-
-      <!-- Panel inferior (detalle orden) -->
-      <div class="mapa-panel" id="mapa-panel">
-        <div class="mapa-panel-handle" onclick="document.getElementById('mapa-panel').classList.remove('open')"></div>
-        <div id="mapa-panel-content"></div>
-      </div>
-
-    </div>
-  `;
-
-  // Eliminar sheets anteriores si quedaron del body
-  ['sheet-visita','sheet-realizada','sheet-zona','sheet-ya-cambiado','sheet-pedir-ayuda','sheet-asignar-individual','sheet-campo-mapa','sheet-contiguos'].forEach(id => {
-    document.getElementById(id)?.remove();
-  });
-  // Insertar sheets en body (position:fixed necesita estar fuera de content-area)
-  document.body.insertAdjacentHTML('beforeend', sheetsMapaHTML());
-
-  // Listener generar orden
-  document.getElementById('btn-guardar-campo-mapa')?.addEventListener('click', guardarOrdenCampoMapa);
-
-  // Calcular alturas reales del topbar y navbar
-  const topbar = document.querySelector('.topbar');
-  const navbar  = document.querySelector('.navbar');
-  const wrapper = document.getElementById('mapa-wrapper');
-
-  const isPC = window.innerWidth >= 768;
-  if (isPC) {
-    // En PC: sidebar a la izquierda, no hay navbar inferior
-    const sidebarW = navbar ? navbar.offsetWidth : 200;
-    const topbarH  = topbar ? topbar.offsetHeight : 56;
-    wrapper.style.top    = topbarH + 'px';
-    wrapper.style.bottom = '0px';
-    wrapper.style.left   = sidebarW + 'px';
-    wrapper.style.right  = '0px';
-  } else {
-    // En móvil: navbar inferior
-    if (topbar) wrapper.style.top    = topbar.offsetHeight + 'px';
-    if (navbar) wrapper.style.bottom = navbar.offsetHeight + 'px';
-  }
-
-
-  // Eventos del mapa-wrapper
-  document.getElementById('btn-asignar-zona')?.addEventListener('click', activarModoZona);
-  const fileCambiados = document.getElementById('file-cambiados');
-  document.getElementById('btn-subir-cambiados')?.addEventListener('click', () => fileCambiados?.click());
-  if (fileCambiados) fileCambiados.onchange = (e) => procesarCambiadosExcel(e.target.files[0]);
-  document.getElementById('btn-mi-ubicacion')?.addEventListener('click', () => {
-    if (geoMarker_) {
-      map_.setView(geoMarker_.getLatLng(), 17);
-    } else {
-      toast('Obteniendo ubicación…', 'ok');
+    const snap = await db.collection(COLECCION).get();
+    let todas = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    // El técnico ve solo las órdenes de su pareja
+    if (!esAdmin_) {
+      todas = pareja_ ? todas.filter(o => o.pareja === pareja_) : [];
     }
-  });
-  // Cerrar panel al tocar fuera
-  document.getElementById('mapa-panel')?.addEventListener('click', e => {
-    if (e.target === document.getElementById('mapa-panel')) closePanel();
-  });
+    // Cruce con el padrón: marcar ya cambiadas; al técnico se le esconden
+    todas.forEach(o => { o._yaCambiada = padron.has(String(o.nc ?? '').trim()); });
+    if (!esAdmin_) todas = todas.filter(o => !o._yaCambiada);
+    ordenes_ = todas;
 
-  // Eventos de sheets (ahora ya existen en el DOM)
-  document.getElementById('btn-confirmar-zona')?.addEventListener('click', confirmarZona);
-  document.getElementById('btn-cancelar-zona')?.addEventListener('click', cancelarZona);
-  document.getElementById('btn-confirmar-visita')?.addEventListener('click', confirmarVisita);
-  document.getElementById('btn-si-delsur')?.addEventListener('click', () => confirmarRealizada(true));
-  document.getElementById('btn-no-delsur')?.addEventListener('click', () => confirmarRealizada(false));
-
-  // Select chips
-  setupSelectChips('zona-pareja-row');
-  setupSelectChips('visita-motivo-row');
-  setupSelectChips('indiv-pareja-row');
-
-  // Cerrar sheets al tocar backdrop
-  document.getElementById('sheet-zona')?.addEventListener('click', e => {
-    if (e.target === document.getElementById('sheet-zona')) cancelarZona();
-  });
-  ['sheet-visita', 'sheet-realizada', 'sheet-asignar-individual', 'sheet-campo-mapa', 'sheet-ya-cambiado', 'sheet-pedir-ayuda', 'sheet-contiguos'].forEach(id => {
-    document.getElementById(id)?.addEventListener('click', e => {
-      if (e.target === document.getElementById(id)) closeSheet(id);
-    });
-  });
-
-  document.getElementById('btn-confirmar-ya-cambiado')?.addEventListener('click', confirmarYaCambiado);
-
-  // Opciones de ayuda
-  document.querySelectorAll('.ayuda-opcion').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const motivo = btn.dataset.motivo;
-      enviarAyudaWhatsApp(motivo);
-    });
-  });
-
-  window.__mapa = { verOrden, marcarHecha, marcarVisita, abrirGoogleMaps, confirmarRealizada, confirmarVisita, asignarIndividual, confirmarIndividual, confirmarZona, cancelarZona, abrirYaCambiado, abrirPedirAyuda, abrirGenerarOrden, buscarContiguos, limpiarContiguos };
-
-  // onSnapshot ya maneja actualizaciones en tiempo real
-  // Este listener es fallback para cambios desde cambios.js
-  window.addEventListener('ami:updated', () => {
-    // onSnapshot se encarga automáticamente
-  });
-}
-
-// ── Listener en tiempo real ───────────────────────
-let unsubscribe_ = null; // para cancelar el listener al salir del módulo
-
-function suscribirOrdenes() {
-  // Cancelar listener anterior si existe
-  if (unsubscribe_) { unsubscribe_(); unsubscribe_ = null; }
-
-  let query = role_ === 'tecnico' && pareja_
-    ? db.collection('ami_ordenes').where('pareja', '==', pareja_)
-    : db.collection('ami_ordenes');
-
-  unsubscribe_ = query.onSnapshot(snap => {
-    ordenes_ = snap.docs
-      .map(d => ({ id: d.id, ...d.data() }))
-      .filter(o => {
-        const lat = parseFloat(o.latitud);
-        const lng = parseFloat(o.longitud);
-        // Validar coordenadas dentro del rango de El Salvador/Centroamérica
-        return !isNaN(lat) && !isNaN(lng)
-          && lat !== 0 && lng !== 0
-          && lat > 12 && lat < 16
-          && lng > -92 && lng < -87;
-      });
-
-    // Cruce con el padrón de NC ya cambiados: marcar y (para el técnico) esconder.
-    ordenes_.forEach(o => { o._yaCambiada = padronCambiados_.has(String(o.nc ?? '').trim()); });
-    if (role_ === 'tecnico') {
-      ordenes_ = ordenes_.filter(o => !o._yaCambiada);
-    }
-
-    plotMarkers();
-    updateStatChip();
-  }, err => {
-    console.error('[mapa] Error en listener:', err);
-  });
-}
-
-// Cargar el padrón de NC ya cambiados (colección ami_cambiados)
-async function cargarPadronCambiados() {
-  try {
-    const snap = await db.collection('ami_cambiados').get();
-    padronCambiados_ = new Set(snap.docs.map(d => String(d.data().nc ?? d.id).trim()));
+    // Cargar metas diarias por pareja (persistentes: se mantienen hasta cambiarlas)
+    try {
+      const cfg = await db.collection('ami_config').doc('metas').get();
+      metas_ = cfg.exists ? (cfg.data().parejas || {}) : {};
+    } catch (e) { metas_ = {}; }
   } catch (err) {
-    console.warn('[ami] No se pudo cargar padrón de cambiados:', err.message);
-    padronCambiados_ = new Set();
+    // Si la colección aún no existe o no hay permisos, no rompemos el cascarón
+    console.warn('[ami] No se pudieron cargar órdenes todavía:', err.message);
+    ordenes_ = [];
   }
 }
 
-// Subir Excel de NC ya cambiados → agrega al padrón permanente ami_cambiados.
-// Detecta la columna de NC de forma flexible. Acumula (no borra los previos).
-async function procesarCambiadosExcel(file) {
+// ── Shell (pestañas + contenedor) ─────────────────
+function renderShell() {
+  const tabs = esAdmin_
+    ? [{ id: 'panel', label: 'Panel' }, { id: 'ordenes', label: 'Órdenes' }, { id: 'mapa', label: 'Mapa' }]
+    : [{ id: 'resumen', label: 'Resumen' }, { id: 'ordenes', label: 'Órdenes' }];
+
+  container_.innerHTML = `
+    <div class="area-tabs" style="margin-bottom:14px">
+      ${tabs.map((t, i) => `
+        <button class="area-tab ami-tab ${i === 0 ? 'active am' : ''}" data-tab="${t.id}">${t.label}</button>
+      `).join('')}
+    </div>
+    <div id="ami-content"></div>`;
+
+  container_.querySelectorAll('.ami-tab').forEach(tab => {
+    tab.onclick = () => setTab(tab.dataset.tab);
+  });
+}
+
+function setTab(tab) {
+  activeTab_ = tab;
+  container_.querySelectorAll('.ami-tab').forEach(t => {
+    const activa = t.dataset.tab === tab;
+    t.classList.toggle('active', activa);
+    t.classList.toggle('am', activa);
+  });
+  const cont = container_.querySelector('#ami-content');
+  if (!cont) return;
+  if (tab === 'mapa') {
+    // Montar el mapa real (mismo módulo que usa el técnico)
+    cont.innerHTML = '';
+    import('./ami_mapa.js')
+      .then(mod => mod.init(cont, session_))
+      .catch(err => {
+        cont.innerHTML = bloquePreparacion('No se pudo cargar el mapa', 'Intenta de nuevo en un momento.');
+        console.warn('[ami] Error cargando ami_mapa:', err.message);
+      });
+  }
+  else if (tab === 'ordenes') {
+    cont.innerHTML = renderOrdenes();
+    const inp = cont.querySelector('#ami-buscar-hist');
+    if (inp) {
+      let t = null;
+      inp.oninput = () => {
+        clearTimeout(t);
+        const val = inp.value;
+        t = setTimeout(() => buscarHistorial(val), 350);
+      };
+    }
+  }
+  else {
+    cont.innerHTML = renderPanel();
+    // Enganchar el botón de importar ruta (solo admin)
+    const btn = cont.querySelector('#ami-btn-importar');
+    const file = cont.querySelector('#ami-file-importar');
+    if (btn && file) {
+      btn.onclick = () => file.click();
+      file.onchange = (e) => importarRuta(e.target.files[0]);
+    }
+    const btnH = cont.querySelector('#ami-btn-historial');
+    const fileH = cont.querySelector('#ami-file-historial');
+    if (btnH && fileH) {
+      btnH.onclick = () => fileH.click();
+      fileH.onchange = (e) => importarHistorial(e.target.files[0]);
+    }
+    // Inputs de meta por pareja (solo admin): guardar al cambiar
+    cont.querySelectorAll('.ami-meta-input').forEach(inp => {
+      inp.onchange = () => guardarMeta(inp.dataset.pareja, inp.value);
+    });
+  }
+}
+
+// Guarda la meta de una pareja (persistente en ami_config/metas).
+async function guardarMeta(pareja, valor) {
+  const n = parseInt(valor, 10);
+  metas_[pareja] = isNaN(n) || n < 0 ? 0 : n;
+  try {
+    await db.collection('ami_config').doc('metas').set({ parejas: metas_ }, { merge: true });
+    // Repintar el panel para actualizar barras/porcentajes
+    const cont = container_.querySelector('#ami-content');
+    if (cont && activeTab_ !== 'ordenes' && activeTab_ !== 'mapa') {
+      setTab(activeTab_);
+    }
+  } catch (err) {
+    toast('No se pudo guardar la meta: ' + err.message, 'error');
+  }
+}
+
+// ── Panel (resumen del área) ──────────────────────
+function renderPanel() {
+  const total = ordenes_.length;
+  const hechas = ordenes_.filter(o => o.estadoCampo === 'hecha' || o.estadoCampo === 'aprobada').length;
+  const pend = ordenes_.filter(o => !o.estadoCampo && !o._yaCambiada).length;
+  const residuos = ordenes_.filter(esResiduo).length;
+  const yaCambiadas = ordenes_.filter(o => o._yaCambiada).length;
+  const pct = total ? Math.round((hechas / total) * 100) : 0;
+
+  return `
+    <div class="welcome-card am" style="border-color:${ACCENT_BORDER};background:${ACCENT_GLASS};border-radius:16px;padding:18px;margin-bottom:16px">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
+        <div style="width:10px;height:10px;border-radius:50%;background:${ACCENT}"></div>
+        <div style="font-size:16px;font-weight:800;color:${ACCENT}">AMI · Medidores telegestionados</div>
+      </div>
+      <div style="font-size:12px;color:var(--text-3);line-height:1.5">
+        Cambio de medidores remotos, en campaña separada. Las órdenes se identifican por NC.
+      </div>
+    </div>
+
+    ${esAdmin_ ? `
+    <div style="display:flex;gap:8px;margin-bottom:16px">
+      <button id="ami-btn-importar" style="flex:1;display:flex;align-items:center;justify-content:center;gap:8px;padding:12px;border-radius:12px;border:1px solid ${ACCENT_BORDER};background:${ACCENT_GLASS};color:${ACCENT};font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        Cargar ruta (Excel)
+      </button>
+      <input type="file" id="ami-file-importar" accept=".xlsx,.xls" style="display:none"/>
+    </div>
+    <div style="display:flex;gap:8px;margin-bottom:16px">
+      <button id="ami-btn-historial" style="flex:1;display:flex;align-items:center;justify-content:center;gap:8px;padding:11px;border-radius:12px;border:1px solid rgba(22,163,74,.35);background:rgba(22,163,74,.1);color:#16a34a;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><path d="M12 8v4l3 3"/><circle cx="12" cy="12" r="9"/></svg>
+        Cargar historial (Excel)
+      </button>
+      <input type="file" id="ami-file-historial" accept=".xlsx,.xls" style="display:none"/>
+    </div>` : ''}
+
+    ${total === 0
+      ? bloquePreparacion('Aún no hay órdenes cargadas',
+          'Cuando se cargue el listado de órdenes de AMI, aquí verás el avance por cuadrilla y el estado del día, igual que en Cambios.')
+      : `
+      <div class="progress-card" style="margin-bottom:16px">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px">
+          <div style="font-size:13px;font-weight:700">Avance del día</div>
+          <div style="font-size:12px;color:var(--text-4)">${hechas} de ${total} · ${pct}%</div>
+        </div>
+        <div class="progress-bar-bg">
+          <div class="progress-bar-fill" style="width:${pct}%;background:${ACCENT}"></div>
+        </div>
+        <div class="progress-stats" style="margin-top:10px">
+          <span><span class="stat-dot muted"></span>${pend} pendientes</span>
+          <span><span class="stat-dot ok"></span>${hechas} hechas</span>
+          ${residuos ? `<span><span class="stat-dot" style="background:#f59e0b"></span>${residuos} arrastradas</span>` : ''}
+          ${yaCambiadas ? `<span><span class="stat-dot" style="background:#16a34a"></span>${yaCambiadas} ya cambiadas</span>` : ''}
+        </div>
+      </div>`}
+    ${seccionMetas()}`;
+}
+
+// ── Órdenes (lista) ───────────────────────────────
+function renderOrdenes() {
+  const buscador = esAdmin_ ? `
+    <div style="margin-bottom:12px">
+      <input id="ami-buscar-hist" type="text" inputmode="numeric" placeholder="Buscar NC en el historial…"
+        style="width:100%;box-sizing:border-box;padding:11px 14px;border-radius:12px;border:1px solid var(--border);background:var(--glass);color:var(--text-1);font-size:13px;font-family:inherit;outline:none"/>
+      <div style="font-size:11px;color:var(--text-4);margin-top:4px">Escribe un NC para ver qué se hizo. Deja vacío para ver las órdenes de la ruta.</div>
+    </div>
+    <div id="ami-hist-resultados"></div>` : '';
+
+  const listaOrdenes = () => {
+    if (!ordenes_.length) {
+      return bloquePreparacion('Sin órdenes por ahora',
+        'El listado de órdenes AMI se cargará más adelante. Cada orden se identificará por su NC (estos medidores no traen WO).');
+    }
+    const residuos = ordenes_.filter(esResiduo);
+    const resto = ordenes_.filter(o => !esResiduo(o));
+
+    const tarjeta = (o) => {
+      const dias = diasArrastrada(o);
+      const residuo = esResiduo(o);
+      return `
+        <div class="orden-card" style="flex-direction:column;align-items:stretch;cursor:default;border-left:3px solid ${o._yaCambiada ? '#16a34a' : residuo ? '#f59e0b' : ACCENT}">
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+            <div class="orden-wo" style="color:${ACCENT}">NC ${o.nc || '—'}</div>
+            ${o.cliente ? `<div class="orden-cliente" style="flex:1;min-width:120px">${o.cliente}</div>` : '<div style="flex:1"></div>'}
+            ${o._yaCambiada ? `<span class="estado-badge ok" style="background:rgba(22,163,74,.15);border-color:rgba(22,163,74,.4);color:#16a34a">Ya cambiada</span>` : ''}
+            ${residuo && !o._yaCambiada ? `<span class="estado-badge warn">Arrastrada &middot; ${dias} d&iacute;a${dias>1?'s':''}</span>` : ''}
+            <div class="estado-badge ${o.estadoCampo === 'hecha' || o.estadoCampo === 'aprobada' ? 'ok' : 'muted'}">${o.estadoCampo || 'pendiente'}</div>
+          </div>
+          ${o.direccion ? `<div class="orden-dir" style="margin-top:6px">${o.direccion}</div>` : ''}
+        </div>`;
+    };
+
+    const seccion = (titulo, arr, color) => arr.length ? `
+      <div style="display:flex;align-items:center;gap:8px;margin:14px 0 8px">
+        <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:${color}">${titulo}</div>
+        <div style="flex:1;height:1px;background:var(--border)"></div>
+        <div style="font-size:11px;color:var(--text-4)">${arr.length}</div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:8px">${arr.map(tarjeta).join('')}</div>` : '';
+
+    return seccion('Arrastradas (rutas anteriores)', residuos, '#f59e0b')
+         + seccion('Ruta actual', resto, ACCENT);
+  };
+
+  return buscador + `<div id="ami-lista-ordenes">${listaOrdenes()}</div>`;
+}
+
+// Busca en el historial (ami_historial) por NC y pinta los resultados.
+async function buscarHistorial(nc) {
+  const cont = container_.querySelector('#ami-hist-resultados');
+  const lista = container_.querySelector('#ami-lista-ordenes');
+  if (!cont) return;
+  nc = String(nc || '').trim();
+
+  if (!nc) {
+    // Sin búsqueda: mostrar la lista de órdenes, ocultar resultados
+    cont.innerHTML = '';
+    if (lista) lista.style.display = '';
+    return;
+  }
+  if (lista) lista.style.display = 'none';
+  cont.innerHTML = `<div style="text-align:center;padding:20px;color:var(--text-4);font-size:12px">Buscando…</div>`;
+
+  try {
+    const snap = await db.collection('ami_historial').where('nc', '==', nc).get();
+    if (snap.empty) {
+      cont.innerHTML = `<div style="text-align:center;padding:24px;color:var(--text-4);font-size:13px">Sin registros para NC ${nc}</div>`;
+      return;
+    }
+    const regs = snap.docs.map(d => d.data())
+      .sort((a,b) => String(b.fecha||'').localeCompare(String(a.fecha||'')));
+    const fila = (etq, val) => val ? `<div style="display:flex;justify-content:space-between;gap:12px;font-size:12px;margin-bottom:3px"><span style="color:var(--text-4)">${etq}</span><span style="color:var(--text-2);text-align:right">${val}</span></div>` : '';
+    cont.innerHTML = `
+      <div style="display:flex;align-items:center;gap:8px;margin:4px 0 10px">
+        <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:#16a34a">Historial NC ${nc}</div>
+        <div style="flex:1;height:1px;background:var(--border)"></div>
+        <div style="font-size:11px;color:var(--text-4)">${regs.length}</div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        ${regs.map(r => `
+          <div class="orden-card" style="flex-direction:column;align-items:stretch;cursor:default;border-left:3px solid #16a34a">
+            <div style="background:var(--glass);border-radius:8px;padding:8px 10px">
+              ${fila('Trabajo', r.trabajo)}
+              ${fila('Medidor nuevo', r.medidorNuevo)}
+              ${fila('Pareja', r.pareja)}
+              ${fila('Fecha', r.fecha)}
+            </div>
+          </div>`).join('')}
+      </div>`;
+  } catch (err) {
+    cont.innerHTML = `<div style="text-align:center;padding:20px;color:#ef4444;font-size:12px">Error al buscar: ${err.message}</div>`;
+  }
+}
+
+// ── Importar ruta diaria (Excel) ──────────────────
+// Columnas: NC, NOMBRE, DIRECCIÓN, DS, MEDIDOR, LATITUD, LONGITUD.
+// NC nuevo -> crea orden con fechaRuta = hoy. NC existente -> actualiza datos
+// pero CONSERVA su fechaRuta original (para no perder los días de arrastre).
+async function importarRuta(file) {
   if (!file) return;
   try {
     const buf = await file.arrayBuffer();
@@ -367,1295 +423,195 @@ async function procesarCambiadosExcel(file) {
     const matriz = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, defval: '' });
     if (!matriz.length) { toast('El archivo está vacío', 'error'); return; }
 
-    // Buscar la columna de NC (encabezado que contenga "nc" o "contrato")
     const norm = s => String(s ?? '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[\s._-]/g,'');
-    let headerRow = matriz.findIndex(r => r.some(c => ['nc','contrato','nic'].includes(norm(c))));
-    let colIdx = 0;
-    if (headerRow === -1) { headerRow = -1; colIdx = 0; }   // sin encabezado: primera columna
-    else colIdx = matriz[headerRow].findIndex(c => ['nc','contrato','nic'].includes(norm(c)));
+    // Buscar fila de encabezados (la que tenga "nc")
+    let hIdx = matriz.findIndex(r => r.some(c => norm(c) === 'nc'));
+    if (hIdx === -1) { toast('No se encontró la columna NC', 'error'); return; }
+    const head = matriz[hIdx].map(norm);
+    const col = (...alias) => head.findIndex(h => alias.includes(h));
+    const idx = {
+      nc:  col('nc'),
+      nombre: col('nombre','cliente'),
+      direccion: col('direccion','direccin','direc'),
+      ds: col('ds'),
+      medidor: col('medidor','serie'),
+      lat: col('latitud','lat'),
+      lng: col('longitud','long','lng'),
+    };
 
-    const filas = matriz.slice(headerRow + 1);
-    const ncs = new Set();
+    const filas = matriz.slice(hIdx + 1);
+    const registros = [];
     for (const r of filas) {
-      const nc = String(r[colIdx] ?? '').trim();
-      if (nc) ncs.add(nc);
+      const nc = String(r[idx.nc] ?? '').trim();
+      if (!nc) continue;
+      registros.push({
+        nc,
+        nombre: idx.nombre>=0 ? String(r[idx.nombre] ?? '').trim() : '',
+        direccion: idx.direccion>=0 ? String(r[idx.direccion] ?? '').trim() : '',
+        ds: idx.ds>=0 ? String(r[idx.ds] ?? '').trim() : '',
+        medidor: idx.medidor>=0 ? String(r[idx.medidor] ?? '').trim() : '',
+        latitud: idx.lat>=0 ? String(r[idx.lat] ?? '').trim() : '',
+        longitud: idx.lng>=0 ? String(r[idx.lng] ?? '').trim() : '',
+      });
     }
-    if (!ncs.size) { toast('No se encontraron NC en el archivo', 'error'); return; }
+    if (!registros.length) { toast('No se encontraron órdenes con NC', 'error'); return; }
 
-    // Cuántos son nuevos respecto al padrón actual
-    const nuevos = [...ncs].filter(nc => !padronCambiados_.has(nc));
-    if (!confirm(`Se encontraron ${ncs.size} NC en el archivo.\n${nuevos.length} son nuevos (no estaban en el padrón).\n\n¿Agregar al padrón de ya cambiados?`)) return;
+    // Traer las órdenes existentes para saber cuáles ya están (por NC)
+    const snap = await db.collection(COLECCION).get();
+    const existentesPorNC = new Map();
+    snap.docs.forEach(d => { const nc = String(d.data().nc ?? '').trim(); if (nc) existentesPorNC.set(nc, d.id); });
 
-    toast('Guardando NC cambiados…', 'ok');
-    const lista = [...ncs];
-    for (let i = 0; i < lista.length; i += 400) {
+    const nuevos = registros.filter(r => !existentesPorNC.has(r.nc));
+    const actualizar = registros.filter(r => existentesPorNC.has(r.nc));
+
+    if (!confirm(`Ruta con ${registros.length} órdenes:\n${nuevos.length} nuevas (se crean con fecha de hoy)\n${actualizar.length} ya existían (se actualizan sus datos)\n\n¿Continuar?`)) return;
+
+    toast('Cargando ruta…', 'ok');
+    const ahora = firebase.firestore.Timestamp.now();
+
+    // Crear nuevas
+    for (let i = 0; i < nuevos.length; i += 400) {
       const batch = db.batch();
-      lista.slice(i, i + 400).forEach(nc => {
-        // El id del doc es el NC → evita duplicados automáticamente
+      nuevos.slice(i, i + 400).forEach(r => {
+        const ref = db.collection(COLECCION).doc();
+        batch.set(ref, {
+          nc: r.nc, nombre: r.nombre, cliente: r.nombre,
+          direccion: r.direccion, ds: r.ds, medidor: r.medidor,
+          latitud: r.latitud, longitud: r.longitud,
+          pareja: null, estadoCampo: null,
+          fechaRuta: ahora, importadaEn: ahora,
+        });
+      });
+      await batch.commit();
+    }
+    // Actualizar existentes (conservando fechaRuta y estado)
+    for (let i = 0; i < actualizar.length; i += 400) {
+      const batch = db.batch();
+      actualizar.slice(i, i + 400).forEach(r => {
+        batch.update(db.collection(COLECCION).doc(existentesPorNC.get(r.nc)), {
+          nombre: r.nombre, cliente: r.nombre,
+          direccion: r.direccion, ds: r.ds, medidor: r.medidor,
+          latitud: r.latitud, longitud: r.longitud,
+        });
+      });
+      await batch.commit();
+    }
+
+    toast(`Ruta cargada: ${nuevos.length} nuevas, ${actualizar.length} actualizadas`, 'ok');
+    await cargarOrdenes();
+    setTab('panel');
+    window.dispatchEvent(new CustomEvent('ami:updated'));
+  } catch (err) {
+    toast('Error al cargar: ' + err.message, 'error');
+  } finally {
+    const inp = container_.querySelector('#ami-file-importar');
+    if (inp) inp.value = '';
+  }
+}
+
+// ── Importar historial de trabajos hechos (Excel) ──
+// Doble propósito: guarda el historial consultable (ami_historial) Y agrega
+// cada NC al padrón de ya cambiados (ami_cambiados). Lee las dos hojas.
+// Campos: NC, trabajo, medidor nuevo, pareja, fecha. Normaliza may/tildes.
+function normalizaTexto(s) {
+  let t = String(s ?? '').trim().replace(/\s+/g, ' ');
+  if (!t) return '';
+  t = t.replace(/\s*-\s*/g, '-');                                  // "A - B" -> "A-B"
+  t = t.normalize('NFD').replace(/[\u0300-\u036f]/g, '');          // quitar tildes
+  t = t.toLowerCase().replace(/\b\w/g, c => c.toUpperCase());      // Título
+  return t;
+}
+
+async function importarHistorial(file) {
+  if (!file) return;
+  try {
+    const buf = await file.arrayBuffer();
+    const wb = XLSX.read(buf, { type: 'array' });
+    const norm = s => String(s ?? '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[\s._-]/g,'');
+
+    const registros = [];
+    for (const nombreHoja of wb.SheetNames) {
+      const matriz = XLSX.utils.sheet_to_json(wb.Sheets[nombreHoja], { header: 1, defval: '' });
+      if (!matriz.length) continue;
+      const hIdx = matriz.findIndex(r => r.some(c => { const n = norm(c); return n.includes('orden') || n.includes('contrato'); }));
+      if (hIdx === -1) continue;
+      const head = matriz[hIdx].map(norm);
+      const col = (...alias) => head.findIndex(h => alias.some(a => h.includes(a)));
+      const idx = {
+        nc:       col('contrato','orden'),
+        trabajo:  col('trabajo'),
+        medNuevo: col('medidornuevo'),
+        pareja:   col('pareja'),
+        fecha:    col('fecha'),
+      };
+      for (const r of matriz.slice(hIdx + 1)) {
+        const nc = String(r[idx.nc] ?? '').trim();
+        if (!nc) continue;
+        let fecha = null;
+        const rawF = r[idx.fecha];
+        if (rawF) {
+          if (typeof rawF === 'number') {
+            const d = new Date(Math.round((rawF - 25569) * 86400 * 1000));
+            if (!isNaN(d)) fecha = d.toISOString().split('T')[0];
+          } else {
+            const d = new Date(String(rawF));
+            fecha = isNaN(d) ? String(rawF).split(' ')[0] : d.toISOString().split('T')[0];
+          }
+        }
+        registros.push({
+          nc,
+          trabajo: idx.trabajo>=0 ? normalizaTexto(r[idx.trabajo]) : '',
+          medidorNuevo: idx.medNuevo>=0 ? String(r[idx.medNuevo] ?? '').trim() : '',
+          pareja: idx.pareja>=0 ? normalizaTexto(r[idx.pareja]) : '',
+          fecha,
+        });
+      }
+    }
+    if (!registros.length) { toast('No se encontraron registros con NC', 'error'); return; }
+
+    const ncsUnicos = new Set(registros.map(r => r.nc));
+    if (!confirm(`Historial con ${registros.length} registros (${ncsUnicos.size} NC distintos).\n\nSe guardarán en el historial y esos NC se agregarán al padrón de "ya cambiados".\n\n¿Continuar?`)) return;
+
+    toast('Cargando historial…', 'ok');
+    const ahora = firebase.firestore.Timestamp.now();
+
+    for (let i = 0; i < registros.length; i += 400) {
+      const batch = db.batch();
+      registros.slice(i, i + 400).forEach(r => {
+        batch.set(db.collection('ami_historial').doc(), { ...r, cargadoEn: ahora });
+      });
+      await batch.commit();
+    }
+    const listaNC = [...ncsUnicos];
+    for (let i = 0; i < listaNC.length; i += 400) {
+      const batch = db.batch();
+      listaNC.slice(i, i + 400).forEach(nc => {
         batch.set(db.collection('ami_cambiados').doc(nc), {
-          nc, cargadoEn: firebase.firestore.Timestamp.now(), cargadoPor: session_.displayName,
+          nc, cargadoEn: ahora, cargadoPor: session_.displayName, origen: 'historial',
         }, { merge: true });
       });
       await batch.commit();
     }
 
-    // Actualizar el padrón en memoria y re-cruzar
-    lista.forEach(nc => padronCambiados_.add(nc));
-    ordenes_.forEach(o => { o._yaCambiada = padronCambiados_.has(String(o.nc ?? '').trim()); });
-    if (role_ === 'tecnico') ordenes_ = ordenes_.filter(o => !o._yaCambiada);
-    plotMarkers();
-    updateStatChip();
-    toast(`Padrón actualizado: ${nuevos.length} NC nuevos`, 'ok');
+    toast(`Historial: ${registros.length} registros, ${ncsUnicos.size} NC al padrón`, 'ok');
+    await cargarOrdenes();
+    setTab('panel');
+    window.dispatchEvent(new CustomEvent('ami:updated'));
   } catch (err) {
-    toast('Error al procesar: ' + err.message, 'error');
+    toast('Error al cargar historial: ' + err.message, 'error');
   } finally {
-    const inp = document.getElementById('file-cambiados');
+    const inp = container_.querySelector('#ami-file-historial');
     if (inp) inp.value = '';
   }
 }
 
-async function loadOrdenes() {
-  // Mantener compatibilidad — la carga inicial la hace suscribirOrdenes
-  return new Promise(resolve => {
-    if (ordenes_.length) { resolve(); return; }
-    const timer = setTimeout(resolve, 3000); // máx 3s de espera
-    const check = setInterval(() => {
-      if (ordenes_.length) { clearTimeout(timer); clearInterval(check); resolve(); }
-    }, 100);
-  });
-}
-
-// ── Inicializar mapa Leaflet ──────────────────────
-function initMap() {
-  // Centro inicial — El Salvador
-  const center = [13.7942, -88.8965];
-  const zoom   = ordenes_.length ? 13 : 8;
-
-  // Rotación solo para técnicos
-  const conRotacion = role_ === 'tecnico';
-
-  map_ = L.map('leaflet-map', {
-    center,
-    zoom,
-    zoomControl: false,
-    attributionControl: false,
-    ...(conRotacion ? { rotate: true, touchRotate: true, rotateControl: false } : {}),
-  });
-
-  // Google Maps Hybrid tiles
-  const tileLayer_ = L.tileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', {
-    maxZoom: 20,
-    attribution: '© Google',
-    errorTileUrl: 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', // tile transparente en error
-    keepBuffer: 4, // mantener más tiles en buffer
-  }).addTo(map_);
-
-  // Si falla un tile, no hacer nada — marcadores y GPS siguen visibles
-  tileLayer_.on('tileerror', () => {});
-
-  // Cuando se recupera la señal, recargar tiles sin tocar marcadores
-  window.addEventListener('online', () => {
-    tileLayer_.redraw();
-  });
-
-  // Zoom control en posición correcta
-  L.control.zoom({ position: 'bottomright' }).addTo(map_);
-
-  // Cerrar panel al tocar el mapa
-  map_.on('click', closePanel);
-
-  // Redibujar etiquetas al cambiar zoom
-  map_.on('zoomend', () => plotMarkers());
-
-  // Brújula — solo para técnicos
-  if (conRotacion) {
-    document.getElementById('btn-reset-norte')?.addEventListener('click', () => {
-      map_.setBearing(0);
-    });
-    map_.on('rotate', () => {
-      const bearing = map_.getBearing();
-      const btn = document.getElementById('btn-reset-norte');
-      const svg = document.getElementById('brujula-svg');
-      if (btn) btn.style.display = Math.abs(bearing) > 1 ? '' : 'none';
-      if (svg) svg.style.transform = `rotate(${-bearing}deg)`;
-    });
-  }
-
-  // Solo admin/asistente tiene el botón de zona — se activa con btn-asignar-zona
-  // (no hay listener de click aquí, se maneja en activarModoZona)
-
-  // Dibujar marcadores
-  plotMarkers();
-
-  // Ajustar bounds si hay órdenes con coordenadas válidas
-  if (markers_.length > 0) {
-    try {
-      const group = L.featureGroup(markers_);
-      const bounds = group.getBounds();
-      if (bounds.isValid()) {
-        map_.fitBounds(bounds.pad(0.1));
-      }
-    } catch(e) {
-      console.warn('[mapa] fitBounds error:', e);
-    }
-  }
-
-  // Actualizar stat chip
-  updateStatChip();
-
-  // Geolocalización — mostrar posición actual
-  iniciarGeolocalizacion();
-}
-
-// ── Geolocalización ───────────────────────────────
-let geoMarker_ = null;
-let geoCircle_ = null;
-
-function iniciarGeolocalizacion() {
-  if (!navigator.geolocation) return;
-
-  const iconHtml = `
-    <div style="
-      width:16px; height:16px;
-      background:#3b82f6;
-      border:3px solid white;
-      border-radius:50%;
-      box-shadow:0 0 0 4px rgba(59,130,246,.3);
-    "></div>
-  `;
-
-  navigator.geolocation.watchPosition(
-    pos => {
-      const { latitude: lat, longitude: lng, accuracy } = pos.coords;
-
-      if (!map_) return; // mapa ya no existe
-
-      if (geoMarker_) {
-        geoMarker_.setLatLng([lat, lng]);
-        geoCircle_.setLatLng([lat, lng]).setRadius(accuracy);
-        // Re-añadir al mapa si se perdió (puede pasar offline)
-        if (!map_.hasLayer(geoMarker_)) geoMarker_.addTo(map_);
-        if (!map_.hasLayer(geoCircle_)) geoCircle_.addTo(map_);
-      } else {
-        geoMarker_ = L.marker([lat, lng], {
-          icon: L.divIcon({
-            className: '',
-            html: iconHtml,
-            iconSize:   [16, 16],
-            iconAnchor: [8, 8],
-          }),
-          zIndexOffset: 1000,
-        }).addTo(map_);
-
-        geoCircle_ = L.circle([lat, lng], {
-          radius:      accuracy,
-          color:       '#3b82f6',
-          fillColor:   '#3b82f6',
-          fillOpacity: 0.08,
-          weight:      1,
-        }).addTo(map_);
-      }
-    },
-    err => console.warn('[mapa] Geolocalización:', err.message),
-    { enableHighAccuracy: true, maximumAge: 5000, timeout: 10000 }
-  );
-}
-
-// ── Marcadores ────────────────────────────────────
-function plotMarkers() {
-  markers_.forEach(m => map_.removeLayer(m));
-  markers_ = [];
-
-  const mostrarLabels = map_.getZoom() >= 16;
-  const visibles = ordenes_.filter(o => o.estadoCampo !== 'aprobada');
-
-  visibles.forEach(orden => {
-    if (!orden.latitud || !orden.longitud) return;
-
-    const bloqueada = !orden.estadoCampo && isBlocked_(orden);
-    const color = orden._yaCambiada
-      ? '#16a34a'
-      : bloqueada
-      ? '#4b5563'
-      : ESTADO_COLORS[orden.estadoCampo] || PAREJA_COLORS[orden.pareja] || PAREJA_COLORS[null];
-    const size  = orden.estadoCampo === 'hecha' ? 10 : 14;
-    const wo    = orden.nc || '';
-
-    const labelHtml = mostrarLabels && wo && !bloqueada ? `
-      <div style="
-        position:absolute;
-        top:${size + 3}px;
-        left:50%;
-        transform:translateX(-50%);
-        white-space:nowrap;
-        font-size:9px;
-        font-weight:700;
-        font-family:'Outfit',sans-serif;
-        color:white;
-        text-shadow:0 1px 3px rgba(0,0,0,.9),0 0 6px rgba(0,0,0,.7);
-        pointer-events:none;
-        letter-spacing:.02em;
-      ">${wo}</div>` : '';
-
-    const yaCambiado  = orden.estadoCampo === 'ya_cambiado';
-    const esMalUbicado = orden.estadoCampo === 'mal_ubicado';
-    const icon = L.divIcon({
-      className: '',
-      html: bloqueada ? `
-        <div style="
-          width:22px;height:22px;
-          background:#1f2937;
-          border:2px solid #4b5563;
-          border-radius:6px;
-          display:flex;align-items:center;justify-content:center;
-          box-shadow:0 2px 6px rgba(0,0,0,.5);
-        ">
-          <svg viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="11" height="11">
-            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
-            <path d="M7 11V7a5 5 0 0110 0v4"/>
-          </svg>
-        </div>
-      ` : yaCambiado ? `
-        <div style="
-          width:22px;height:22px;
-          background:rgba(249,115,22,.15);
-          border:2px solid #f97316;
-          border-radius:6px;
-          display:flex;align-items:center;justify-content:center;
-          box-shadow:0 2px 6px rgba(0,0,0,.5);
-        ">
-          <svg viewBox="0 0 24 24" fill="none" stroke="#f97316" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="11" height="11">
-            <circle cx="12" cy="12" r="10"/>
-            <line x1="12" y1="8" x2="12" y2="12"/>
-            <line x1="12" y1="16" x2="12.01" y2="16"/>
-          </svg>
-        </div>
-      ` : esMalUbicado ? `
-        <div style="
-          width:22px;height:22px;
-          background:rgba(139,92,246,.15);
-          border:2px solid #8b5cf6;
-          border-radius:6px;
-          display:flex;align-items:center;justify-content:center;
-          box-shadow:0 2px 6px rgba(0,0,0,.5);
-          font-size:13px;font-weight:800;color:#8b5cf6;line-height:1;
-        ">?</div>
-      ` : `
-        <div style="position:relative">
-          <div style="
-            width:${size}px;height:${size}px;
-            background:${color};
-            border:2px solid ${esResiduoAMI(orden) ? '#f59e0b' : 'rgba(255,255,255,.8)'};
-            border-radius:50%;
-            box-shadow:${esResiduoAMI(orden) ? '0 0 0 2px rgba(245,158,11,.5), ' : ''}0 2px 6px rgba(0,0,0,.4);
-            ${orden.estadoCampo === 'hecha' ? 'opacity:0.6' : ''}
-          "></div>
-          ${labelHtml}
-        </div>
-      `,
-      iconSize:   (bloqueada || yaCambiado || esMalUbicado) ? [22,22] : [size, size],
-      iconAnchor: (bloqueada || yaCambiado || esMalUbicado) ? [11,11]  : [size/2, size/2],
-    });
-
-    const marker = L.marker([orden.latitud, orden.longitud], { icon });
-    marker.on('click', () => verOrden(orden.id));
-    marker.addTo(map_);
-    markers_.push(marker);
-  });
-
-  // Si el mapa pierde layers offline, re-añadir marcadores al recuperarse
-  map_.once('layeradd', () => {
-    markers_.forEach(m => { if (!map_.hasLayer(m)) m.addTo(map_); });
-  });
-}
-
-function updateStatChip() {
-  const activas  = ordenes_.filter(o => o.estadoCampo !== 'aprobada');
-  const total    = activas.length;
-  const hechas   = activas.filter(o => o.estadoCampo === 'hecha').length;
-  const sinAsig  = activas.filter(o => !o.pareja).length;
-  const aprobadas = ordenes_.filter(o => o.estadoCampo === 'aprobada').length;
-
-  const txt = document.getElementById('mapa-stat-txt');
-  if (!txt) return;
-
-  if (sinAsig > 0) {
-    txt.textContent = `${sinAsig} sin asig · ${total} pend`;
-    document.querySelector('.mapa-stat-dot').style.background = '#f59e0b';
-  } else if (total === 0) {
-    txt.textContent = `${aprobadas} aprob`;
-    document.querySelector('.mapa-stat-dot').style.background = '#22c55e';
-  } else {
-    txt.textContent = `${hechas} hechas · ${total - hechas} pend`;
-    document.querySelector('.mapa-stat-dot').style.background = '#22c55e';
-  }
-}
-
-// ── Panel inferior de detalle ─────────────────────
-function verOrden(id) {
-  const o = ordenes_.find(x => x.id === id);
-  if (!o) return;
-  selectedOrden_ = o;
-
-  const isTecnico = role_ === 'tecnico';
-  const c = PAREJA_COLORS[o.pareja] || '#6b7280';
-
-  const panel   = document.getElementById('mapa-panel');
-  const content = document.getElementById('mapa-panel-content');
-
-  // Si está bloqueada por lectura, mostrar solo el candado
-  if (isBlocked_(o)) {
-    content.innerHTML = `
-      <div style="padding:24px 16px;text-align:center">
-        <svg viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" width="40" height="40" style="margin:0 auto 12px">
-          <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
-          <path d="M7 11V7a5 5 0 0110 0v4"/>
-        </svg>
-        <div style="font-size:14px;font-weight:700;color:var(--text-2);margin-bottom:6px">Orden bloqueada</div>
-        <div style="font-size:12px;color:var(--text-4)">Esta orden está en período de lectura<br>y no puede realizarse en este momento.</div>
-      </div>
-    `;
-    panel.classList.add('open');
-    return;
-  }
-
-  content.innerHTML = `
-    <div class="panel-orden-header">
-      <div style="flex:1;min-width:0">
-        <div class="panel-orden-wo">NC ${o.nc || '—'}</div>
-        <div class="panel-orden-cliente">${o.cliente || '—'}</div>
-        <div class="panel-orden-dir">${o.direccion || ''}</div>
-      </div>
-      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0">
-        ${o.pareja ? `<div class="pareja-chip" style="color:${c};border-color:${c}33;background:${c}15">${o.pareja}</div>` : ''}
-        ${o._yaCambiada ? `<div class="estado-badge ok" style="background:rgba(22,163,74,.15);border-color:rgba(22,163,74,.4);color:#16a34a">Ya cambiada</div>` : ''}
-        ${esResiduoAMI(o) ? `<div class="estado-badge warn">Arrastrada</div>` : ''}
-        ${o.estadoCampo === 'hecha'  ? '<div class="estado-badge ok">Realizada</div>'    : ''}
-        ${o.estadoCampo === 'visita' ? '<div class="estado-badge warn">Visita</div>'     : ''}
-        ${!o.estadoCampo             ? '<div class="estado-badge muted">Pendiente</div>' : ''}
-      </div>
-    </div>
-
-    <!-- Info técnica -->
-    <div class="panel-detail-grid">
-      ${o.nc          ? `<div class="panel-detail-item"><div class="panel-detail-key">NC</div><div class="panel-detail-val">${o.nc}</div></div>` : ''}
-      ${(o.serieActual || o.serie) ? `<div class="panel-detail-item"><div class="panel-detail-key">Serie medidor</div><div class="panel-detail-val" style="font-family:monospace;font-weight:700;color:var(--cm-light)">${o.serieActual || o.serie}</div></div>` : ''}
-      ${o.marca       ? `<div class="panel-detail-item"><div class="panel-detail-key">Marca</div><div class="panel-detail-val">${o.marca}</div></div>` : ''}
-      ${o.dsct        ? `<div class="panel-detail-item"><div class="panel-detail-key">DSCT</div><div class="panel-detail-val">${o.dsct}</div></div>` : ''}
-      ${o.unidadLectura ? `<div class="panel-detail-item"><div class="panel-detail-key">MRU</div><div class="panel-detail-val">${o.unidadLectura}</div></div>` : ''}
-      ${o.concepto ? `<div class="panel-detail-item full"><div class="panel-detail-key">Concepto</div><div class="panel-detail-val">${o.concepto}</div></div>` : ''}
-      ${o.motivoVisita ? `<div class="panel-detail-item full"><div class="panel-detail-key">Motivo visita</div><div class="panel-detail-val" style="color:#fbbf24">${o.motivoVisita}${o.observacionVisita ? ' — ' + o.observacionVisita : ''}</div></div>` : ''}
-    </div>
-
-    ${o.telefono ? `
-    <div class="panel-orden-tel">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="13" height="13">
-        <path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 014.17 9.82a19.79 19.79 0 01-3.07-8.59A2 2 0 013.08 1h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L7.09 8.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"/>
-      </svg>
-      <a href="tel:${o.telefono}">${o.telefono}</a>
-    </div>` : ''}
-
-    <div class="panel-orden-actions">
-      ${isTecnico && (!o.estadoCampo || o.estadoCampo === 'visita') ? `
-        <button class="btn-action cm" onclick="window.__mapa.marcarHecha('${o.id}')">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-          Realizada
-        </button>` : ''}
-      <button class="btn-action outline" onclick="window.__mapa.abrirGoogleMaps(${o.latitud},${o.longitud})">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg>
-        Navegar
-      </button>
-      ${!isTecnico ? `
-        <button class="btn-action cm" onclick="window.__mapa.asignarIndividual('${o.id}')">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M17 3a2.828 2.828 0 114 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>
-          Asignar pareja
-        </button>` : ''}
-      ${isTecnico && !o.estadoCampo ? `
-        <button class="icon-btn" title="Registrar visita" onclick="window.__mapa.marcarVisita('${o.id}')">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-        </button>` : ''}
-      ${isTecnico && (!o.estadoCampo || o.estadoCampo === 'visita') ? `
-        <button class="icon-btn" title="Ya estaba cambiado" style="color:#fb923c;border-color:rgba(249,115,22,.3)" onclick="window.__mapa.abrirYaCambiado('${o.id}')">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-        </button>
-        <button class="icon-btn" title="Pedir ayuda" style="color:#fbbf24;border-color:rgba(251,191,36,.3)" onclick="window.__mapa.abrirPedirAyuda('${o.id}')">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-        </button>` : ''}
-    </div>
-  `;
-
-  panel.classList.add('open');
-}
-
-function closePanel() {
-  document.getElementById('mapa-panel')?.classList.remove('open');
-  selectedOrden_ = null;
-}
-
-// ── Acciones desde mapa ───────────────────────────
-function marcarHecha(id) {
-  const o = ordenes_.find(x => x.id === id);
-  if (!o) return;
-  closePanel();           // limpia panel pero también pone selectedOrden_ = null
-  selectedOrden_ = o;     // restaurar después de closePanel
-  openSheet('sheet-realizada');
-}
-
-async function confirmarRealizada(actualizadaDelsur) {
-  if (!selectedOrden_) return;
-  const id = selectedOrden_.id;
-  closeSheet('sheet-realizada');
-  selectedOrden_ = null;
-
-  // Obtener pareja del día
-  let parejaDelDia = [session_.displayName];
-  try {
-    const destino = session_.asignacionActual?.destino;
-    if (destino) {
-      const snap = await db.collection('users')
-        .where('asignacionActual.destino', '==', destino)
-        .where('active', '==', true).get();
-      parejaDelDia = snap.docs.map(d => d.data().displayName);
-    }
-  } catch { /* sin conexión */ }
-
-  try {
-    const now = firebase.firestore.Timestamp.now();
-    await db.collection('ami_ordenes').doc(id).update({
-      estadoCampo:       'hecha',
-      fechaHecha:        now,
-      hechaPor:          session_.displayName,
-      actualizadaDelsur,
-      parejaDelDia,
-    });
-    const o = ordenes_.find(x => x.id === id);
-    if (o) { o.estadoCampo = 'hecha'; o.actualizadaDelsur = actualizadaDelsur; o.parejaDelDia = parejaDelDia; }
-    plotMarkers();
-    updateStatChip();
-    window.dispatchEvent(new CustomEvent('ami:updated'));
-    toast(actualizadaDelsur ? 'Realizada y actualizada en DELSUR' : 'Realizada — pendiente actualizar en DELSUR', 'ok');
-  } catch (err) {
-    console.error('[mapa] Error marcando hecha:', err);
-    toast('Error al guardar', 'error');
-  }
-}
-
-function marcarVisita(id) {
-  const o = ordenes_.find(x => x.id === id);
-  if (!o) return;
-  closePanel();           // limpia panel pero también pone selectedOrden_ = null
-  selectedOrden_ = o;     // restaurar después de closePanel
-
-  document.querySelectorAll('#visita-motivo-row .select-chip').forEach(c => c.classList.remove('active'));
-  document.getElementById('visita-obs').value = '';
-  document.getElementById('visita-error').style.display = 'none';
-
-  openSheet('sheet-visita');
-}
-
-async function confirmarVisita() {
-  if (!selectedOrden_) return;
-
-  const motivo = getSelectedChip('visita-motivo-row');
-  const obs    = document.getElementById('visita-obs').value.trim();
-  const errEl  = document.getElementById('visita-error');
-
-  if (!motivo) {
-    errEl.textContent = 'Selecciona un motivo de visita.';
-    errEl.style.display = 'block';
-    return;
-  }
-
-  const id = selectedOrden_.id;
-  setLoading('btn-visita-label', 'Registrando…', true);
-
-  try {
-    const now = firebase.firestore.Timestamp.now();
-    await db.collection('ami_ordenes').doc(id).update({
-      estadoCampo:       'visita',
-      fechaVisita:       now,
-      visitadoPor:       session_.displayName,
-      motivoVisita:      motivo,
-      observacionVisita: obs || null,
-    });
-
-    const o = ordenes_.find(x => x.id === id);
-    if (o) {
-      o.estadoCampo       = 'visita';
-      o.motivoVisita      = motivo;
-      o.observacionVisita = obs || null;
-    }
-
-    selectedOrden_ = null;
-    plotMarkers();
-    updateStatChip();
-    window.dispatchEvent(new CustomEvent('ami:updated'));
-    closeSheet('sheet-visita');
-    toast(`Visita registrada — ${motivo}`, 'ok');
-  } catch (err) {
-    console.error('[mapa] Error registrando visita:', err);
-    errEl.textContent = 'Error al guardar. Intenta de nuevo.';
-    errEl.style.display = 'block';
-  } finally {
-    setLoading('btn-visita-label', 'Registrar visita', false);
-  }
-}
-
-// ── Ya estaba cambiado ────────────────────────────
-function abrirYaCambiado(id) {
-  selectedOrden_ = ordenes_.find(x => x.id === id) || selectedOrden_;
-  document.getElementById('ya-cambiado-comentario').value = '';
-  document.getElementById('ya-cambiado-error').style.display = 'none';
-  openSheet('sheet-ya-cambiado');
-}
-
-async function confirmarYaCambiado() {
-  if (!selectedOrden_) return;
-  const comentario = document.getElementById('ya-cambiado-comentario').value.trim();
-  setLoading('btn-ya-cambiado-lbl', 'Guardando…', true);
-  try {
-    await db.collection('ami_ordenes').doc(selectedOrden_.id).update({
-      estadoCampo:  'ya_cambiado',
-      yaCambiadoPor: session_.displayName,
-      yaCambiadoEn:  firebase.firestore.Timestamp.now(),
-      yaCambiadoComentario: comentario || null,
-    });
-    const o = ordenes_.find(x => x.id === selectedOrden_.id);
-    if (o) o.estadoCampo = 'ya_cambiado';
-    closeSheet('sheet-ya-cambiado');
-    closePanel();
-    plotMarkers();
-    toast('Orden reportada como ya cambiada', 'ok');
-  } catch(err) {
-    document.getElementById('ya-cambiado-error').textContent = `Error: ${err.message}`;
-    document.getElementById('ya-cambiado-error').style.display = 'block';
-  } finally {
-    setLoading('btn-ya-cambiado-lbl', 'Confirmar reporte', false);
-  }
-}
-
-// ── Pedir ayuda por WhatsApp ──────────────────────
-function abrirPedirAyuda(id) {
-  selectedOrden_ = ordenes_.find(x => x.id === id) || selectedOrden_;
-  openSheet('sheet-pedir-ayuda');
-}
-
-function enviarAyudaWhatsApp(motivo) {
-  const o = selectedOrden_;
-  if (!o) return;
-  const msg = `Necesito ayuda con una orden\n`
-    + `NC: ${o.nc || '—'}\n`
-    + `Cliente: ${o.cliente || '—'}\n`
-    + `Dirección: ${o.direccion || '—'}\n`
-    + `Serie medidor: ${o.serieActual || o.serie || '—'}\n`
-    + `Marca: ${o.marca || '—'}\n`
-    + `\nMotivo: ${motivo}`;
-
-  // Si el motivo es punto mal ubicado, marcar en Firestore
-  if (motivo.toLowerCase().includes('mal ubicado')) {
-    // Actualizar local primero para feedback inmediato
-    const orden = ordenes_.find(x => x.id === o.id);
-    if (orden) orden.estadoCampo = 'mal_ubicado';
-    plotMarkers();
-
-    db.collection('ami_ordenes').doc(o.id).update({
-      estadoCampo: 'mal_ubicado',
-      malUbicadoPor: session_.displayName,
-      malUbicadoEn:  firebase.firestore.Timestamp.now(),
-    }).then(() => {
-      toast('Punto marcado como mal ubicado', 'ok');
-    }).catch(err => {
-      console.error('[mapa] Error mal_ubicado:', err);
-      toast('Error al marcar: ' + err.message, 'error');
-      // Revertir local si falla
-      if (orden) orden.estadoCampo = null;
-      plotMarkers();
-    });
-  }
-
-  const url = `https://wa.me/50371185821?text=${encodeURIComponent(msg)}`;
-  closeSheet('sheet-pedir-ayuda');
-  window.open(url, '_blank');
-}
-
-// ── Buscar contiguos ──────────────────────────────
-async function cargarContiguosData() {
-  if (contiguosData_) return true;            // ya cargado
-  if (contiguosLoading_) {                    // ya está cargando, esperar
-    let intentos = 0;
-    while (contiguosLoading_ && intentos < 100) {
-      await new Promise(r => setTimeout(r, 100));
-      intentos++;
-    }
-    return !!contiguosData_;
-  }
-  contiguosLoading_ = true;
-  try {
-    const resp = await fetch('contiguos.json');
-    if (!resp.ok) throw new Error('No se pudo cargar la base');
-    contiguosData_ = await resp.json();
-    // Construir índice NC -> posición
-    contiguosIndex_ = {};
-    for (let i = 0; i < contiguosData_.length; i++) {
-      contiguosIndex_[contiguosData_[i][0]] = i;
-    }
-    return true;
-  } catch(err) {
-    console.error('[contiguos] Error:', err);
-    contiguosData_ = null;
-    return false;
-  } finally {
-    contiguosLoading_ = false;
-  }
-}
-
-async function buscarContiguos() {
-  const o = selectedOrden_;
-  if (!o) return;
-  const nc = String(o.nc || '').trim();
-  if (!nc) {
-    toast('Esta orden no tiene NC', 'error');
-    return;
-  }
-
-  closeSheet('sheet-pedir-ayuda');
-  toast('Cargando base de contiguos…', 'ok');
-
-  const ok = await cargarContiguosData();
-  if (!ok) {
-    toast('No se pudo cargar la base de contiguos', 'error');
-    return;
-  }
-
-  const pos = contiguosIndex_[nc];
-  if (pos === undefined) {
-    toast('NC no encontrado en la base de lectura', 'error');
-    return;
-  }
-
-  // Obtener 2 antes y 2 después
-  const contiguos = [];
-  for (let offset = -2; offset <= 2; offset++) {
-    const i = pos + offset;
-    if (i < 0 || i >= contiguosData_.length) continue;
-    const r = contiguosData_[i];
-    contiguos.push({
-      nc: r[0], nombre: r[1], direccion: r[2],
-      marca: r[3], aparato: r[4], lat: r[5], lng: r[6],
-      offset,
-    });
-  }
-
-  mostrarContiguos(contiguos);
-}
-
-function mostrarContiguos(contiguos) {
-  // Limpiar marcadores temporales previos
-  limpiarMarcadoresContiguos();
-
-  // Plotear marcadores temporales tocables en el mapa
-  const latlngs = [];
-  contiguos.forEach(c => {
-    if (!c.lat || !c.lng) return;
-    const esCentro = c.offset === 0;
-    const color = esCentro ? '#2dd4bf' : '#fbbf24';
-    const icon = L.divIcon({
-      className: '',
-      html: '<div style="position:relative;display:flex;flex-direction:column;align-items:center">'
-        + '<div style="width:' + (esCentro ? 24 : 20) + 'px;height:' + (esCentro ? 24 : 20) + 'px;background:' + color + ';border:2px solid white;border-radius:50%;box-shadow:0 2px 6px rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;color:#0a1628">' + (esCentro ? '●' : (c.offset < 0 ? '↑' : '↓')) + '</div>'
-        + '<div style="margin-top:2px;background:rgba(10,22,40,.85);padding:1px 6px;border-radius:6px;font-size:10px;font-weight:700;color:white;white-space:nowrap">NC ' + c.nc + '</div>'
-        + '</div>',
-      iconSize: [60, 44],
-      iconAnchor: [30, 22],
-    });
-    const m = L.marker([c.lat, c.lng], { icon, zIndexOffset: 1000 }).addTo(map_);
-    m.on('click', () => verContiguo(c));
-    markersContiguos_.push(m);
-    latlngs.push([c.lat, c.lng]);
-  });
-
-  if (!latlngs.length) {
-    toast('Los contiguos no tienen coordenadas', 'error');
-    return;
-  }
-
-  // Centrar el mapa en los contiguos
-  try {
-    const bounds = L.latLngBounds(latlngs);
-    if (bounds.isValid()) map_.fitBounds(bounds.pad(0.3));
-  } catch(e) {}
-
-  // Mostrar botón flotante X para limpiar
-  mostrarBotonLimpiarContiguos();
-
-  // Abrir info del punto central automáticamente
-  const centro = contiguos.find(c => c.offset === 0);
-  if (centro) verContiguo(centro);
-
-  toast('Contiguos en el mapa — toca cada punto para ver info', 'ok');
-}
-
-function verContiguo(c) {
-  selectedOrden_ = null; // no es una orden real
-  const panel   = document.getElementById('mapa-panel');
-  const content = document.getElementById('mapa-panel-content');
-  if (!panel || !content) return;
-
-  const esCentro = c.offset === 0;
-  const etiqueta = esCentro ? 'NC buscado'
-    : c.offset < 0 ? Math.abs(c.offset) + ' antes en la ruta'
-    : c.offset + ' después en la ruta';
-  const colorEtiqueta = esCentro ? 'var(--cm-light)' : '#fbbf24';
-
-  content.innerHTML = `
-    <div class="panel-orden-header">
-      <div style="flex:1;min-width:0">
-        <div class="panel-orden-wo">NC ${c.nc}</div>
-        <div class="panel-orden-cliente">${c.nombre || '—'}</div>
-        <div class="panel-orden-dir">${c.direccion || ''}</div>
-      </div>
-      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0">
-        <div class="pareja-chip" style="color:${colorEtiqueta};border-color:${colorEtiqueta}33;background:${colorEtiqueta}15">${etiqueta}</div>
-      </div>
-    </div>
-    <div class="panel-detail-grid">
-      ${c.aparato ? `<div class="panel-detail-item"><div class="panel-detail-key">Medidor</div><div class="panel-detail-val" style="font-family:monospace;font-weight:700;color:var(--cm-light)">${c.aparato}</div></div>` : ''}
-      ${c.marca ? `<div class="panel-detail-item"><div class="panel-detail-key">Marca</div><div class="panel-detail-val">${c.marca}</div></div>` : ''}
-    </div>
-    <div class="panel-orden-actions">
-      <button class="btn-action outline" onclick="window.__mapa.abrirGoogleMaps(${c.lat},${c.lng})">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg>
-        Navegar
-      </button>
-    </div>
-  `;
-  panel.classList.add('open');
-}
-
-function mostrarBotonLimpiarContiguos() {
-  if (document.getElementById('btn-limpiar-contiguos')) return;
-  const btn = document.createElement('button');
-  btn.id = 'btn-limpiar-contiguos';
-  btn.style.cssText = 'position:absolute;top:74px;right:12px;z-index:850;width:40px;height:40px;border-radius:50%;border:1px solid rgba(239,68,68,.4);background:rgba(13,31,53,.92);color:#f87171;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 10px rgba(0,0,0,.4);backdrop-filter:blur(8px)';
-  btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
-  btn.onclick = limpiarContiguos;
-  const wrapper = document.getElementById('mapa-wrapper');
-  if (wrapper) wrapper.appendChild(btn);
-}
-
-function limpiarMarcadoresContiguos() {
-  markersContiguos_.forEach(m => { try { map_.removeLayer(m); } catch(e){} });
-  markersContiguos_ = [];
-}
-
-function limpiarContiguos() {
-  limpiarMarcadoresContiguos();
-  document.getElementById('btn-limpiar-contiguos')?.remove();
-  closePanel();
-}
-
-function abrirGenerarOrden() {
-  document.getElementById('mapa-campo-nc').value  = '';
-  document.getElementById('mapa-campo-obs').value = '';
-  document.getElementById('mapa-campo-error').style.display = 'none';
-  openSheet('sheet-campo-mapa');
-}
-
-async function guardarOrdenCampoMapa() {
-  const nc   = document.getElementById('mapa-campo-nc').value.trim();
-  const obs  = document.getElementById('mapa-campo-obs').value.trim();
-  const errEl = document.getElementById('mapa-campo-error');
-  errEl.style.display = 'none';
-
-  if (!nc) {
-    errEl.textContent = 'El NC es obligatorio.';
-    errEl.style.display = 'block';
-    return;
-  }
-
-  setLoading('btn-campo-mapa-lbl', 'Registrando…', true);
-  try {
-    const data = {
-      nc, observacion: obs || null,
-      pareja: pareja_,
-      estadoCampo: 'hecha',
-      actualizadaDelsur: false,
-      generadaEnCampo: true,
-      generadaPor: session_.displayName,
-      fechaHecha: firebase.firestore.Timestamp.now(),
-      hechaPor: session_.displayName,
-    };
-    await db.collection('ami_ordenes').add(data);
-    closeSheet('sheet-campo-mapa');
-    toast('Orden registrada', 'ok');
-    window.dispatchEvent(new CustomEvent('ami:updated'));
-  } catch(err) {
-    errEl.textContent = 'Error al registrar. Intenta de nuevo.';
-    errEl.style.display = 'block';
-  } finally {
-    setLoading('btn-campo-mapa-lbl', 'Registrar orden', false);
-  }
-}
-
-function abrirGoogleMaps(lat, lng) {
-  window.open(`https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`, '_blank');
-}
-
-// ── Asignación individual ─────────────────────────
-function asignarIndividual(id) {
-  const o = ordenes_.find(x => x.id === id);
-  if (!o) return;
-  closePanel();
-  selectedOrden_ = o;
-
-  // Pre-seleccionar pareja actual si existe
-  document.querySelectorAll('#indiv-pareja-row .select-chip').forEach(c => {
-    c.classList.toggle('active', c.dataset.val === (o.pareja || 'null'));
-  });
-  document.getElementById('indiv-error').style.display = 'none';
-  document.getElementById('sheet-indiv-title').textContent = `Asignar: NC ${o.nc || '—'}`;
-  openSheet('sheet-asignar-individual');
-}
-
-async function confirmarIndividual() {
-  if (!selectedOrden_) return;
-  const parejaVal = getSelectedChip('indiv-pareja-row');
-  if (!parejaVal) {
-    document.getElementById('indiv-error').textContent = 'Selecciona una pareja.';
-    document.getElementById('indiv-error').style.display = 'block';
-    return;
-  }
-
-  const pareja = parejaVal === 'null' ? null : parejaVal;
-  const id     = selectedOrden_.id;
-
-  setLoading('btn-indiv-label', 'Guardando…', true);
-  try {
-    await db.collection('ami_ordenes').doc(id).update({
-      pareja,
-      asignadoEn: firebase.firestore.FieldValue.serverTimestamp(),
-    });
-    const o = ordenes_.find(x => x.id === id);
-    if (o) o.pareja = pareja;
-    selectedOrden_ = null;
-    plotMarkers();
-    updateStatChip();
-    closeSheet('sheet-asignar-individual');
-    toast(pareja ? `Asignada a ${pareja}` : 'Orden desasignada', 'ok');
-  } catch (err) {
-    console.error('[mapa] Error asignando:', err);
-    document.getElementById('indiv-error').textContent = 'Error al guardar.';
-    document.getElementById('indiv-error').style.display = 'block';
-  } finally {
-    setLoading('btn-indiv-label', 'Confirmar', false);
-  }
-}
-
-// ── Asignación por polígono ─────────────────────
-let zonaActual_   = null;
-let zonaPoligono_ = null;
-let poliPreview_  = null;
-let puntos_       = [];
-
-// Ray casting — punto dentro de polígono
-function pointInPolygon(point, vertices) {
-  const x = point.lat, y = point.lng;
-  let inside = false;
-  for (let i = 0, j = vertices.length - 1; i < vertices.length; j = i++) {
-    const xi = vertices[i].lat, yi = vertices[i].lng;
-    const xj = vertices[j].lat, yj = vertices[j].lng;
-    const intersect = ((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
-    if (intersect) inside = !inside;
-  }
-  return inside;
-}
-
-function activarModoZona() {
-  if (!map_) return;
-  closePanel();
-  puntos_ = [];
-  limpiarPoligono();
-  map_.getContainer().style.cursor = 'crosshair';
-  toast('Toca para agregar puntos · Cierra el polígono con el botón o doble toque', 'ok', 5000);
-
-  let btnCerrar = document.getElementById('btn-cerrar-poligono');
-  if (!btnCerrar) {
-    btnCerrar = document.createElement('button');
-    btnCerrar.id = 'btn-cerrar-poligono';
-    btnCerrar.textContent = 'Cerrar polígono';
-    btnCerrar.style.cssText = 'position:fixed;bottom:100px;left:50%;transform:translateX(-50%);z-index:500;background:#a78bfa;color:#0d1117;border:none;border-radius:20px;padding:10px 24px;font-size:13px;font-weight:700;font-family:Outfit,sans-serif;cursor:pointer;display:none;box-shadow:0 4px 20px rgba(0,0,0,.4)';
-    document.body.appendChild(btnCerrar);
-    btnCerrar.addEventListener('click', cerrarPoligono);
-  }
-
-  map_.on('click', onMapClick_);
-  map_.on('dblclick', onMapDblClick_);
-}
-
-function onMapClick_(e) {
-  if (puntos_.length > 0) {
-    const dist = map_.distance(puntos_[puntos_.length - 1], e.latlng);
-    if (dist < 5) return;
-  }
-  puntos_.push(e.latlng);
-
-  if (poliPreview_) map_.removeLayer(poliPreview_);
-
-  if (puntos_.length === 1) {
-    poliPreview_ = L.circleMarker(puntos_[0], {
-      radius: 5, color: '#a78bfa', fillColor: '#a78bfa', fillOpacity: 1, weight: 2
-    }).addTo(map_);
-  } else {
-    poliPreview_ = L.polygon(puntos_, {
-      color: '#a78bfa', weight: 2, fillOpacity: 0.1, dashArray: '6,4'
-    }).addTo(map_);
-  }
-
-  const btnCerrar = document.getElementById('btn-cerrar-poligono');
-  if (btnCerrar) btnCerrar.style.display = puntos_.length >= 3 ? '' : 'none';
-}
-
-function onMapDblClick_(e) {
-  L.DomEvent.stop(e);
-  if (puntos_.length >= 3) cerrarPoligono();
-}
-
-function cerrarPoligono() {
-  if (puntos_.length < 3) { toast('Necesitas al menos 3 puntos', 'warn'); return; }
-
-  map_.off('click', onMapClick_);
-  map_.off('dblclick', onMapDblClick_);
-  map_.getContainer().style.cursor = '';
-
-  const btnCerrar = document.getElementById('btn-cerrar-poligono');
-  if (btnCerrar) btnCerrar.style.display = 'none';
-
-  if (poliPreview_) { map_.removeLayer(poliPreview_); poliPreview_ = null; }
-
-  zonaPoligono_ = L.polygon(puntos_, {
-    color: '#a78bfa', weight: 2, fillOpacity: 0.12
-  }).addTo(map_);
-  zonaActual_ = zonaPoligono_;
-
-  const dentro = ordenes_.filter(o =>
-    o.latitud && o.longitud &&
-    pointInPolygon(L.latLng(parseFloat(o.latitud), parseFloat(o.longitud)), puntos_)
-  );
-
-  document.getElementById('zona-count').textContent = dentro.length;
-  document.getElementById('zona-preview').style.display = dentro.length ? '' : 'none';
-  document.getElementById('zona-error').style.display = 'none';
-  document.querySelectorAll('#zona-pareja-row .select-chip').forEach(c => c.classList.remove('active'));
-  openSheet('sheet-zona');
-}
-
-function limpiarPoligono() {
-  if (zonaPoligono_) { map_.removeLayer(zonaPoligono_); zonaPoligono_ = null; }
-  if (poliPreview_)  { map_.removeLayer(poliPreview_);  poliPreview_  = null; }
-  const btn = document.getElementById('btn-cerrar-poligono');
-  if (btn) btn.style.display = 'none';
-}
-
-function cancelarZona() {
-  map_.off('click', onMapClick_);
-  map_.off('dblclick', onMapDblClick_);
-  map_.getContainer().style.cursor = '';
-  limpiarPoligono();
-  zonaActual_ = null;
-  puntos_     = [];
-  closeSheet('sheet-zona');
-}
-// ── Helpers ───────────────────────────────────────
-async function confirmarZona() {
-  const parejaVal = getSelectedChip('zona-pareja-row');
-  const errEl     = document.getElementById('zona-error');
-
-  if (!parejaVal) {
-    errEl.textContent = 'Selecciona una pareja o "Sin pareja".';
-    errEl.style.display = 'block';
-    return;
-  }
-  if (!zonaActual_ || puntos_.length < 3) {
-    errEl.textContent = 'Dibuja una zona primero.';
-    errEl.style.display = 'block';
-    return;
-  }
-
-  const pareja = parejaVal === 'null' ? null : parejaVal;
-  const dentro = ordenes_.filter(o =>
-    o.latitud && o.longitud &&
-    pointInPolygon(L.latLng(parseFloat(o.latitud), parseFloat(o.longitud)), puntos_)
-  );
-
-  if (!dentro.length) {
-    errEl.textContent = 'No hay órdenes en esa zona.';
-    errEl.style.display = 'block';
-    return;
-  }
-
-  setLoading('btn-zona-label', 'Asignando…', true);
-  try {
-    const ts = firebase.firestore.FieldValue.serverTimestamp();
-    let batch = db.batch();
-    let count = 0;
-    const batches = [];
-
-    for (const o of dentro) {
-      batch.update(db.collection('ami_ordenes').doc(o.id), { pareja, asignadoEn: ts });
-      count++;
-      if (count === 499) { batches.push(batch.commit()); batch = db.batch(); count = 0; }
-    }
-    if (count > 0) batches.push(batch.commit());
-    await Promise.all(batches);
-
-    dentro.forEach(o => { o.pareja = pareja; });
-    limpiarPoligono();
-    zonaActual_ = null;
-    puntos_     = [];
-    plotMarkers();
-    updateStatChip();
-    closeSheet('sheet-zona');
-    toast(pareja
-      ? `${dentro.length} órdenes asignadas a ${pareja}`
-      : `${dentro.length} órdenes desasignadas`, 'ok');
-  } catch(err) {
-    console.error('[mapa] Error asignando zona:', err);
-    errEl.textContent = `Error: ${err.message}`;
-    errEl.style.display = 'block';
-  } finally {
-    setLoading('btn-zona-label', 'Confirmar asignación', false);
-  }
-}
-
-function openSheet(id)  { document.getElementById(id)?.classList.add('open'); }
-function closeSheet(id) { document.getElementById(id)?.classList.remove('open'); }
-// Exponer para onclick en HTML
-window.__mapaCloseSheet = closeSheet;
-
-// Llamado por el router al navegar fuera del mapa
-export function cleanup() {
-  ['sheet-visita','sheet-realizada','sheet-zona','sheet-ya-cambiado','sheet-pedir-ayuda','sheet-asignar-individual','sheet-campo-mapa','sheet-contiguos'].forEach(id => {
-    document.getElementById(id)?.remove();
-  });
-  document.getElementById('btn-limpiar-contiguos')?.remove();
-  markersContiguos_ = [];
-  const btn = document.getElementById('btn-cerrar-poligono');
-  if (btn) btn.remove();
-}
-
-function setupSelectChips(rowId) {
-  const row = document.getElementById(rowId);
-  if (!row) return;
-  row.querySelectorAll('.select-chip').forEach(chip => {
-    chip.addEventListener('click', () => {
-      row.querySelectorAll('.select-chip').forEach(c => c.classList.remove('active'));
-      chip.classList.add('active');
-    });
-  });
-}
-
-function getSelectedChip(rowId) {
-  return document.querySelector(`#${rowId} .select-chip.active`)?.dataset.val || null;
-}
-
-function setLoading(labelId, text, loading) {
-  const el = document.getElementById(labelId);
-  if (!el) return;
-  el.innerHTML = loading ? '<div class="spinner"></div>' : text;
-  const btn = el.closest('button');
-  if (btn) btn.disabled = loading;
-}
-
-// ── HTML de sheets del mapa ──────────────────────
-function sheetsMapaHTML() {
+function bloquePreparacion(titulo, texto) {
   return `
-    <!-- Sheet generar orden en campo -->
-    <div class="sheet-backdrop" id="sheet-campo-mapa">
-      <div class="sheet">
-        <div class="sheet-handle"></div>
-        <div class="sheet-title">Generar orden</div>
-        <div class="sheet-body">
-          <div class="form-field">
-            <div class="form-label">NC (Número de cliente) *</div>
-            <input class="form-input" id="mapa-campo-nc" type="text" placeholder="Ej: 604091900" autocomplete="off"/>
-          </div>
-          <div class="form-field">
-            <div class="form-label">Observación</div>
-            <input class="form-input" id="mapa-campo-obs" type="text" placeholder="Breve descripción" autocomplete="off"/>
-          </div>
-          <div id="mapa-campo-error" class="form-error"></div>
-          <button class="btn-primary full" id="btn-guardar-campo-mapa">
-            <span id="btn-campo-mapa-lbl">Registrar orden</span>
-          </button>
-        </div>
+    <div style="text-align:center;padding:36px 20px;border:1px dashed var(--border);border-radius:16px;background:var(--glass)">
+      <div style="width:48px;height:48px;border-radius:14px;background:${ACCENT_GLASS};display:flex;align-items:center;justify-content:center;margin:0 auto 14px">
+        <svg viewBox="0 0 24 24" fill="none" stroke="${ACCENT}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="22" height="22"><path d="M12 2v4"/><path d="M12 18v4"/><path d="M4.9 4.9l2.9 2.9"/><path d="M16.2 16.2l2.9 2.9"/><path d="M2 12h4"/><path d="M18 12h4"/><path d="M4.9 19.1l2.9-2.9"/><path d="M16.2 7.8l2.9-2.9"/></svg>
       </div>
-    </div>
-
-    <!-- Sheet ya estaba cambiado -->
-    <div class="sheet-backdrop" id="sheet-ya-cambiado">
-      <div class="sheet">
-        <div class="sheet-handle"></div>
-        <div class="sheet-title">Ya estaba cambiado</div>
-        <div class="sheet-body">
-          <div style="font-size:13px;color:var(--text-2);margin-bottom:16px;line-height:1.6">
-            Indica que el medidor de esta orden ya fue cambiado anteriormente. El asistente lo revisará y decidirá si eliminarla.
-          </div>
-          <div class="form-field">
-            <div class="form-label">Comentario (opcional)</div>
-            <textarea class="form-input" id="ya-cambiado-comentario" rows="3" placeholder="Ej. El medidor nuevo es de marca X..." style="resize:none"></textarea>
-          </div>
-          <div id="ya-cambiado-error" class="form-error"></div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:4px">
-            <button onclick="window.__mapaCloseSheet('sheet-ya-cambiado')"
-              style="height:44px;border-radius:12px;border:1px solid var(--border);background:transparent;color:var(--text-3);font-size:13px;font-weight:600;font-family:'Outfit',sans-serif;cursor:pointer">
-              Cancelar
-            </button>
-            <button id="btn-confirmar-ya-cambiado"
-              style="height:44px;border-radius:12px;border:1px solid rgba(249,115,22,.4);background:rgba(249,115,22,.15);color:#fb923c;font-size:13px;font-weight:600;font-family:'Outfit',sans-serif;cursor:pointer">
-              <span id="btn-ya-cambiado-lbl">Confirmar</span>
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Sheet pedir ayuda -->
-    <div class="sheet-backdrop" id="sheet-pedir-ayuda">
-      <div class="sheet">
-        <div class="sheet-handle"></div>
-        <div class="sheet-title">Pedir ayuda</div>
-        <div class="sheet-body">
-          <div class="form-label" style="margin-bottom:12px">¿Cuál es el problema?</div>
-          <div class="flex-col gap-8" id="ayuda-opciones">
-            <button class="ayuda-opcion" data-motivo="Punto mal ubicado — la dirección no coincide con el lugar físico">
-              <div style="font-size:13px;font-weight:600;color:var(--text)">Punto mal ubicado</div>
-              <div style="font-size:11px;color:var(--text-4);margin-top:2px">La dirección no coincide con el lugar</div>
-            </button>
-            <button class="ayuda-opcion" data-motivo="Medidor ya fue cambiado — aparece como pendiente pero ya fue reemplazado">
-              <div style="font-size:13px;font-weight:600;color:var(--text)">Medidor ya fue cambiado</div>
-              <div style="font-size:11px;color:var(--text-4);margin-top:2px">Aparece pendiente pero ya fue reemplazado</div>
-            </button>
-            <button class="ayuda-opcion" data-motivo="Otro problema">
-              <div style="font-size:13px;font-weight:600;color:var(--text)">Otro problema</div>
-              <div style="font-size:11px;color:var(--text-4);margin-top:2px">Especifica en el mensaje de WhatsApp</div>
-            </button>
-          </div>
-          <button class="btn-action" style="width:100%;margin-top:12px;height:44px;background:rgba(45,212,191,.12);border:1px solid rgba(45,212,191,.35);color:var(--cm-light)" onclick="window.__mapa.buscarContiguos()">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-            Buscar contiguos
-          </button>
-          <button class="btn-action outline" style="width:100%;margin-top:8px;height:44px" onclick="window.__mapaCloseSheet('sheet-pedir-ayuda')">Cancelar</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Sheet resultado contiguos -->
-    <div class="sheet-backdrop" id="sheet-contiguos">
-      <div class="sheet" style="max-height:88vh">
-        <div class="sheet-handle"></div>
-        <div class="sheet-title">Medidores contiguos</div>
-        <div class="sheet-body" style="padding-bottom:8px">
-          <div id="contiguos-resultado" style="max-height:62vh;overflow-y:auto" class="flex-col gap-8"></div>
-          <button class="btn-action outline" style="width:100%;margin-top:12px;height:44px" onclick="window.__mapa.limpiarContiguos()">Cerrar y limpiar mapa</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Sheet motivo visita -->
-    <div class="sheet-backdrop" id="sheet-visita">
-      <div class="sheet">
-        <div class="sheet-handle"></div>
-        <div class="sheet-title">Motivo de visita</div>
-        <div class="sheet-body">
-          <div class="form-label" style="margin-bottom:8px">Motivo principal</div>
-          <div class="select-row flex-wrap" id="visita-motivo-row" style="margin-bottom:16px">
-            <div class="select-chip" data-val="Medidor interno">Medidor interno</div>
-            <div class="select-chip" data-val="Medidor sobre techo">Medidor sobre techo</div>
-            <div class="select-chip" data-val="Panal de abejas cerca">Panal de abejas</div>
-            <div class="select-chip" data-val="Cliente ausente">Cliente ausente</div>
-          </div>
-          <div class="form-label" style="margin-bottom:8px">Observación adicional (opcional)</div>
-          <input class="form-input" id="visita-obs" type="text" placeholder="Describe la situación…" style="margin-bottom:16px"/>
-          <div id="visita-error" class="form-error"></div>
-          <button class="btn-primary full" id="btn-confirmar-visita" onclick="window.__mapa.confirmarVisita()">
-            <span id="btn-visita-label">Registrar visita</span>
-          </button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Sheet confirmación realizada -->
-    <div class="sheet-backdrop" id="sheet-realizada">
-      <div class="sheet">
-        <div class="sheet-handle"></div>
-        <div class="sheet-title">¿Ya actualizaste en DELSUR?</div>
-        <div class="sheet-body">
-          <p style="font-size:13px;color:var(--text-3);margin-bottom:20px;line-height:1.6">
-            Confirma si ya ingresaste esta orden en el sistema de DELSUR.
-          </p>
-          <div style="display:flex;flex-direction:column;gap:8px">
-            <button class="btn-action cm" id="btn-si-delsur" onclick="window.__mapa.confirmarRealizada(true)">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-              Sí, ya actualicé en DELSUR
-            </button>
-            <button class="btn-action outline" id="btn-no-delsur" onclick="window.__mapa.confirmarRealizada(false)">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-              No, lo actualizaré después
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Sheet asignación individual -->
-    <div class="sheet-backdrop" id="sheet-asignar-individual">
-      <div class="sheet">
-        <div class="sheet-handle"></div>
-        <div class="sheet-title" id="sheet-indiv-title">Asignar pareja</div>
-        <div class="sheet-body">
-          <div class="form-label" style="margin-bottom:8px">Selecciona la pareja</div>
-          <div class="select-row flex-wrap" id="indiv-pareja-row" style="margin-bottom:16px">
-            <div class="select-chip" data-val="Pareja 1">Pareja 1</div>
-            <div class="select-chip" data-val="Pareja 2">Pareja 2</div>
-            <div class="select-chip" data-val="Pareja 3">Pareja 3</div>
-            <div class="select-chip" data-val="Pareja 4">Pareja 4</div>
-            <div class="select-chip" data-val="null" style="color:var(--text-4)">Sin pareja</div>
-          </div>
-          <div id="indiv-error" class="form-error"></div>
-          <button class="btn-primary full" onclick="window.__mapa.confirmarIndividual()">
-            <span id="btn-indiv-label">Confirmar</span>
-          </button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Sheet zona -->
-    <div class="sheet-backdrop" id="sheet-zona">
-      <div class="sheet">
-        <div class="sheet-handle"></div>
-        <div class="sheet-title">Asignar zona</div>
-        <div class="sheet-body">
-          <div id="zona-preview" style="display:none" class="zona-preview-box">
-            <div class="zona-preview-num" id="zona-count">0</div>
-            <div class="zona-preview-label">órdenes en la zona seleccionada</div>
-          </div>
-          <div class="form-label" style="margin:12px 0 8px">Asignar a</div>
-          <div class="select-row flex-wrap" id="zona-pareja-row" style="margin-bottom:16px">
-            <div class="select-chip" data-val="Pareja 1">Pareja 1</div>
-            <div class="select-chip" data-val="Pareja 2">Pareja 2</div>
-            <div class="select-chip" data-val="Pareja 3">Pareja 3</div>
-            <div class="select-chip" data-val="Pareja 4">Pareja 4</div>
-            <div class="select-chip" data-val="null" style="color:var(--text-4)">Sin pareja</div>
-          </div>
-          <div id="zona-error" class="form-error"></div>
-          <button class="btn-primary full" id="btn-confirmar-zona" onclick="window.__mapa.confirmarZona()">
-            <span id="btn-zona-label">Confirmar asignación</span>
-          </button>
-          <button class="btn-action outline" id="btn-cancelar-zona" onclick="window.__mapa.cancelarZona()" style="margin-top:8px;width:100%;height:44px">
-            Cancelar y borrar zona
-          </button>
-        </div>
-      </div>
-    </div>
-  `;
+      <div style="font-size:14px;font-weight:700;margin-bottom:6px">${titulo}</div>
+      <div style="font-size:12px;color:var(--text-4);line-height:1.5;max-width:320px;margin:0 auto">${texto}</div>
+    </div>`;
 }
