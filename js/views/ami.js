@@ -144,7 +144,18 @@ function setTab(tab) {
         console.warn('[ami] Error cargando ami_mapa:', err.message);
       });
   }
-  else if (tab === 'ordenes') cont.innerHTML = renderOrdenes();
+  else if (tab === 'ordenes') {
+    cont.innerHTML = renderOrdenes();
+    const inp = cont.querySelector('#ami-buscar-hist');
+    if (inp) {
+      let t = null;
+      inp.oninput = () => {
+        clearTimeout(t);
+        const val = inp.value;
+        t = setTimeout(() => buscarHistorial(val), 350);
+      };
+    }
+  }
   else {
     cont.innerHTML = renderPanel();
     // Enganchar el botón de importar ruta (solo admin)
@@ -222,39 +233,98 @@ function renderPanel() {
 
 // ── Órdenes (lista) ───────────────────────────────
 function renderOrdenes() {
-  if (!ordenes_.length) {
-    return bloquePreparacion('Sin órdenes por ahora',
-      'El listado de órdenes AMI se cargará más adelante. Cada orden se identificará por su NC (estos medidores no traen WO).');
-  }
-  const residuos = ordenes_.filter(esResiduo);
-  const resto = ordenes_.filter(o => !esResiduo(o));
+  const buscador = esAdmin_ ? `
+    <div style="margin-bottom:12px">
+      <input id="ami-buscar-hist" type="text" inputmode="numeric" placeholder="Buscar NC en el historial…"
+        style="width:100%;box-sizing:border-box;padding:11px 14px;border-radius:12px;border:1px solid var(--border);background:var(--glass);color:var(--text-1);font-size:13px;font-family:inherit;outline:none"/>
+      <div style="font-size:11px;color:var(--text-4);margin-top:4px">Escribe un NC para ver qué se hizo. Deja vacío para ver las órdenes de la ruta.</div>
+    </div>
+    <div id="ami-hist-resultados"></div>` : '';
 
-  const tarjeta = (o) => {
-    const dias = diasArrastrada(o);
-    const residuo = esResiduo(o);
-    return `
-      <div class="orden-card" style="flex-direction:column;align-items:stretch;cursor:default;border-left:3px solid ${o._yaCambiada ? '#16a34a' : residuo ? '#f59e0b' : ACCENT}">
-        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-          <div class="orden-wo" style="color:${ACCENT}">NC ${o.nc || '—'}</div>
-          ${o.cliente ? `<div class="orden-cliente" style="flex:1;min-width:120px">${o.cliente}</div>` : '<div style="flex:1"></div>'}
-          ${o._yaCambiada ? `<span class="estado-badge ok" style="background:rgba(22,163,74,.15);border-color:rgba(22,163,74,.4);color:#16a34a">Ya cambiada</span>` : ''}
-          ${residuo && !o._yaCambiada ? `<span class="estado-badge warn">Arrastrada &middot; ${dias} d&iacute;a${dias>1?'s':''}</span>` : ''}
-          <div class="estado-badge ${o.estadoCampo === 'hecha' || o.estadoCampo === 'aprobada' ? 'ok' : 'muted'}">${o.estadoCampo || 'pendiente'}</div>
-        </div>
-        ${o.direccion ? `<div class="orden-dir" style="margin-top:6px">${o.direccion}</div>` : ''}
-      </div>`;
+  const listaOrdenes = () => {
+    if (!ordenes_.length) {
+      return bloquePreparacion('Sin órdenes por ahora',
+        'El listado de órdenes AMI se cargará más adelante. Cada orden se identificará por su NC (estos medidores no traen WO).');
+    }
+    const residuos = ordenes_.filter(esResiduo);
+    const resto = ordenes_.filter(o => !esResiduo(o));
+
+    const tarjeta = (o) => {
+      const dias = diasArrastrada(o);
+      const residuo = esResiduo(o);
+      return `
+        <div class="orden-card" style="flex-direction:column;align-items:stretch;cursor:default;border-left:3px solid ${o._yaCambiada ? '#16a34a' : residuo ? '#f59e0b' : ACCENT}">
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+            <div class="orden-wo" style="color:${ACCENT}">NC ${o.nc || '—'}</div>
+            ${o.cliente ? `<div class="orden-cliente" style="flex:1;min-width:120px">${o.cliente}</div>` : '<div style="flex:1"></div>'}
+            ${o._yaCambiada ? `<span class="estado-badge ok" style="background:rgba(22,163,74,.15);border-color:rgba(22,163,74,.4);color:#16a34a">Ya cambiada</span>` : ''}
+            ${residuo && !o._yaCambiada ? `<span class="estado-badge warn">Arrastrada &middot; ${dias} d&iacute;a${dias>1?'s':''}</span>` : ''}
+            <div class="estado-badge ${o.estadoCampo === 'hecha' || o.estadoCampo === 'aprobada' ? 'ok' : 'muted'}">${o.estadoCampo || 'pendiente'}</div>
+          </div>
+          ${o.direccion ? `<div class="orden-dir" style="margin-top:6px">${o.direccion}</div>` : ''}
+        </div>`;
+    };
+
+    const seccion = (titulo, arr, color) => arr.length ? `
+      <div style="display:flex;align-items:center;gap:8px;margin:14px 0 8px">
+        <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:${color}">${titulo}</div>
+        <div style="flex:1;height:1px;background:var(--border)"></div>
+        <div style="font-size:11px;color:var(--text-4)">${arr.length}</div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:8px">${arr.map(tarjeta).join('')}</div>` : '';
+
+    return seccion('Arrastradas (rutas anteriores)', residuos, '#f59e0b')
+         + seccion('Ruta actual', resto, ACCENT);
   };
 
-  const seccion = (titulo, arr, color) => arr.length ? `
-    <div style="display:flex;align-items:center;gap:8px;margin:14px 0 8px">
-      <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:${color}">${titulo}</div>
-      <div style="flex:1;height:1px;background:var(--border)"></div>
-      <div style="font-size:11px;color:var(--text-4)">${arr.length}</div>
-    </div>
-    <div style="display:flex;flex-direction:column;gap:8px">${arr.map(tarjeta).join('')}</div>` : '';
+  return buscador + `<div id="ami-lista-ordenes">${listaOrdenes()}</div>`;
+}
 
-  return seccion('Arrastradas (rutas anteriores)', residuos, '#f59e0b')
-       + seccion('Ruta actual', resto, ACCENT);
+// Busca en el historial (ami_historial) por NC y pinta los resultados.
+async function buscarHistorial(nc) {
+  const cont = container_.querySelector('#ami-hist-resultados');
+  const lista = container_.querySelector('#ami-lista-ordenes');
+  if (!cont) return;
+  nc = String(nc || '').trim();
+
+  if (!nc) {
+    // Sin búsqueda: mostrar la lista de órdenes, ocultar resultados
+    cont.innerHTML = '';
+    if (lista) lista.style.display = '';
+    return;
+  }
+  if (lista) lista.style.display = 'none';
+  cont.innerHTML = `<div style="text-align:center;padding:20px;color:var(--text-4);font-size:12px">Buscando…</div>`;
+
+  try {
+    const snap = await db.collection('ami_historial').where('nc', '==', nc).get();
+    if (snap.empty) {
+      cont.innerHTML = `<div style="text-align:center;padding:24px;color:var(--text-4);font-size:13px">Sin registros para NC ${nc}</div>`;
+      return;
+    }
+    const regs = snap.docs.map(d => d.data())
+      .sort((a,b) => String(b.fecha||'').localeCompare(String(a.fecha||'')));
+    const fila = (etq, val) => val ? `<div style="display:flex;justify-content:space-between;gap:12px;font-size:12px;margin-bottom:3px"><span style="color:var(--text-4)">${etq}</span><span style="color:var(--text-2);text-align:right">${val}</span></div>` : '';
+    cont.innerHTML = `
+      <div style="display:flex;align-items:center;gap:8px;margin:4px 0 10px">
+        <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:#16a34a">Historial NC ${nc}</div>
+        <div style="flex:1;height:1px;background:var(--border)"></div>
+        <div style="font-size:11px;color:var(--text-4)">${regs.length}</div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        ${regs.map(r => `
+          <div class="orden-card" style="flex-direction:column;align-items:stretch;cursor:default;border-left:3px solid #16a34a">
+            <div style="background:var(--glass);border-radius:8px;padding:8px 10px">
+              ${fila('Trabajo', r.trabajo)}
+              ${fila('Medidor nuevo', r.medidorNuevo)}
+              ${fila('Pareja', r.pareja)}
+              ${fila('Fecha', r.fecha)}
+            </div>
+          </div>`).join('')}
+      </div>`;
+  } catch (err) {
+    cont.innerHTML = `<div style="text-align:center;padding:20px;color:#ef4444;font-size:12px">Error al buscar: ${err.message}</div>`;
+  }
 }
 
 // ── Importar ruta diaria (Excel) ──────────────────
