@@ -268,9 +268,9 @@ export async function init(container, session) {
       </div>
       <div id="crc-busqueda"></div>` : ''}
 
+      <div id="crc-estado"></div>
       <div id="crc-resumen"></div>
       <div id="crc-lista"></div>
-      <div id="crc-estado"></div>
     </div>`;
 
   // Pestañas
