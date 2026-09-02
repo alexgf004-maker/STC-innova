@@ -73,6 +73,7 @@ let drawControl_ = null;
 let session_, role_, pareja_;
 let ordenes_ = [];
 let padronCambiados_ = new Set();   // NC ya cambiados (padrón permanente)
+let parejasActivas_ = [];           // parejas con técnico activo en AMI
 let selectedOrden_ = null;
 
 // ── Entry point ───────────────────────────────────
@@ -85,10 +86,12 @@ export async function init(container, session) {
   if (unsubscribe_) { unsubscribe_(); unsubscribe_ = null; }
   if (map_) { map_.remove(); map_ = null; markers_ = []; markersContiguos_ = []; }
 
-  renderShell(container);
-
-  // Cargar el padrón de NC ya cambiados ANTES de suscribir, para poder cruzar
+  // Cargar parejas activas y padrón ANTES de render/suscribir, para que
+  // los selectores de pareja salgan con las cuadrillas reales.
+  await cargarParejasActivas();
   await cargarPadronCambiados();
+
+  renderShell(container);
 
   // Iniciar listener en tiempo real ANTES de initMap
   suscribirOrdenes();
@@ -356,6 +359,21 @@ async function cargarPadronCambiados() {
   } catch (err) {
     console.warn('[ami] No se pudo cargar padrón de cambiados:', err.message);
     padronCambiados_ = new Set();
+  }
+}
+
+// Parejas con al menos un técnico activo asignado a AMI (para los selectores).
+async function cargarParejasActivas() {
+  try {
+    const us = await db.collection('users')
+      .where('asignacionActual.area', '==', 'AMI')
+      .where('active', '==', true).get();
+    const set = new Set();
+    us.docs.forEach(d => { const p = d.data().asignacionActual?.destino; if (p) set.add(p); });
+    parejasActivas_ = [...set].sort((a, b) =>
+      (parseInt(String(a).replace(/\D/g,''),10)||0) - (parseInt(String(b).replace(/\D/g,''),10)||0));
+  } catch (err) {
+    parejasActivas_ = [];
   }
 }
 
@@ -1620,12 +1638,7 @@ function sheetsMapaHTML() {
         <div class="sheet-body">
           <div class="form-label" style="margin-bottom:8px">Selecciona la pareja</div>
           <div class="select-row flex-wrap" id="indiv-pareja-row" style="margin-bottom:16px">
-            <div class="select-chip" data-val="Pareja 1">Pareja 1</div>
-            <div class="select-chip" data-val="Pareja 2">Pareja 2</div>
-            <div class="select-chip" data-val="Pareja 3">Pareja 3</div>
-            <div class="select-chip" data-val="Pareja 4">Pareja 4</div>
-            <div class="select-chip" data-val="Pareja 5">Pareja 5</div>
-            <div class="select-chip" data-val="Pareja 6">Pareja 6</div>
+            ${parejasActivas_.map(p => `<div class="select-chip" data-val="${p}">${p}</div>`).join('')}
             <div class="select-chip" data-val="null" style="color:var(--text-4)">Sin pareja</div>
           </div>
           <div id="indiv-error" class="form-error"></div>
@@ -1648,12 +1661,7 @@ function sheetsMapaHTML() {
           </div>
           <div class="form-label" style="margin:12px 0 8px">Asignar a</div>
           <div class="select-row flex-wrap" id="zona-pareja-row" style="margin-bottom:16px">
-            <div class="select-chip" data-val="Pareja 1">Pareja 1</div>
-            <div class="select-chip" data-val="Pareja 2">Pareja 2</div>
-            <div class="select-chip" data-val="Pareja 3">Pareja 3</div>
-            <div class="select-chip" data-val="Pareja 4">Pareja 4</div>
-            <div class="select-chip" data-val="Pareja 5">Pareja 5</div>
-            <div class="select-chip" data-val="Pareja 6">Pareja 6</div>
+            ${parejasActivas_.map(p => `<div class="select-chip" data-val="${p}">${p}</div>`).join('')}
             <div class="select-chip" data-val="null" style="color:var(--text-4)">Sin pareja</div>
           </div>
           <div id="zona-error" class="form-error"></div>
