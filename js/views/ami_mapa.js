@@ -64,6 +64,7 @@ function esResiduoAMI(orden) {
 }
 
 let markers_ = [];
+let clusterGroup_ = null;   // grupo para spiderfy de puntos casi encimados
 let markersContiguos_ = [];   // marcadores temporales de contiguos
 let contiguosData_ = null;     // caché del JSON de contiguos
 let contiguosIndex_ = null;    // índice NC -> posición
@@ -481,6 +482,26 @@ function initMap() {
   // Zoom control en posición correcta
   L.control.zoom({ position: 'bottomright' }).addTo(map_);
 
+  // Grupo para desplegar en abanico los puntos casi encimados (spiderfy).
+  // Radio muy pequeño: solo agrupa lo que de verdad se tapa; el resto se ve
+  // individual en su coordenada exacta. Al tocar un grupo, se abre en abanico.
+  if (typeof L.markerClusterGroup === 'function') {
+    clusterGroup_ = L.markerClusterGroup({
+      maxClusterRadius: 22,               // px — solo puntos que casi coinciden
+      spiderfyOnMaxZoom: true,
+      spiderfyDistanceMultiplier: 1.6,    // abanico más amplio, fácil de tocar
+      showCoverageOnHover: false,
+      zoomToBoundsOnClick: false,         // no hace zoom: abre el abanico directo
+      disableClusteringAtZoom: 21,
+      iconCreateFunction: (cluster) => L.divIcon({
+        html: `<div style="width:26px;height:26px;border-radius:50%;background:rgba(139,92,246,.85);border:2px solid #fff;display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px;font-weight:800;font-family:Outfit,sans-serif;box-shadow:0 2px 6px rgba(0,0,0,.4)">${cluster.getChildCount()}</div>`,
+        className: '',
+        iconSize: [26, 26],
+      }),
+    });
+    map_.addLayer(clusterGroup_);
+  }
+
   // Cerrar panel al tocar el mapa
   map_.on('click', closePanel);
 
@@ -583,6 +604,7 @@ function iniciarGeolocalizacion() {
 
 // ── Marcadores ────────────────────────────────────
 function plotMarkers() {
+  if (clusterGroup_) clusterGroup_.clearLayers();
   markers_.forEach(m => map_.removeLayer(m));
   markers_ = [];
 
@@ -679,13 +701,14 @@ function plotMarkers() {
 
     const marker = L.marker([orden.latitud, orden.longitud], { icon });
     marker.on('click', () => verOrden(orden.id));
-    marker.addTo(map_);
+    if (clusterGroup_) clusterGroup_.addLayer(marker);
+    else marker.addTo(map_);
     markers_.push(marker);
   });
 
   // Si el mapa pierde layers offline, re-añadir marcadores al recuperarse
   map_.once('layeradd', () => {
-    markers_.forEach(m => { if (!map_.hasLayer(m)) m.addTo(map_); });
+    markers_.forEach(m => { if (!clusterGroup_ && !map_.hasLayer(m)) m.addTo(map_); });
   });
 }
 
