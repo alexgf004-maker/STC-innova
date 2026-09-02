@@ -154,6 +154,12 @@ function setTab(tab) {
       btn.onclick = () => file.click();
       file.onchange = (e) => importarRuta(e.target.files[0]);
     }
+    const btnH = cont.querySelector('#ami-btn-historial');
+    const fileH = cont.querySelector('#ami-file-historial');
+    if (btnH && fileH) {
+      btnH.onclick = () => fileH.click();
+      fileH.onchange = (e) => importarHistorial(e.target.files[0]);
+    }
   }
 }
 
@@ -184,6 +190,13 @@ function renderPanel() {
         Cargar ruta (Excel)
       </button>
       <input type="file" id="ami-file-importar" accept=".xlsx,.xls" style="display:none"/>
+    </div>
+    <div style="display:flex;gap:8px;margin-bottom:16px">
+      <button id="ami-btn-historial" style="flex:1;display:flex;align-items:center;justify-content:center;gap:8px;padding:11px;border-radius:12px;border:1px solid rgba(22,163,74,.35);background:rgba(22,163,74,.1);color:#16a34a;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><path d="M12 8v4l3 3"/><circle cx="12" cy="12" r="9"/></svg>
+        Cargar historial (Excel)
+      </button>
+      <input type="file" id="ami-file-historial" accept=".xlsx,.xls" style="display:none"/>
     </div>` : ''}
 
     ${total === 0
@@ -338,6 +351,102 @@ async function importarRuta(file) {
     toast('Error al cargar: ' + err.message, 'error');
   } finally {
     const inp = container_.querySelector('#ami-file-importar');
+    if (inp) inp.value = '';
+  }
+}
+
+// ── Importar historial de trabajos hechos (Excel) ──
+// Doble propósito: guarda el historial consultable (ami_historial) Y agrega
+// cada NC al padrón de ya cambiados (ami_cambiados). Lee las dos hojas.
+// Campos: NC, trabajo, medidor nuevo, pareja, fecha. Normaliza may/tildes.
+function normalizaTexto(s) {
+  let t = String(s ?? '').trim().replace(/\s+/g, ' ');
+  if (!t) return '';
+  t = t.replace(/\s*-\s*/g, '-');                                  // "A - B" -> "A-B"
+  t = t.normalize('NFD').replace(/[\u0300-\u036f]/g, '');          // quitar tildes
+  t = t.toLowerCase().replace(/\b\w/g, c => c.toUpperCase());      // Título
+  return t;
+}
+
+async function importarHistorial(file) {
+  if (!file) return;
+  try {
+    const buf = await file.arrayBuffer();
+    const wb = XLSX.read(buf, { type: 'array' });
+    const norm = s => String(s ?? '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[\s._-]/g,'');
+
+    const registros = [];
+    for (const nombreHoja of wb.SheetNames) {
+      const matriz = XLSX.utils.sheet_to_json(wb.Sheets[nombreHoja], { header: 1, defval: '' });
+      if (!matriz.length) continue;
+      const hIdx = matriz.findIndex(r => r.some(c => { const n = norm(c); return n.includes('orden') || n.includes('contrato'); }));
+      if (hIdx === -1) continue;
+      const head = matriz[hIdx].map(norm);
+      const col = (...alias) => head.findIndex(h => alias.some(a => h.includes(a)));
+      const idx = {
+        nc:       col('contrato','orden'),
+        trabajo:  col('trabajo'),
+        medNuevo: col('medidornuevo'),
+        pareja:   col('pareja'),
+        fecha:    col('fecha'),
+      };
+      for (const r of matriz.slice(hIdx + 1)) {
+        const nc = String(r[idx.nc] ?? '').trim();
+        if (!nc) continue;
+        let fecha = null;
+        const rawF = r[idx.fecha];
+        if (rawF) {
+          if (typeof rawF === 'number') {
+            const d = new Date(Math.round((rawF - 25569) * 86400 * 1000));
+            if (!isNaN(d)) fecha = d.toISOString().split('T')[0];
+          } else {
+            const d = new Date(String(rawF));
+            fecha = isNaN(d) ? String(rawF).split(' ')[0] : d.toISOString().split('T')[0];
+          }
+        }
+        registros.push({
+          nc,
+          trabajo: idx.trabajo>=0 ? normalizaTexto(r[idx.trabajo]) : '',
+          medidorNuevo: idx.medNuevo>=0 ? String(r[idx.medNuevo] ?? '').trim() : '',
+          pareja: idx.pareja>=0 ? normalizaTexto(r[idx.pareja]) : '',
+          fecha,
+        });
+      }
+    }
+    if (!registros.length) { toast('No se encontraron registros con NC', 'error'); return; }
+
+    const ncsUnicos = new Set(registros.map(r => r.nc));
+    if (!confirm(`Historial con ${registros.length} registros (${ncsUnicos.size} NC distintos).\n\nSe guardarán en el historial y esos NC se agregarán al padrón de "ya cambiados".\n\n¿Continuar?`)) return;
+
+    toast('Cargando historial…', 'ok');
+    const ahora = firebase.firestore.Timestamp.now();
+
+    for (let i = 0; i < registros.length; i += 400) {
+      const batch = db.batch();
+      registros.slice(i, i + 400).forEach(r => {
+        batch.set(db.collection('ami_historial').doc(), { ...r, cargadoEn: ahora });
+      });
+      await batch.commit();
+    }
+    const listaNC = [...ncsUnicos];
+    for (let i = 0; i < listaNC.length; i += 400) {
+      const batch = db.batch();
+      listaNC.slice(i, i + 400).forEach(nc => {
+        batch.set(db.collection('ami_cambiados').doc(nc), {
+          nc, cargadoEn: ahora, cargadoPor: session_.displayName, origen: 'historial',
+        }, { merge: true });
+      });
+      await batch.commit();
+    }
+
+    toast(`Historial: ${registros.length} registros, ${ncsUnicos.size} NC al padrón`, 'ok');
+    await cargarOrdenes();
+    setTab('panel');
+    window.dispatchEvent(new CustomEvent('ami:updated'));
+  } catch (err) {
+    toast('Error al cargar historial: ' + err.message, 'error');
+  } finally {
+    const inp = container_.querySelector('#ami-file-historial');
     if (inp) inp.value = '';
   }
 }
