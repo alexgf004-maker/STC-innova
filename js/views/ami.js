@@ -72,8 +72,13 @@ function hechasHoyPorPareja(pareja) {
 
 // Sección de metas: admin ve todas las parejas (editable), técnico ve la suya.
 function seccionMetas() {
-  const parejas = esAdmin_ ? PAREJAS : (pareja_ ? [pareja_] : []);
-  if (!parejas.length) return '';
+  const parejas = esAdmin_ ? parejasActivas_ : (pareja_ ? [pareja_] : []);
+  if (!parejas.length) {
+    return esAdmin_ ? `
+      <div style="text-align:center;padding:20px;border:1px dashed var(--border);border-radius:12px;background:var(--glass);font-size:12px;color:var(--text-4)">
+        Aún no hay parejas asignadas a AMI. Asigna técnicos en Usuarios para ver y definir sus metas.
+      </div>` : '';
+  }
 
   const tarjeta = (p) => {
     const meta = Number(metas_[p] || 0);
@@ -121,6 +126,7 @@ let ordenes_ = [];
 let activeTab_ = 'panel';   // 'panel' | 'ordenes' | 'mapa'
 let esAdmin_ = false;
 let metas_ = {};            // { "Pareja 1": 25, ... } — meta diaria por pareja
+let parejasActivas_ = [];   // parejas con al menos un técnico activo en AMI
 
 // ── Entry point ───────────────────────────────────
 export async function init(container, session) {
@@ -162,6 +168,19 @@ async function cargarOrdenes() {
       const cfg = await db.collection('ami_config').doc('metas').get();
       metas_ = cfg.exists ? (cfg.data().parejas || {}) : {};
     } catch (e) { metas_ = {}; }
+
+    // Parejas activas: las que tienen al menos un técnico activo asignado a AMI.
+    // Se muestran solo estas (no las 6 fijas) en metas y selectores.
+    try {
+      const us = await db.collection('users')
+        .where('asignacionActual.area', '==', AREA)
+        .where('active', '==', true).get();
+      const set = new Set();
+      us.docs.forEach(d => { const p = d.data().asignacionActual?.destino; if (p) set.add(p); });
+      // Ordenar por número de pareja
+      parejasActivas_ = [...set].sort((a, b) =>
+        (parseInt(String(a).replace(/\D/g,''),10)||0) - (parseInt(String(b).replace(/\D/g,''),10)||0));
+    } catch (e) { parejasActivas_ = []; }
   } catch (err) {
     // Si la colección aún no existe o no hay permisos, no rompemos el cascarón
     console.warn('[ami] No se pudieron cargar órdenes todavía:', err.message);
