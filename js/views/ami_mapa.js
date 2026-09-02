@@ -807,13 +807,16 @@ async function confirmarRealizada(actualizadaDelsur) {
   closeSheet('sheet-realizada');
   selectedOrden_ = null;
 
-  // Obtener pareja del día
+  // Obtener pareja del día (misma pareja Y misma área, para no mezclar
+  // gente de otras campañas que use el mismo nombre de pareja).
   let parejaDelDia = [session_.displayName];
   try {
     const destino = session_.asignacionActual?.destino;
-    if (destino) {
+    const area = session_.asignacionActual?.area;
+    if (destino && area) {
       const snap = await db.collection('users')
         .where('asignacionActual.destino', '==', destino)
+        .where('asignacionActual.area', '==', area)
         .where('active', '==', true).get();
       parejaDelDia = snap.docs.map(d => d.data().displayName);
     }
