@@ -782,9 +782,8 @@ function verOrden(id) {
     <!-- Info técnica -->
     <div class="panel-detail-grid">
       ${o.nc          ? `<div class="panel-detail-item"><div class="panel-detail-key">NC</div><div class="panel-detail-val">${o.nc}</div></div>` : ''}
-      ${(o.serieActual || o.serie) ? `<div class="panel-detail-item"><div class="panel-detail-key">Serie medidor</div><div class="panel-detail-val" style="font-family:monospace;font-weight:700;color:var(--cm-light)">${o.serieActual || o.serie}</div></div>` : ''}
-      ${o.marca       ? `<div class="panel-detail-item"><div class="panel-detail-key">Marca</div><div class="panel-detail-val">${o.marca}</div></div>` : ''}
-      ${o.dsct        ? `<div class="panel-detail-item"><div class="panel-detail-key">DSCT</div><div class="panel-detail-val">${o.dsct}</div></div>` : ''}
+      ${(o.medidor || o.serieActual || o.serie) ? `<div class="panel-detail-item"><div class="panel-detail-key">Medidor</div><div class="panel-detail-val" style="font-family:monospace;font-weight:700;color:#a78bfa">${o.medidor || o.serieActual || o.serie}</div></div>` : ''}
+      ${(o.ds || o.dsct) ? `<div class="panel-detail-item"><div class="panel-detail-key">DS</div><div class="panel-detail-val">${o.ds || o.dsct}</div></div>` : ''}
       ${o.unidadLectura ? `<div class="panel-detail-item"><div class="panel-detail-key">MRU</div><div class="panel-detail-val">${o.unidadLectura}</div></div>` : ''}
       ${o.concepto ? `<div class="panel-detail-item full"><div class="panel-detail-key">Concepto</div><div class="panel-detail-val">${o.concepto}</div></div>` : ''}
       ${o.motivoVisita ? `<div class="panel-detail-item full"><div class="panel-detail-key">Motivo visita</div><div class="panel-detail-val" style="color:#fbbf24">${o.motivoVisita}${o.observacionVisita ? ' — ' + o.observacionVisita : ''}</div></div>` : ''}
@@ -993,8 +992,8 @@ function enviarAyudaWhatsApp(motivo) {
     + `NC: ${o.nc || '—'}\n`
     + `Cliente: ${o.cliente || '—'}\n`
     + `Dirección: ${o.direccion || '—'}\n`
-    + `Serie medidor: ${o.serieActual || o.serie || '—'}\n`
-    + `Marca: ${o.marca || '—'}\n`
+    + `Medidor: ${o.medidor || o.serieActual || o.serie || '—'}\n`
+    + `DS: ${o.ds || o.dsct || '—'}\n`
     + `\nMotivo: ${motivo}`;
 
   // Si el motivo es punto mal ubicado, marcar en Firestore
