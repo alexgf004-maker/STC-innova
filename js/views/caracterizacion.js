@@ -357,6 +357,11 @@ async function buscarOrdenes(texto) {
   const tarjetaInst = (o) => {
     const t = o.titular || {};
     const est = estadoInst(o);
+    const yaHecha = o.estado === 'por_confirmar' || o.estado === 'confirmada';
+    // Niveles disponibles para marcar: titular siempre; suplentes si existen
+    const niveles = [{ k:'titular', l:'Titular' }];
+    if (o.suplente1 && o.suplente1.nc) niveles.push({ k:'suplente1', l:'Suplente 1' });
+    if (o.suplente2 && o.suplente2.nc) niveles.push({ k:'suplente2', l:'Suplente 2' });
     return `
       <div class="orden-card" style="flex-direction:column;align-items:stretch;cursor:default;border-left:3px solid #ef4444">
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px">
@@ -371,7 +376,18 @@ async function buscarOrdenes(texto) {
           ${fila('Medidor', t.medidor)}
           ${fila('Dirección', t.direccion)}
           ${fila('Pareja', o.pareja)}
+          ${yaHecha && o.logranoEn ? fila('Se hizo con', LOGRO_LABEL[o.logranoEn] || o.logranoEn) : ''}
+          ${yaHecha && !o.logranoEn ? fila('Resultado', 'Sin lograr') : ''}
+          ${yaHecha && o.hechaPor ? fila('Marcó', o.hechaPor) : ''}
         </div>
+        ${!yaHecha ? `
+        <div style="margin-top:8px">
+          <div style="font-size:11px;color:var(--text-4);margin-bottom:6px">Marcar como hecha con:</div>
+          <div style="display:flex;flex-wrap:wrap;gap:6px">
+            ${niveles.map(n => `<button class="crc-buscar-marcar" data-orden="${o.id}" data-nivel="${n.k}"
+              style="padding:7px 12px;border-radius:10px;border:1px solid rgba(34,197,94,.4);background:rgba(34,197,94,.12);color:#22c55e;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">${n.l}</button>`).join('')}
+          </div>
+        </div>` : ''}
       </div>`;
   };
   const tarjetaRet = (r) => {
@@ -410,6 +426,34 @@ async function buscarOrdenes(texto) {
     <div style="font-size:11px;color:var(--text-4);margin-bottom:4px">${total} resultado${total>1?'s':''}</div>
     ${seccion('Instalaciones', inst, tarjetaInst, '#ef4444')}
     ${seccion('Retiros', rets, tarjetaRet, '#f59e0b')}`;
+
+  // Enganchar los botones de marcar hecha por nivel
+  cont.querySelectorAll('.crc-buscar-marcar').forEach(btn => {
+    btn.onclick = () => marcarDesdeBuscador(btn.dataset.orden, btn.dataset.nivel, texto);
+  });
+}
+
+// Marca una instalación como hecha desde el buscador, con el nivel elegido.
+// Escribe los MISMOS campos que el mapa, para ser consistente.
+async function marcarDesdeBuscador(ordenId, nivel, textoBusqueda) {
+  const o = ordenes_.find(x => x.id === ordenId);
+  if (!o) return;
+  const quien = LOGRO_LABEL[nivel] || nivel;
+  if (!confirm(`Marcar NC ${o.ncTitular} como hecha con ${quien}?`)) return;
+  try {
+    const visitas = Array.isArray(o.visitas) ? o.visitas : [];
+    await db.collection('caracterizacion_ordenes').doc(ordenId).update({
+      estado: 'por_confirmar', logranoEn: nivel, visitas,
+      hechaPor: session_.displayName, fechaHecha: firebase.firestore.Timestamp.now(),
+    });
+    // Actualizar en memoria
+    o.estado = 'por_confirmar'; o.logranoEn = nivel; o.hechaPor = session_.displayName;
+    if (typeof toast === 'function') toast(`NC ${o.ncTitular} marcada (${quien})`, 'ok');
+    // Repintar los resultados de la búsqueda para reflejar el cambio
+    buscarOrdenes(textoBusqueda);
+  } catch (err) {
+    if (typeof toast === 'function') toast('Error al marcar: ' + err.message, 'error');
+  }
 }
 
 // ── Cargar y renderizar las órdenes del día ──
