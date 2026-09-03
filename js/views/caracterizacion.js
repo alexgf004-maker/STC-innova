@@ -358,10 +358,7 @@ async function buscarOrdenes(texto) {
     const t = o.titular || {};
     const est = estadoInst(o);
     const yaHecha = o.estado === 'por_confirmar' || o.estado === 'confirmada';
-    // Niveles disponibles para marcar: titular siempre; suplentes si existen
-    const niveles = [{ k:'titular', l:'Titular' }];
-    if (o.suplente1 && o.suplente1.nc) niveles.push({ k:'suplente1', l:'Suplente 1' });
-    if (o.suplente2 && o.suplente2.nc) niveles.push({ k:'suplente2', l:'Suplente 2' });
+    const faltaRevisar = o.estado === 'por_confirmar';
     return `
       <div class="orden-card" style="flex-direction:column;align-items:stretch;cursor:default;border-left:3px solid #ef4444">
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px">
@@ -380,13 +377,10 @@ async function buscarOrdenes(texto) {
           ${yaHecha && !o.logranoEn ? fila('Resultado', 'Sin lograr') : ''}
           ${yaHecha && o.hechaPor ? fila('Marcó', o.hechaPor) : ''}
         </div>
-        ${!yaHecha ? `
+        ${faltaRevisar ? `
         <div style="margin-top:8px">
-          <div style="font-size:11px;color:var(--text-4);margin-bottom:6px">Marcar como hecha con:</div>
-          <div style="display:flex;flex-wrap:wrap;gap:6px">
-            ${niveles.map(n => `<button class="crc-buscar-marcar" data-orden="${o.id}" data-nivel="${n.k}"
-              style="padding:7px 12px;border-radius:10px;border:1px solid rgba(34,197,94,.4);background:rgba(34,197,94,.12);color:#22c55e;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">${n.l}</button>`).join('')}
-          </div>
+          <button class="crc-buscar-lista" data-orden="${o.id}"
+            style="width:100%;padding:9px;border-radius:10px;border:1px solid rgba(34,197,94,.4);background:rgba(34,197,94,.12);color:#22c55e;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">Marcar como lista</button>
         </div>` : ''}
       </div>`;
   };
@@ -427,32 +421,28 @@ async function buscarOrdenes(texto) {
     ${seccion('Instalaciones', inst, tarjetaInst, '#ef4444')}
     ${seccion('Retiros', rets, tarjetaRet, '#f59e0b')}`;
 
-  // Enganchar los botones de marcar hecha por nivel
-  cont.querySelectorAll('.crc-buscar-marcar').forEach(btn => {
-    btn.onclick = () => marcarDesdeBuscador(btn.dataset.orden, btn.dataset.nivel, texto);
+  // Enganchar los botones de "marcar como lista"
+  cont.querySelectorAll('.crc-buscar-lista').forEach(btn => {
+    btn.onclick = () => marcarListaDesdeBuscador(btn.dataset.orden, texto);
   });
 }
 
-// Marca una instalación como hecha desde el buscador, con el nivel elegido.
-// Escribe los MISMOS campos que el mapa, para ser consistente.
-async function marcarDesdeBuscador(ordenId, nivel, textoBusqueda) {
+// Marca una instalación como LISTA (confirmada) desde el buscador.
+// Escribe los MISMOS campos que confirmarDesdeLista, para ser consistente.
+async function marcarListaDesdeBuscador(ordenId, textoBusqueda) {
   const o = ordenes_.find(x => x.id === ordenId);
   if (!o) return;
-  const quien = LOGRO_LABEL[nivel] || nivel;
-  if (!confirm(`Marcar NC ${o.ncTitular} como hecha con ${quien}?`)) return;
+  if (!confirm(`Marcar NC ${o.ncTitular} como lista?`)) return;
   try {
-    const visitas = Array.isArray(o.visitas) ? o.visitas : [];
     await db.collection('caracterizacion_ordenes').doc(ordenId).update({
-      estado: 'por_confirmar', logranoEn: nivel, visitas,
-      hechaPor: session_.displayName, fechaHecha: firebase.firestore.Timestamp.now(),
+      estado: 'confirmada',
+      confirmadaPor: session_.displayName, fechaConfirmacion: firebase.firestore.Timestamp.now(),
     });
-    // Actualizar en memoria
-    o.estado = 'por_confirmar'; o.logranoEn = nivel; o.hechaPor = session_.displayName;
-    if (typeof toast === 'function') toast(`NC ${o.ncTitular} marcada (${quien})`, 'ok');
-    // Repintar los resultados de la búsqueda para reflejar el cambio
+    o.estado = 'confirmada'; o.confirmadaPor = session_.displayName;
+    if (typeof toast === 'function') toast('Orden marcada como lista', 'ok');
     buscarOrdenes(textoBusqueda);
   } catch (err) {
-    if (typeof toast === 'function') toast('Error al marcar: ' + err.message, 'error');
+    if (typeof toast === 'function') toast('Error: ' + err.message, 'error');
   }
 }
 
