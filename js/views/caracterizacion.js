@@ -337,10 +337,17 @@ async function buscarOrdenes(texto) {
   const norm = s => String(s ?? '').toLowerCase();
   const coincide = (...campos) => campos.some(c => norm(c).includes(q));
 
-  // Instalaciones que coinciden
+  // Instalaciones que coinciden — busca en titular Y en los suplentes
+  // (por su NC, nombre o medidor), para poder ubicar por el suplente usado.
   const inst = ordenes_.filter(o => {
     const t = o.titular || {};
-    return coincide(o.ncTitular, t.nombre, t.medidor);
+    const s1 = o.suplente1 || {};
+    const s2 = o.suplente2 || {};
+    return coincide(
+      o.ncTitular, t.nombre, t.medidor,
+      s1.nc, s1.nombre, s1.medidor,
+      s2.nc, s2.nombre, s2.medidor
+    );
   });
   // Retiros que coinciden
   const rets = retiros_.filter(r => coincide(r.nc, r.nombre, r.medidor));
@@ -373,7 +380,9 @@ async function buscarOrdenes(texto) {
           ${fila('Medidor', t.medidor)}
           ${fila('Dirección', t.direccion)}
           ${fila('Pareja', o.pareja)}
-          ${yaHecha && o.logranoEn ? fila('Se hizo con', LOGRO_LABEL[o.logranoEn] || o.logranoEn) : ''}
+          ${o.suplente1?.nc ? fila('Suplente 1', `NC ${o.suplente1.nc}${o.suplente1.nombre ? ' · ' + o.suplente1.nombre : ''}`) : ''}
+          ${o.suplente2?.nc ? fila('Suplente 2', `NC ${o.suplente2.nc}${o.suplente2.nombre ? ' · ' + o.suplente2.nombre : ''}`) : ''}
+          ${yaHecha && o.logranoEn ? fila('Se hizo con', `${LOGRO_LABEL[o.logranoEn] || o.logranoEn}${o[o.logranoEn]?.nc ? ' · NC ' + o[o.logranoEn].nc : ''}`) : ''}
           ${yaHecha && !o.logranoEn ? fila('Resultado', 'Sin lograr') : ''}
           ${yaHecha && o.hechaPor ? fila('Marcó', o.hechaPor) : ''}
         </div>
