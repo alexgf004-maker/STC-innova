@@ -483,9 +483,9 @@ function initMap() {
   L.control.zoom({ position: 'bottomright' }).addTo(map_);
 
   // Grupo para desplegar en abanico los puntos casi encimados (spiderfy).
-  // Radio muy pequeño: solo agrupa lo que de verdad se tapa; el resto se ve
-  // individual en su coordenada exacta. Al tocar un grupo, se abre en abanico.
-  if (typeof L.markerClusterGroup === 'function') {
+  // SOLO para el técnico: al admin/asistente le estorba para asignar zonas,
+  // así que a ellos se les muestran los puntos sueltos (sin agrupar).
+  if (role_ === 'tecnico' && typeof L.markerClusterGroup === 'function') {
     clusterGroup_ = L.markerClusterGroup({
       maxClusterRadius: 22,               // px — solo puntos que casi coinciden
       spiderfyOnMaxZoom: true,
