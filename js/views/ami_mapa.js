@@ -64,6 +64,7 @@ function esResiduoAMI(orden) {
 }
 
 let markers_ = [];
+let yaCentrado_ = false;   // si ya se centró el mapa en las órdenes (una vez)
 let markersContiguos_ = [];   // marcadores temporales de contiguos
 let contiguosData_ = null;     // caché del JSON de contiguos
 let contiguosIndex_ = null;    // índice NC -> posición
@@ -85,6 +86,7 @@ export async function init(container, session) {
   // Cancelar listener anterior si el módulo se reinicia
   if (unsubscribe_) { unsubscribe_(); unsubscribe_ = null; }
   if (map_) { map_.remove(); map_ = null; markers_ = []; markersContiguos_ = []; }
+  yaCentrado_ = false;
 
   // Cargar parejas activas y padrón ANTES de render/suscribir, para que
   // los selectores de pareja salgan con las cuadrillas reales.
@@ -345,6 +347,7 @@ function suscribirOrdenes() {
     }
 
     plotMarkers();
+    centrarEnOrdenes();
     updateStatChip();
   }, err => {
     console.error('[mapa] Error en listener:', err);
@@ -509,23 +512,32 @@ function initMap() {
   plotMarkers();
 
   // Ajustar bounds si hay órdenes con coordenadas válidas
-  if (markers_.length > 0) {
-    try {
-      const group = L.featureGroup(markers_);
-      const bounds = group.getBounds();
-      if (bounds.isValid()) {
-        map_.fitBounds(bounds.pad(0.1));
-      }
-    } catch(e) {
-      console.warn('[mapa] fitBounds error:', e);
-    }
-  }
+  centrarEnOrdenes();
 
   // Actualizar stat chip
   updateStatChip();
 
   // Geolocalización — mostrar posición actual
   iniciarGeolocalizacion();
+}
+
+// Centra el mapa en las órdenes. Se hace una sola vez (la primera con datos),
+// para que si los datos llegan DESPUÉS de crear el mapa (conexión lenta),
+// igual se centre cuando lleguen, en vez de quedar lejos en zoom 8.
+function centrarEnOrdenes() {
+  if (!map_ || yaCentrado_) return;
+  if (markers_.length > 0) {
+    try {
+      const group = L.featureGroup(markers_);
+      const bounds = group.getBounds();
+      if (bounds.isValid()) {
+        map_.fitBounds(bounds.pad(0.1));
+        yaCentrado_ = true;
+      }
+    } catch(e) {
+      console.warn('[mapa] fitBounds error:', e);
+    }
+  }
 }
 
 // ── Geolocalización ───────────────────────────────
@@ -584,6 +596,9 @@ function iniciarGeolocalizacion() {
 
 // ── Marcadores ────────────────────────────────────
 function plotMarkers() {
+  // Si el mapa aún no existe (el snapshot llegó antes de initMap), no hacer
+  // nada: initMap llamará a plotMarkers al terminar y dibujará lo que haya.
+  if (!map_) return;
   markers_.forEach(m => map_.removeLayer(m));
   markers_ = [];
 
