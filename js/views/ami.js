@@ -483,10 +483,26 @@ async function importarRuta(file) {
     const nuevos = registros.filter(r => !existentesPorNC.has(r.nc));
     const actualizar = registros.filter(r => existentesPorNC.has(r.nc));
 
-    if (!confirm(`Ruta con ${registros.length} órdenes:\n${nuevos.length} nuevas (se crean con fecha de hoy)\n${actualizar.length} ya existían (se actualizan sus datos)\n\n¿Continuar?`)) return;
+    // Preguntar para qué fecha es la ruta (permite cargar hoy una ruta del
+    // sábado sin que se marque como arrastrada). Por defecto: mañana.
+    const manana = new Date(); manana.setDate(manana.getDate() + 1);
+    const defFecha = `${manana.getFullYear()}-${String(manana.getMonth()+1).padStart(2,'0')}-${String(manana.getDate()).padStart(2,'0')}`;
+    const entrada = prompt(
+      `¿Para qué fecha es esta ruta? (AAAA-MM-DD)\n\nDéjalo en la fecha de mañana si la cargas por adelantado, o cámbiala al día que se trabajará. Las órdenes contarán como "ruta" de ese día.`,
+      defFecha
+    );
+    if (entrada === null) return; // canceló
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(entrada.trim());
+    if (!m) { toast('Fecha inválida. Usa el formato AAAA-MM-DD', 'error'); return; }
+    const fechaRutaDate = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), 6, 0, 0);
+    if (isNaN(fechaRutaDate)) { toast('Fecha inválida', 'error'); return; }
+
+    const etqFecha = fechaRutaDate.toLocaleDateString('es-SV', { weekday:'long', day:'numeric', month:'short' });
+    if (!confirm(`Ruta del ${etqFecha}\n\n${registros.length} órdenes:\n${nuevos.length} nuevas\n${actualizar.length} ya existían (se actualizan sus datos)\n\n¿Continuar?`)) return;
 
     toast('Cargando ruta…', 'ok');
     const ahora = firebase.firestore.Timestamp.now();
+    const fechaRutaTs = firebase.firestore.Timestamp.fromDate(fechaRutaDate);
 
     // Crear nuevas
     for (let i = 0; i < nuevos.length; i += 400) {
@@ -498,7 +514,7 @@ async function importarRuta(file) {
           direccion: r.direccion, ds: r.ds, medidor: r.medidor,
           latitud: r.latitud, longitud: r.longitud,
           pareja: null, estadoCampo: null,
-          fechaRuta: ahora, importadaEn: ahora,
+          fechaRuta: fechaRutaTs, importadaEn: ahora,
         });
       });
       await batch.commit();
