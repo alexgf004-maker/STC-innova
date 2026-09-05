@@ -709,7 +709,7 @@ function plotMarkers() {
     });
 
     const marker = L.marker([orden.latitud, orden.longitud], { icon });
-    marker.on('click', () => verOrden(orden.id));
+    marker.on('click', () => tocarPunto(orden.id));
     marker.addTo(map_);
     markers_.push(marker);
   });
@@ -743,6 +743,70 @@ function updateStatChip() {
 }
 
 // ── Panel inferior de detalle ─────────────────────
+// Al tocar una gota: si hay varias muy cerca (encimadas), mostrar una lista
+// para elegir cuál abrir. Si hay una sola, abrir su detalle directamente.
+function tocarPunto(id) {
+  const o = ordenes_.find(x => x.id === id);
+  if (!o || !map_) { verOrden(id); return; }
+
+  // Punto tocado en coordenadas de pantalla (pixeles)
+  const ptTocado = map_.latLngToContainerPoint([o.latitud, o.longitud]);
+  const RADIO_PX = 22;   // qué tan cerca cuenta como "encimada"
+
+  // Buscar todas las órdenes visibles cuyo pin esté dentro del radio
+  const cercanas = ordenes_.filter(x => {
+    if (!x.latitud || !x.longitud) return false;
+    if (x.estadoCampo === 'aprobada') return false;   // esas no se dibujan
+    const p = map_.latLngToContainerPoint([x.latitud, x.longitud]);
+    const dist = Math.hypot(p.x - ptTocado.x, p.y - ptTocado.y);
+    return dist <= RADIO_PX;
+  });
+
+  if (cercanas.length <= 1) { verOrden(id); return; }
+
+  // Varias encimadas: mostrar lista para elegir
+  mostrarSelectorEncimadas(cercanas);
+}
+
+// Lista de órdenes encimadas en el panel, para elegir cuál abrir.
+function mostrarSelectorEncimadas(lista) {
+  const panel   = document.getElementById('mapa-panel');
+  const content = document.getElementById('mapa-panel-content');
+  if (!panel || !content) { verOrden(lista[0].id); return; }
+
+  const estadoTxt = (x) => x._yaCambiada ? 'Ya cambiada'
+    : x.estadoCampo === 'hecha' ? 'Realizada'
+    : x.estadoCampo === 'visita' ? 'Visita'
+    : x.estadoCampo === 'ya_cambiado' ? 'Ya cambiado'
+    : x.estadoCampo === 'mal_ubicado' ? 'Mal ubicado'
+    : 'Pendiente';
+
+  content.innerHTML = `
+    <div style="padding:4px 4px 10px">
+      <div style="font-size:14px;font-weight:800;margin-bottom:2px">${lista.length} órdenes aquí</div>
+      <div style="font-size:11px;color:var(--text-4);margin-bottom:12px">Están muy juntas. Elige cuál quieres abrir.</div>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        ${lista.map(x => {
+          const col = PAREJA_COLORS[x.pareja] || '#6b7280';
+          return `
+          <button class="ami-encimada-item" data-id="${x.id}"
+            style="display:flex;align-items:center;gap:10px;width:100%;text-align:left;padding:10px 12px;border-radius:10px;border:1px solid var(--border);background:var(--glass);cursor:pointer;font-family:inherit">
+            <span style="width:10px;height:10px;border-radius:50%;background:${col};flex-shrink:0"></span>
+            <div style="flex:1;min-width:0">
+              <div style="font-size:13px;font-weight:700;color:var(--text-1)">NC ${x.nc || '—'}</div>
+              <div style="font-size:11px;color:var(--text-4)">${x.pareja || 'Sin asignar'} · ${estadoTxt(x)}</div>
+            </div>
+          </button>`;
+        }).join('')}
+      </div>
+    </div>`;
+  panel.classList.add('open');
+
+  content.querySelectorAll('.ami-encimada-item').forEach(btn => {
+    btn.onclick = () => verOrden(btn.dataset.id);
+  });
+}
+
 function verOrden(id) {
   const o = ordenes_.find(x => x.id === id);
   if (!o) return;
