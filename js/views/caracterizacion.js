@@ -30,10 +30,21 @@ let pestana_   = 'instalacion';   // 'instalacion' | 'retiro'
 // ── Carga del padrón (una vez, cacheado en memoria) ──
 async function cargarPadron() {
   if (padron_) return padron_;
-  const res = await fetch(PADRON_URL, { cache: 'force-cache' });
-  if (!res.ok) throw new Error('No se pudo leer el padrón base.');
-  padron_ = await res.json();
-  return padron_;
+  // Timeout: si el padrón no responde en 8s, no colgar todo el proceso.
+  // El padrón es un respaldo opcional; sin él se sigue con los datos del Excel.
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), 8000);
+  try {
+    const res = await fetch(PADRON_URL, { cache: 'force-cache', signal: ctrl.signal });
+    clearTimeout(t);
+    if (!res.ok) throw new Error('No se pudo leer el padrón base.');
+    padron_ = await res.json();
+    return padron_;
+  } catch (err) {
+    clearTimeout(t);
+    padron_ = padron_ || {};   // seguir sin padrón en vez de colgarse
+    return padron_;
+  }
 }
 
 // Busca un NC en el padrón y devuelve un punto listo para la orden
