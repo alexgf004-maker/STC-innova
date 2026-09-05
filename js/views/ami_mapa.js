@@ -783,8 +783,8 @@ function mostrarSelectorEncimadas(lista) {
 
   content.innerHTML = `
     <div style="padding:4px 4px 10px">
-      <div style="font-size:14px;font-weight:800;margin-bottom:2px">${lista.length} órdenes aquí</div>
-      <div style="font-size:11px;color:var(--text-4);margin-bottom:12px">Están muy juntas. Elige cuál quieres abrir.</div>
+      <div style="font-size:14px;font-weight:800;margin-bottom:2px;color:#f1f5f9">${lista.length} órdenes aquí</div>
+      <div style="font-size:11px;color:#94a3b8;margin-bottom:12px">Están muy juntas. Elige cuál quieres abrir.</div>
       <div style="display:flex;flex-direction:column;gap:8px">
         ${lista.map(x => {
           const col = PAREJA_COLORS[x.pareja] || '#6b7280';
@@ -793,8 +793,8 @@ function mostrarSelectorEncimadas(lista) {
             style="display:flex;align-items:center;gap:10px;width:100%;text-align:left;padding:10px 12px;border-radius:10px;border:1px solid var(--border);background:var(--glass);cursor:pointer;font-family:inherit">
             <span style="width:10px;height:10px;border-radius:50%;background:${col};flex-shrink:0"></span>
             <div style="flex:1;min-width:0">
-              <div style="font-size:13px;font-weight:700;color:var(--text-1)">NC ${x.nc || '—'}</div>
-              <div style="font-size:11px;color:var(--text-4)">${x.pareja || 'Sin asignar'} · ${estadoTxt(x)}</div>
+              <div style="font-size:13px;font-weight:700;color:#f1f5f9">NC ${x.nc || '—'}</div>
+              <div style="font-size:11px;color:#94a3b8">${x.pareja || 'Sin asignar'} · ${estadoTxt(x)}</div>
             </div>
           </button>`;
         }).join('')}
