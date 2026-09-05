@@ -519,6 +519,21 @@ function initMap() {
 
   // Geolocalización — mostrar posición actual
   iniciarGeolocalizacion();
+
+  // FIX del mapa vacío al entrar directo: si el contenedor aún no tiene su
+  // tamaño final cuando Leaflet se monta (común en la 1ª carga en móviles),
+  // el mapa renderiza vacío hasta que algo lo "refresca". Forzamos el
+  // recálculo varias veces en los primeros instantes para asegurarlo.
+  const refrescarMapa = () => {
+    if (!map_) return;
+    map_.invalidateSize(true);
+    centrarEnOrdenes();
+    plotMarkers();
+  };
+  requestAnimationFrame(refrescarMapa);
+  setTimeout(refrescarMapa, 150);
+  setTimeout(refrescarMapa, 400);
+  setTimeout(refrescarMapa, 900);
 }
 
 // Centra el mapa en las órdenes. Se hace una sola vez (la primera con datos),
