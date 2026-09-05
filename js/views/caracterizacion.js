@@ -1124,7 +1124,19 @@ function mapearColumnasRetiro(rows) {
 }
 
 function numeroONull(v) {
-  const n = parseFloat(String(v ?? '').trim());
+  if (v == null) return null;
+  // Si ya es número, usarlo directo
+  if (typeof v === 'number') return Number.isFinite(v) ? v : null;
+  let s = String(v).trim();
+  if (!s) return null;
+  // Aceptar coordenadas con coma decimal (13,64) además de punto (13.64).
+  // Si hay coma y punto (formato 1.234,56), el punto es de miles: se quita.
+  if (s.includes(',') && s.includes('.')) {
+    s = s.replace(/\./g, '').replace(',', '.');
+  } else if (s.includes(',')) {
+    s = s.replace(',', '.');
+  }
+  const n = parseFloat(s);
   return Number.isFinite(n) ? n : null;
 }
 
