@@ -237,6 +237,17 @@ function setTab(tab) {
         t = setTimeout(() => buscarHistorial(val), 350);
       };
     }
+    // Botones de confirmar (una y por pareja) — solo admin
+    cont.querySelectorAll('.ami-confirmar-una').forEach(b => {
+      b.onclick = () => confirmarOrdenes([b.dataset.id]);
+    });
+    cont.querySelectorAll('.ami-confirmar-pareja').forEach(b => {
+      b.onclick = () => {
+        const p = b.dataset.pareja;
+        const ids = ordenes_.filter(o => o.estadoCampo === 'hecha' && (o.pareja || 'Sin pareja') === p).map(o => o.id);
+        confirmarOrdenes(ids, p);
+      };
+    });
   }
   else {
     cont.innerHTML = renderPanel();
@@ -338,7 +349,7 @@ function renderPanel() {
 function renderOrdenes() {
   const buscador = esAdmin_ ? `
     <div style="margin-bottom:12px">
-      <input id="ami-buscar-hist" type="text" inputmode="numeric" placeholder="Buscar NC en el historial…"
+      <input id="ami-buscar-hist" type="text" inputmode="numeric" placeholder="Buscar NC (órdenes actuales e historial)…"
         style="width:100%;box-sizing:border-box;padding:11px 14px;border-radius:12px;border:1px solid var(--border);background:var(--glass);color:var(--text-1);font-size:13px;font-family:inherit;outline:none"/>
       <div style="font-size:11px;color:var(--text-4);margin-top:4px">Escribe un NC para ver qué se hizo. Deja vacío para ver las órdenes de la ruta.</div>
     </div>
@@ -350,7 +361,9 @@ function renderOrdenes() {
         'El listado de órdenes AMI se cargará más adelante. Cada orden se identificará por su NC (estos medidores no traen WO).');
     }
     const residuos = ordenes_.filter(esResiduo);
-    const resto = ordenes_.filter(o => !esResiduo(o));
+    // "Hechas, por confirmar": marcadas 'hecha' por el técnico, aún no aprobadas
+    const porConfirmar = ordenes_.filter(o => o.estadoCampo === 'hecha');
+    const resto = ordenes_.filter(o => !esResiduo(o) && o.estadoCampo !== 'hecha');
 
     const tarjeta = (o) => {
       const dias = diasArrastrada(o);
@@ -368,6 +381,19 @@ function renderOrdenes() {
         </div>`;
     };
 
+    // Tarjeta especial para "por confirmar": incluye botón Confirmar (admin)
+    const tarjetaConfirmar = (o) => `
+      <div class="orden-card" style="flex-direction:column;align-items:stretch;cursor:default;border-left:3px solid #22c55e">
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <div class="orden-wo" style="color:${ACCENT}">NC ${o.nc || '—'}</div>
+          ${o.cliente ? `<div class="orden-cliente" style="flex:1;min-width:120px">${o.cliente}</div>` : '<div style="flex:1"></div>'}
+          ${o.pareja ? `<span class="estado-badge muted">${o.pareja}</span>` : ''}
+          <span class="estado-badge ok">Realizada</span>
+        </div>
+        ${o.hechaPor ? `<div style="font-size:11px;color:var(--text-4);margin-top:4px">Marcó: ${o.hechaPor}</div>` : ''}
+        <button class="ami-confirmar-una" data-id="${o.id}" style="margin-top:8px;padding:8px;border-radius:10px;border:1px solid rgba(34,197,94,.4);background:rgba(34,197,94,.12);color:#22c55e;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">Confirmar</button>
+      </div>`;
+
     const seccion = (titulo, arr, color) => arr.length ? `
       <div style="display:flex;align-items:center;gap:8px;margin:14px 0 8px">
         <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:${color}">${titulo}</div>
@@ -376,11 +402,64 @@ function renderOrdenes() {
       </div>
       <div style="display:flex;flex-direction:column;gap:8px">${arr.map(tarjeta).join('')}</div>` : '';
 
-    return seccion('Arrastradas (rutas anteriores)', residuos, '#f59e0b')
+    // Sección "por confirmar" agrupada por pareja, con botón de confirmar en lote
+    let seccionPorConfirmar = '';
+    if (esAdmin_ && porConfirmar.length) {
+      const porPareja = {};
+      porConfirmar.forEach(o => { const p = o.pareja || 'Sin pareja'; (porPareja[p] = porPareja[p] || []).push(o); });
+      seccionPorConfirmar = `
+        <div style="display:flex;align-items:center;gap:8px;margin:14px 0 8px">
+          <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:#22c55e">Hechas, por confirmar</div>
+          <div style="flex:1;height:1px;background:var(--border)"></div>
+          <div style="font-size:11px;color:var(--text-4)">${porConfirmar.length}</div>
+        </div>`;
+      Object.keys(porPareja).sort().forEach(p => {
+        const arr = porPareja[p];
+        seccionPorConfirmar += `
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin:8px 0 6px">
+            <div style="font-size:12px;font-weight:700;color:var(--text-3)">${p} · ${arr.length}</div>
+            <button class="ami-confirmar-pareja" data-pareja="${p}" style="padding:6px 12px;border-radius:8px;border:1px solid rgba(34,197,94,.4);background:rgba(34,197,94,.12);color:#22c55e;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit">Confirmar todas</button>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:8px">${arr.map(tarjetaConfirmar).join('')}</div>`;
+      });
+    }
+
+    return seccionPorConfirmar
+         + seccion('Arrastradas (rutas anteriores)', residuos, '#f59e0b')
          + seccion('Ruta actual', resto, ACCENT);
   };
 
   return buscador + `<div id="ami-lista-ordenes">${listaOrdenes()}</div>`;
+}
+
+// Confirmar (aprobar) órdenes hechas — una o varias en lote. Solo admin.
+async function confirmarOrdenes(ids, etiquetaPareja) {
+  if (!ids || !ids.length) { toast('No hay órdenes por confirmar', 'warn'); return; }
+  const msg = ids.length === 1
+    ? '¿Confirmar esta orden como aprobada?'
+    : `¿Confirmar ${ids.length} órdenes${etiquetaPareja ? ' de ' + etiquetaPareja : ''}?`;
+  if (!confirm(msg)) return;
+  try {
+    const ahora = firebase.firestore.Timestamp.now();
+    for (let i = 0; i < ids.length; i += 400) {
+      const batch = db.batch();
+      ids.slice(i, i + 400).forEach(id => {
+        batch.update(db.collection(COLECCION).doc(id), {
+          estadoCampo: 'aprobada',
+          aprobadoPor: session_.displayName,
+          fechaAprobacion: ahora,
+        });
+      });
+      await batch.commit();
+    }
+    // Actualizar en memoria
+    ids.forEach(id => { const o = ordenes_.find(x => x.id === id); if (o) o.estadoCampo = 'aprobada'; });
+    toast(ids.length === 1 ? 'Orden confirmada' : `${ids.length} órdenes confirmadas`, 'ok');
+    setTab('ordenes');   // repintar
+    window.dispatchEvent(new CustomEvent('ami:updated'));
+  } catch (err) {
+    toast('Error al confirmar: ' + err.message, 'error');
+  }
 }
 
 // Busca en el historial (ami_historial) por NC y pinta los resultados.
@@ -391,7 +470,6 @@ async function buscarHistorial(nc) {
   nc = String(nc || '').trim();
 
   if (!nc) {
-    // Sin búsqueda: mostrar la lista de órdenes, ocultar resultados
     cont.innerHTML = '';
     if (lista) lista.style.display = '';
     return;
@@ -399,35 +477,87 @@ async function buscarHistorial(nc) {
   if (lista) lista.style.display = 'none';
   cont.innerHTML = `<div style="text-align:center;padding:20px;color:var(--text-4);font-size:12px">Buscando…</div>`;
 
+  const fmt = (ts) => { const d = ts?.toDate ? ts.toDate() : (ts ? new Date(ts) : null); return d ? d.toLocaleString('es-SV', {day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}) : ''; };
+  const fila = (etq, val) => val ? `<div style="display:flex;justify-content:space-between;gap:12px;font-size:12px;margin-bottom:3px"><span style="color:var(--text-4)">${etq}</span><span style="color:var(--text-2);text-align:right">${val}</span></div>` : '';
+  const estadoTxt = (o) => o.estadoCampo === 'aprobada' ? 'Aprobada'
+    : o.estadoCampo === 'hecha' ? 'Realizada'
+    : o.estadoCampo === 'visita' ? 'Visita'
+    : o.estadoCampo === 'ya_cambiado' ? 'Ya cambiado'
+    : o.estadoCampo === 'mal_ubicado' ? 'Mal ubicado'
+    : 'Pendiente';
+
+  let html = '';
+
+  // 1) Órdenes ACTUALES con ese NC (búsqueda parcial por si escribe de más/menos)
   try {
-    const snap = await db.collection('ami_historial').where('nc', '==', nc).get();
-    if (snap.empty) {
-      cont.innerHTML = `<div style="text-align:center;padding:24px;color:var(--text-4);font-size:13px">Sin registros para NC ${nc}</div>`;
-      return;
+    const snapO = await db.collection(COLECCION).get();
+    const actuales = snapO.docs.map(d => ({ id: d.id, ...d.data() }))
+      .filter(o => String(o.nc ?? '').includes(nc));
+    if (actuales.length) {
+      html += `
+        <div style="display:flex;align-items:center;gap:8px;margin:4px 0 10px">
+          <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:${ACCENT}">Órdenes actuales</div>
+          <div style="flex:1;height:1px;background:var(--border)"></div>
+          <div style="font-size:11px;color:var(--text-4)">${actuales.length}</div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          ${actuales.map(o => {
+            const cuadrilla = Array.isArray(o.parejaDelDia) && o.parejaDelDia.length ? o.parejaDelDia.join(', ') : '';
+            const hecha = o.estadoCampo === 'hecha';
+            return `
+            <div class="orden-card" style="flex-direction:column;align-items:stretch;cursor:default;border-left:3px solid ${o.estadoCampo === 'aprobada' || o.estadoCampo === 'hecha' ? '#22c55e' : ACCENT}">
+              <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:4px">
+                <div class="orden-wo" style="color:${ACCENT}">NC ${o.nc || '—'}</div>
+                <div style="flex:1"></div>
+                <span class="estado-badge ${o.estadoCampo === 'aprobada' || o.estadoCampo === 'hecha' ? 'ok' : 'muted'}">${estadoTxt(o)}</span>
+              </div>
+              <div style="background:var(--glass);border-radius:8px;padding:8px 10px">
+                ${fila('Cliente', o.cliente)}
+                ${fila('Medidor', o.medidor)}
+                ${fila('Pareja', o.pareja)}
+                ${fila('Marcó', o.hechaPor)}
+                ${cuadrilla ? fila('Cuadrilla', cuadrilla) : ''}
+                ${fila('Cuándo', fmt(o.fechaHecha))}
+                ${o.estadoCampo === 'aprobada' ? fila('Confirmó', `${o.aprobadoPor || ''}${o.fechaAprobacion ? ' · ' + fmt(o.fechaAprobacion) : ''}`) : ''}
+              </div>
+              ${hecha ? `<button class="ami-buscar-confirmar" data-id="${o.id}" style="margin-top:8px;padding:8px;border-radius:10px;border:1px solid rgba(34,197,94,.4);background:rgba(34,197,94,.12);color:#22c55e;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">Confirmar</button>` : ''}
+            </div>`;
+          }).join('')}
+        </div>`;
     }
-    const regs = snap.docs.map(d => d.data())
-      .sort((a,b) => String(b.fecha||'').localeCompare(String(a.fecha||'')));
-    const fila = (etq, val) => val ? `<div style="display:flex;justify-content:space-between;gap:12px;font-size:12px;margin-bottom:3px"><span style="color:var(--text-4)">${etq}</span><span style="color:var(--text-2);text-align:right">${val}</span></div>` : '';
-    cont.innerHTML = `
-      <div style="display:flex;align-items:center;gap:8px;margin:4px 0 10px">
-        <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:#16a34a">Historial NC ${nc}</div>
-        <div style="flex:1;height:1px;background:var(--border)"></div>
-        <div style="font-size:11px;color:var(--text-4)">${regs.length}</div>
-      </div>
-      <div style="display:flex;flex-direction:column;gap:8px">
-        ${regs.map(r => `
-          <div class="orden-card" style="flex-direction:column;align-items:stretch;cursor:default;border-left:3px solid #16a34a">
-            <div style="background:var(--glass);border-radius:8px;padding:8px 10px">
-              ${fila('Trabajo', r.trabajo)}
-              ${fila('Medidor nuevo', r.medidorNuevo)}
-              ${fila('Pareja', r.pareja)}
-              ${fila('Fecha', r.fecha)}
-            </div>
-          </div>`).join('')}
-      </div>`;
-  } catch (err) {
-    cont.innerHTML = `<div style="text-align:center;padding:20px;color:#ef4444;font-size:12px">Error al buscar: ${err.message}</div>`;
-  }
+  } catch (e) { /* seguimos con historial */ }
+
+  // 2) Historial (trabajos hechos antes)
+  try {
+    const snapH = await db.collection('ami_historial').where('nc', '==', nc).get();
+    if (!snapH.empty) {
+      const regs = snapH.docs.map(d => d.data()).sort((a,b) => String(b.fecha||'').localeCompare(String(a.fecha||'')));
+      html += `
+        <div style="display:flex;align-items:center;gap:8px;margin:14px 0 10px">
+          <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:#16a34a">Historial</div>
+          <div style="flex:1;height:1px;background:var(--border)"></div>
+          <div style="font-size:11px;color:var(--text-4)">${regs.length}</div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          ${regs.map(r => `
+            <div class="orden-card" style="flex-direction:column;align-items:stretch;cursor:default;border-left:3px solid #16a34a">
+              <div style="background:var(--glass);border-radius:8px;padding:8px 10px">
+                ${fila('Trabajo', r.trabajo)}
+                ${fila('Medidor nuevo', r.medidorNuevo)}
+                ${fila('Pareja', r.pareja)}
+                ${fila('Fecha', r.fecha)}
+              </div>
+            </div>`).join('')}
+        </div>`;
+    }
+  } catch (e) { /* nada */ }
+
+  cont.innerHTML = html || `<div style="text-align:center;padding:24px;color:var(--text-4);font-size:13px">Sin resultados para NC ${nc}</div>`;
+
+  // Enganchar botones confirmar de los resultados
+  cont.querySelectorAll('.ami-buscar-confirmar').forEach(b => {
+    b.onclick = () => confirmarOrdenes([b.dataset.id]);
+  });
 }
 
 // ── Importar ruta diaria (Excel) ──────────────────
