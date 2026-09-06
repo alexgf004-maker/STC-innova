@@ -157,6 +157,12 @@ function renderShell(container) {
             <circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/>
           </svg>
         </button>
+        ${isTecnico ? `
+        <button class="mapa-btn-icon" id="btn-buscar-medidor" title="Buscar por medidor" style="border-color:rgba(139,92,246,.4);color:#a78bfa">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
+            <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+          </svg>
+        </button>` : ''}
         ${role_ === 'tecnico' ? `
         <button class="mapa-btn-icon" id="btn-reset-norte" title="Volver al norte" style="display:none">
           <svg id="brujula-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
@@ -164,6 +170,17 @@ function renderShell(container) {
           </svg>
         </button>` : ''}
       </div>
+
+      ${isTecnico ? `
+      <!-- Buscador por número de medidor (oculto hasta tocar la lupa) -->
+      <div id="buscar-medidor-box" style="display:none;position:absolute;top:64px;left:12px;right:12px;z-index:1000;background:rgba(13,17,23,.96);border:1px solid rgba(139,92,246,.4);border-radius:12px;padding:10px">
+        <div style="display:flex;gap:8px;align-items:center">
+          <input id="input-buscar-medidor" type="text" inputmode="numeric" placeholder="Número de medidor (antes del guion)"
+            style="flex:1;padding:9px 12px;border-radius:9px;border:1px solid var(--border);background:var(--glass);color:#f1f5f9;font-size:13px;font-family:inherit;outline:none"/>
+          <button id="btn-cerrar-buscar-medidor" style="padding:9px 12px;border-radius:9px;border:1px solid var(--border);background:var(--glass);color:#94a3b8;font-size:12px;cursor:pointer;font-family:inherit">Cerrar</button>
+        </div>
+        <div id="resultado-buscar-medidor" style="margin-top:8px"></div>
+      </div>` : ''}
 
       ${isTecnico ? `
       <!-- Botón flotante generar orden -->
@@ -270,6 +287,25 @@ function renderShell(container) {
       toast('Obteniendo ubicación…', 'ok');
     }
   });
+  // Buscador por número de medidor (técnico)
+  document.getElementById('btn-buscar-medidor')?.addEventListener('click', () => {
+    const box = document.getElementById('buscar-medidor-box');
+    if (!box) return;
+    const visible = box.style.display !== 'none';
+    box.style.display = visible ? 'none' : 'block';
+    if (!visible) document.getElementById('input-buscar-medidor')?.focus();
+  });
+  document.getElementById('btn-cerrar-buscar-medidor')?.addEventListener('click', () => {
+    const box = document.getElementById('buscar-medidor-box');
+    if (box) box.style.display = 'none';
+  });
+  {
+    const inpMed = document.getElementById('input-buscar-medidor');
+    if (inpMed) {
+      let tm = null;
+      inpMed.oninput = () => { clearTimeout(tm); const v = inpMed.value; tm = setTimeout(() => buscarPorMedidor(v), 400); };
+    }
+  }
   // Cerrar panel al tocar fuera
   document.getElementById('mapa-panel')?.addEventListener('click', e => {
     if (e.target === document.getElementById('mapa-panel')) closePanel();
@@ -307,7 +343,7 @@ function renderShell(container) {
     });
   });
 
-  window.__mapa = { verOrden, marcarHecha, marcarVisita, abrirGoogleMaps, confirmarRealizada, confirmarVisita, asignarIndividual, confirmarIndividual, confirmarZona, cancelarZona, abrirYaCambiado, abrirPedirAyuda, abrirGenerarOrden, buscarContiguos, limpiarContiguos };
+  window.__mapa = { verOrden, marcarHecha, marcarVisita, abrirGoogleMaps, confirmarRealizada, confirmarVisita, asignarIndividual, confirmarIndividual, confirmarZona, cancelarZona, abrirYaCambiado, abrirPedirAyuda, abrirGenerarOrden, buscarContiguos, limpiarContiguos, confirmarOrden };
 
   // onSnapshot ya maneja actualizaciones en tiempo real
   // Este listener es fallback para cambios desde cambios.js
@@ -807,6 +843,72 @@ function mostrarSelectorEncimadas(lista) {
   });
 }
 
+// Buscar por número de medidor en TODA la campaña AMI (técnico).
+// El medidor viene como "1261964-EM-10 (120V)": el número es lo de antes
+// del primer guion. Dice si es del técnico, de otra pareja, ya cambiado, o no está.
+let todasAmiCache_ = null;
+async function buscarPorMedidor(texto) {
+  const cont = document.getElementById('resultado-buscar-medidor');
+  if (!cont) return;
+  const q = String(texto || '').trim();
+  if (!q) { cont.innerHTML = ''; return; }
+
+  cont.innerHTML = `<div style="padding:10px;color:#94a3b8;font-size:12px;text-align:center">Buscando…</div>`;
+
+  // Cargar todas las órdenes de AMI una vez (cache en memoria por sesión de mapa)
+  try {
+    if (!todasAmiCache_) {
+      const snap = await db.collection('ami_ordenes').get();
+      todasAmiCache_ = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    }
+  } catch (e) {
+    cont.innerHTML = `<div style="padding:10px;color:#f87171;font-size:12px">Error al consultar. Intenta de nuevo.</div>`;
+    return;
+  }
+
+  const numDe = (med) => String(med ?? '').split('-')[0].trim();
+  const coincidencias = todasAmiCache_.filter(o => numDe(o.medidor) === q);
+
+  if (!coincidencias.length) {
+    cont.innerHTML = `<div style="padding:12px;background:var(--glass);border-radius:9px;font-size:12px;color:#94a3b8">Medidor <b style="color:#f1f5f9">${q}</b> no está en tu campaña AMI (según lo cargado).</div>`;
+    return;
+  }
+
+  const miPareja = session_.asignacionActual?.destino || null;
+  cont.innerHTML = coincidencias.map(o => {
+    const yaCambiada = padronCambiados_.has(String(o.nc ?? '').trim());
+    let estado, color, accion = '';
+    if (yaCambiada) {
+      estado = 'Ya está cambiado'; color = '#16a34a';
+    } else if (!o.pareja) {
+      estado = 'Sin asignar aún'; color = '#94a3b8';
+    } else if (o.pareja === miPareja) {
+      estado = 'Es tuyo — lo llevas'; color = '#22c55e';
+      accion = `<button class="btn-ir-medidor" data-id="${o.id}" style="margin-top:8px;width:100%;padding:8px;border-radius:9px;border:1px solid rgba(34,197,94,.4);background:rgba(34,197,94,.14);color:#22c55e;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">Ver en el mapa</button>`;
+    } else {
+      estado = `Lo lleva ${o.pareja}`; color = '#fbbf24';
+    }
+    return `
+      <div style="padding:12px;background:var(--glass);border:1px solid ${color}55;border-radius:9px">
+        <div style="font-size:13px;font-weight:800;color:#f1f5f9">NC ${o.nc || '—'}</div>
+        <div style="font-size:11px;color:#94a3b8;margin:2px 0 6px">Medidor ${o.medidor || '—'}</div>
+        <div style="font-size:12px;font-weight:700;color:${color}">${estado}</div>
+        ${accion}
+      </div>`;
+  }).join('');
+
+  cont.querySelectorAll('.btn-ir-medidor').forEach(b => {
+    b.onclick = () => {
+      const o = coincidencias.find(x => x.id === b.dataset.id);
+      if (o && o.latitud && o.longitud) {
+        document.getElementById('buscar-medidor-box').style.display = 'none';
+        map_.setView([o.latitud, o.longitud], 19);
+        verOrden(o.id);
+      }
+    };
+  });
+}
+
 function verOrden(id) {
   const o = ordenes_.find(x => x.id === id);
   if (!o) return;
@@ -884,6 +986,11 @@ function verOrden(id) {
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M17 3a2.828 2.828 0 114 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>
           Asignar pareja
         </button>` : ''}
+      ${!isTecnico && o.estadoCampo === 'hecha' ? `
+        <button class="btn-action" style="background:rgba(34,197,94,.15);border:1px solid rgba(34,197,94,.4);color:#22c55e" onclick="window.__mapa.confirmarOrden('${o.id}')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><polyline points="20 6 9 17 4 12"/></svg>
+          Confirmar
+        </button>` : ''}
       ${isTecnico && !o.estadoCampo ? `
         <button class="icon-btn" title="Registrar visita" onclick="window.__mapa.marcarVisita('${o.id}')">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
@@ -899,6 +1006,28 @@ function verOrden(id) {
   `;
 
   panel.classList.add('open');
+}
+
+// Confirmar (aprobar) una orden hecha — solo admin/asistente.
+async function confirmarOrden(id) {
+  const o = ordenes_.find(x => x.id === id);
+  if (!o) return;
+  if (!confirm(`Confirmar NC ${o.nc} como aprobada?`)) return;
+  try {
+    await db.collection('ami_ordenes').doc(id).update({
+      estadoCampo: 'aprobada',
+      aprobadoPor: session_.displayName,
+      fechaAprobacion: firebase.firestore.Timestamp.now(),
+    });
+    o.estadoCampo = 'aprobada';
+    if (typeof toast === 'function') toast('Orden confirmada', 'ok');
+    closePanel();
+    plotMarkers();
+    updateStatChip();
+    window.dispatchEvent(new CustomEvent('ami:updated'));
+  } catch (err) {
+    if (typeof toast === 'function') toast('Error al confirmar: ' + err.message, 'error');
+  }
 }
 
 function closePanel() {
