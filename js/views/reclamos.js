@@ -200,7 +200,7 @@ function abrirNueva() {
     <div style="font-size:16px;font-weight:800;margin-bottom:16px">Registrar orden</div>
     ${campo('rc-nc', 'NC', 'Número de cliente')}
     ${campo('rc-wo', 'WO', 'Número de orden')}
-    ${campo('rc-cliente', 'Cliente', 'Nombre del cliente')}
+    ${campo('rc-cliente', 'Cliente', 'Nombre del cliente', true)}
     <div style="margin-bottom:12px">
       <div style="font-size:12px;font-weight:600;color:var(--text-3);margin-bottom:6px">Concepto</div>
       <select id="rc-concept" style="width:100%;padding:12px;border-radius:12px;border:1px solid var(--border);background:var(--glass);color:var(--text-2);font-size:14px;font-family:inherit;outline:none">
@@ -265,7 +265,6 @@ async function guardar() {
   const falta = [];
   if (!nc) falta.push('NC');
   if (!wo) falta.push('WO');
-  if (!cliente) falta.push('Cliente');
   if (!concept) falta.push('Concepto');
   if (concept === 'Otro') {
     const otro = val('#rc-otro');
@@ -426,18 +425,27 @@ async function manejarHistorico(file) {
     const cols = mapearColsHist(rows);
     if (!cols.wo) throw new Error('No encontré la columna WO.');
 
-    // WO ya existentes en la app (para no duplicar)
-    const woExistentes = new Set(registros_.map(r => String(r.wo ?? '').trim()));
+    // Mapas de órdenes existentes: por WO y por NC, para cruzar y completar.
+    // Cruce: primero por WO; si no hay match, por NC. El archivo manda (sobrescribe).
+    const porWO = new Map();
+    const porNC = new Map();
+    registros_.forEach(r => {
+      const w = String(r.wo ?? '').trim();
+      const n = String(r.nc ?? '').trim();
+      if (w) porWO.set(w, r);
+      if (n && !porNC.has(n)) porNC.set(n, r);
+    });
 
-    const nuevos = [];
+    const nuevos = [];        // órdenes a crear
+    const actualizar = [];    // órdenes existentes a completar/sobrescribir { id, datos }
     const sinTecnico = new Set();
-    let duplicados = 0, sinWO = 0;
+    let sinWO = 0;
     const woEnArchivo = new Set();
 
     for (const r of rows) {
       const wo = String(r[cols.wo] ?? '').trim();
       if (!wo) { sinWO++; continue; }
-      if (woExistentes.has(wo) || woEnArchivo.has(wo)) { duplicados++; continue; }
+      if (woEnArchivo.has(wo)) continue;   // evitar duplicados dentro del mismo archivo
       woEnArchivo.add(wo);
 
       const respNombre = cols.resp ? String(r[cols.resp] ?? '').trim() : '';
@@ -445,30 +453,34 @@ async function manejarHistorico(file) {
       if (respNombre && !u) sinTecnico.add(respNombre);
 
       const fecha = cols.fecha ? fechaDeExcel(r[cols.fecha]) : null;
-
-      // Censo de carga: la col J (segunda WO) trae el WO del censo; la col I
-      // ("Orden extra") suele decir "censo de carga". Si hay WO en J, hubo censo.
       const censoWo = cols.censoWo ? String(r[cols.censoWo] ?? '').trim() : '';
       const ordenExtra = cols.ordenExtra ? String(r[cols.ordenExtra] ?? '').trim() : '';
       const censoCarga = !!censoWo || /censo/i.test(ordenExtra);
+      const nc = cols.nc ? String(r[cols.nc] ?? '').trim() : '';
 
-      nuevos.push({
-        nc:      cols.nc ? String(r[cols.nc] ?? '').trim() : '',
-        wo,
+      const datos = {
+        nc, wo,
         cliente: cols.cliente ? String(r[cols.cliente] ?? '').trim() : '',
         concept: cols.concept ? String(r[cols.concept] ?? '').trim() : '',
         detalle: cols.detalle ? String(r[cols.detalle] ?? '').trim() : '',
         serie:   cols.serie ? String(r[cols.serie] ?? '').trim() : '',
         censoCarga, censoWo,
-        // El técnico: uid si cruzó; el nombre del Excel SIEMPRE se guarda
         tecnicoUid: u ? u.uid : null,
         tecnicoNombre: u ? u.displayName : (respNombre || 'Sin técnico'),
         fecha: fecha ? firebase.firestore.Timestamp.fromDate(fecha) : firebase.firestore.Timestamp.now(),
         importado: true,
-      });
+      };
+
+      // Cruce: ¿ya existe? primero por WO, luego por NC
+      const existente = porWO.get(wo) || (nc ? porNC.get(nc) : null);
+      if (existente) {
+        actualizar.push({ id: existente.id, datos });
+      } else {
+        nuevos.push(datos);
+      }
     }
 
-    previsualizarHistorico(nuevos, { duplicados, sinWO, sinTecnico: [...sinTecnico] });
+    previsualizarHistorico(nuevos, { actualizar, sinWO, sinTecnico: [...sinTecnico] });
   } catch (err) {
     est.innerHTML = `<div style="background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.3);border-radius:10px;padding:14px;font-size:12px;color:#f87171">${err.message}</div>`;
   } finally {
@@ -479,8 +491,11 @@ async function manejarHistorico(file) {
 
 function previsualizarHistorico(nuevos, info) {
   const est = container_.querySelector('#rc-estado');
-  if (!nuevos.length) {
-    est.innerHTML = `<div style="background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.3);border-radius:10px;padding:14px;font-size:12px;color:#fbbf24">No hay órdenes nuevas que cargar${info.duplicados ? ` · ${info.duplicados} ya existían` : ''}.</div>`;
+  const actualizar = info.actualizar || [];
+  const totalAcciones = nuevos.length + actualizar.length;
+
+  if (!totalAcciones) {
+    est.innerHTML = `<div style="background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.3);border-radius:10px;padding:14px;font-size:12px;color:#fbbf24">No hay órdenes que cargar ni completar.</div>`;
     return;
   }
   const conTec = nuevos.filter(n => n.tecnicoUid).length;
@@ -489,17 +504,18 @@ function previsualizarHistorico(nuevos, info) {
 
   est.innerHTML = `
     <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:12px">
-      <div style="font-size:15px;font-weight:800;margin-bottom:10px">${nuevos.length} órdenes a cargar</div>
+      <div style="font-size:15px;font-weight:800;margin-bottom:10px">${totalAcciones} órdenes en el archivo</div>
       <div class="flex-col gap-4" style="font-size:12px">
-        <div style="display:flex;justify-content:space-between"><span style="color:var(--text-3)">Técnico enlazado a un usuario</span><span style="font-weight:700;color:#22c55e">${conTec}</span></div>
-        <div style="display:flex;justify-content:space-between"><span style="color:var(--text-3)">Solo con nombre (sin enlazar)</span><span style="font-weight:700;color:${sinCruce?'#fbbf24':'var(--text-4)'}">${sinCruce}</span></div>
-        <div style="display:flex;justify-content:space-between"><span style="color:var(--text-3)">Con censo de carga</span><span style="font-weight:700;color:${conCenso?'#34d399':'var(--text-4)'}">${conCenso}</span></div>
-        ${info.duplicados ? `<div style="display:flex;justify-content:space-between"><span style="color:var(--text-3)">WO ya existentes (omitidos)</span><span style="font-weight:700;color:var(--text-4)">${info.duplicados}</span></div>` : ''}
+        <div style="display:flex;justify-content:space-between"><span style="color:var(--text-3)">Nuevas a crear</span><span style="font-weight:700;color:#22c55e">${nuevos.length}</span></div>
+        <div style="display:flex;justify-content:space-between"><span style="color:var(--text-3)">Existentes a completar (el archivo manda)</span><span style="font-weight:700;color:${actualizar.length?'#38bdf8':'var(--text-4)'}">${actualizar.length}</span></div>
+        <div style="display:flex;justify-content:space-between"><span style="color:var(--text-3)">Técnico enlazado (en nuevas)</span><span style="font-weight:700;color:#22c55e">${conTec}</span></div>
+        ${sinCruce ? `<div style="display:flex;justify-content:space-between"><span style="color:var(--text-3)">Solo con nombre (sin enlazar)</span><span style="font-weight:700;color:#fbbf24">${sinCruce}</span></div>` : ''}
+        ${conCenso ? `<div style="display:flex;justify-content:space-between"><span style="color:var(--text-3)">Con censo de carga</span><span style="font-weight:700;color:#34d399">${conCenso}</span></div>` : ''}
         ${info.sinWO ? `<div style="display:flex;justify-content:space-between"><span style="color:var(--text-3)">Filas sin WO (omitidas)</span><span style="font-weight:700;color:var(--text-4)">${info.sinWO}</span></div>` : ''}
       </div>
       ${info.sinTecnico.length ? `<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);font-size:10px;color:var(--text-4)">Nombres que no cruzaron con un usuario (se guardan como texto): ${info.sinTecnico.map(escapar).join(', ')}</div>` : ''}
     </div>
-    <button class="btn-primary full" id="rc-hist-confirmar" style="border-color:rgba(251,191,36,.4);color:#fbbf24;background:rgba(251,191,36,.1)"><span id="rc-hist-lbl">Cargar ${nuevos.length} órdenes</span></button>`;
+    <button class="btn-primary full" id="rc-hist-confirmar" style="border-color:rgba(251,191,36,.4);color:#fbbf24;background:rgba(251,191,36,.1)"><span id="rc-hist-lbl">Procesar ${totalAcciones} órdenes</span></button>`;
 
   est.querySelector('#rc-hist-confirmar').onclick = async (e) => {
     const btn = e.currentTarget;
@@ -507,15 +523,22 @@ function previsualizarHistorico(nuevos, info) {
     est.querySelector('#rc-hist-lbl').textContent = 'Guardando…';
     try {
       let batch = db.batch(), count = 0; const commits = [];
+      // Crear nuevas
       for (const o of nuevos) {
         const ref = db.collection('reclamos_siget').doc();
         batch.set(ref, o);
-        if (++count === 499) { commits.push(batch.commit()); batch = db.batch(); count = 0; }
+        if (++count === 450) { commits.push(batch.commit()); batch = db.batch(); count = 0; }
+      }
+      // Actualizar existentes (el archivo manda: sobrescribe con merge)
+      for (const it of actualizar) {
+        const ref = db.collection('reclamos_siget').doc(it.id);
+        batch.set(ref, it.datos, { merge: true });
+        if (++count === 450) { commits.push(batch.commit()); batch = db.batch(); count = 0; }
       }
       if (count > 0) commits.push(batch.commit());
       await Promise.all(commits);
       est.innerHTML = '';
-      toast(`${nuevos.length} órdenes cargadas`, 'ok');
+      toast(`${nuevos.length} creadas · ${actualizar.length} completadas`, 'ok');
       await cargar();
     } catch (err) {
       btn.disabled = false;
