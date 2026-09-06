@@ -562,13 +562,12 @@ function renderHomeTecnico(container, session, area, destino) {
   container.innerHTML = `
     <style>
       .dtec{padding:6px 2px 20px}
-      .dtec-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:26px}
-      .dtec-brand{font-size:18px;font-weight:700;letter-spacing:-.01em}
-      .dtec-brand span{color:var(--text-3);font-weight:400}
-      .dtec-who{display:flex;align-items:center;gap:10px}
-      .dtec-who .nm{font-size:12px;font-weight:600;line-height:1.3;text-align:right}
-      .dtec-who .nm span{color:${accentColor};font-size:11px;font-weight:500}
-      .dtec-who .av{width:38px;height:38px;border-radius:50%;background:#1f2a3d;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;color:var(--text-2)}
+      .dtec-camp{font-size:32px;font-weight:600;letter-spacing:-.02em;line-height:1;color:${accentColor};margin-bottom:4px}
+      .dtec-camp-sub{font-size:13px;color:var(--text-2);font-weight:400;margin-bottom:14px}
+      .dtec-crew-top{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:26px}
+      .dtec-crew-top .companero-chip{font-size:12px;font-weight:500;padding:8px 14px;border-radius:13px;background:var(--glass);color:var(--text-2)}
+      .dtec-crew-top .companero-chip.self{background:${accentGlass};color:${accentColor};font-weight:600}
+      .dtec-crew-top .companero-chip.muted{color:var(--text-3)}
       .dtec-hlbl{font-size:13px;color:var(--text-2);margin-bottom:11px;font-weight:400}
       .dtec-hnum{font-size:50px;font-weight:500;letter-spacing:-.02em;line-height:1}
       .dtec-hnum small{font-size:18px;font-weight:400;color:var(--text-3)}
@@ -608,12 +607,11 @@ function renderHomeTecnico(container, session, area, destino) {
 
     <div class="dtec anim-up">
 
-      <div class="dtec-top">
-        <div class="dtec-brand">INNOVA<span> STC</span></div>
-        <div class="dtec-who">
-          <div class="nm">${session.displayName}<br><span>${destino || area} · ${areaLabel}</span></div>
-          <div class="av">${iniciales(session.displayName)}</div>
-        </div>
+      <div class="dtec-camp">${area === 'CAMBIOS' ? 'Cambios' : area === 'Caracterizacion' ? 'Caracterización' : area}</div>
+      <div class="dtec-camp-sub">${destino || ''} · ${areaLabel}</div>
+      <div class="dtec-crew-top" id="companeros-row">
+        <div class="companero-chip self">${destino || ''}</div>
+        <div class="companero-chip muted">Cargando…</div>
       </div>
 
       <div class="dtec-hlbl">Avance de hoy · ${fechaLabel}</div>
@@ -660,12 +658,6 @@ function renderHomeTecnico(container, session, area, destino) {
       <div class="dtec-prog">
         <div class="ph"><span class="t">Progreso total de la pareja</span><span class="p" id="prog-total-bar-pct">—</span></div>
         <div class="bar"><i id="prog-total-bar"></i></div>
-      </div>
-
-      <div class="dtec-sec" style="font-size:14px">Tu cuadrilla</div>
-      <div class="dtec-crew" id="companeros-row">
-        <div class="companero-chip self">${destino || ''}</div>
-        <div class="companero-chip muted">Cargando…</div>
       </div>
 
     </div>
