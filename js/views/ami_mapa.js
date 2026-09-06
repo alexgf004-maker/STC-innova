@@ -937,10 +937,10 @@ function verOrden(id) {
   }
 
   content.innerHTML = `
-    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:12px">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:11px">
       <div style="flex:1;min-width:0">
-        <div style="font-size:22px;font-weight:800;color:#fff;letter-spacing:-.01em">NC ${o.nc || '—'}</div>
-        <div style="font-size:15px;font-weight:600;color:rgba(255,255,255,.92);margin-top:3px">${o.cliente || '—'}</div>
+        <div style="font-size:17px;font-weight:800;color:#fff;letter-spacing:-.01em">NC ${o.nc || '—'}</div>
+        <div style="font-size:13px;font-weight:500;color:rgba(255,255,255,.85);margin-top:2px">${o.cliente || '—'}</div>
       </div>
       <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0">
         ${o.pareja ? `<div class="pareja-chip" style="color:${c};border-color:${c}33;background:${c}15">${o.pareja}</div>` : ''}
@@ -952,30 +952,30 @@ function verOrden(id) {
       </div>
     </div>
 
-    <!-- Dirección destacada — grande y con alto contraste para leerla bajo el sol -->
+    <!-- Dirección — legible bajo el sol sin exagerar -->
     ${o.direccion ? `
-    <div style="display:flex;align-items:flex-start;gap:9px;background:rgba(255,255,255,.09);border:1px solid rgba(255,255,255,.14);border-radius:12px;padding:12px 13px;margin-bottom:12px">
-      <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18" style="flex-shrink:0;margin-top:1px"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>
-      <div style="font-size:15px;font-weight:600;color:#fff;line-height:1.4">${o.direccion}</div>
+    <div style="display:flex;align-items:flex-start;gap:8px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);border-radius:11px;padding:10px 12px;margin-bottom:11px">
+      <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" style="flex-shrink:0;margin-top:1px"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>
+      <div style="font-size:13px;font-weight:500;color:rgba(255,255,255,.95);line-height:1.4">${o.direccion}</div>
     </div>` : ''}
 
-    <!-- Info técnica — medidor y NC grandes y legibles -->
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
-      ${(o.medidor || o.serieActual || o.serie) ? `<div style="background:var(--glass);border:1px solid var(--border);border-radius:11px;padding:11px 12px;grid-column:1 / -1">
-        <div style="font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:rgba(255,255,255,.5);margin-bottom:4px">Medidor</div>
-        <div style="font-size:18px;font-weight:800;color:#c4b5fd;font-family:monospace">${o.medidor || o.serieActual || o.serie}</div>
+    <!-- Info técnica -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:14px">
+      ${(o.medidor || o.serieActual || o.serie) ? `<div style="background:var(--glass);border:1px solid var(--border);border-radius:10px;padding:9px 11px;grid-column:1 / -1">
+        <div style="font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:rgba(255,255,255,.45);margin-bottom:3px">Medidor</div>
+        <div style="font-size:15px;font-weight:700;color:#c4b5fd;font-family:monospace">${o.medidor || o.serieActual || o.serie}</div>
       </div>` : ''}
-      ${o.nc ? `<div style="background:var(--glass);border:1px solid var(--border);border-radius:11px;padding:11px 12px">
-        <div style="font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:rgba(255,255,255,.5);margin-bottom:4px">NC</div>
-        <div style="font-size:16px;font-weight:700;color:#fff">${o.nc}</div>
+      ${o.nc ? `<div style="background:var(--glass);border:1px solid var(--border);border-radius:10px;padding:9px 11px">
+        <div style="font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:rgba(255,255,255,.45);margin-bottom:3px">NC</div>
+        <div style="font-size:14px;font-weight:700;color:#fff">${o.nc}</div>
       </div>` : ''}
-      ${(o.ds || o.dsct) ? `<div style="background:var(--glass);border:1px solid var(--border);border-radius:11px;padding:11px 12px">
-        <div style="font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:rgba(255,255,255,.5);margin-bottom:4px">DS</div>
-        <div style="font-size:16px;font-weight:700;color:#fff">${o.ds || o.dsct}</div>
+      ${(o.ds || o.dsct) ? `<div style="background:var(--glass);border:1px solid var(--border);border-radius:10px;padding:9px 11px">
+        <div style="font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:rgba(255,255,255,.45);margin-bottom:3px">DS</div>
+        <div style="font-size:14px;font-weight:700;color:#fff">${o.ds || o.dsct}</div>
       </div>` : ''}
-      ${o.motivoVisita ? `<div style="background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.3);border-radius:11px;padding:11px 12px;grid-column:1 / -1">
-        <div style="font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:#fbbf24;margin-bottom:4px">Motivo visita</div>
-        <div style="font-size:14px;font-weight:600;color:#fff">${o.motivoVisita}${o.observacionVisita ? ' — ' + o.observacionVisita : ''}</div>
+      ${o.motivoVisita ? `<div style="background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.3);border-radius:10px;padding:9px 11px;grid-column:1 / -1">
+        <div style="font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:#fbbf24;margin-bottom:3px">Motivo visita</div>
+        <div style="font-size:13px;font-weight:500;color:#fff">${o.motivoVisita}${o.observacionVisita ? ' — ' + o.observacionVisita : ''}</div>
       </div>` : ''}
     </div>
 
