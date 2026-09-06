@@ -1072,6 +1072,7 @@ body {
   -webkit-tap-highlight-color: transparent;
 }
 .btn-action.cm      { color: var(--cm-light);    border-color: var(--cm-border);    background: var(--cm-glass); }
+.btn-action.am      { color: var(--am-light);    border-color: var(--am-border);    background: var(--am-glass); }
 .btn-action.outline { color: var(--text-2);       border-color: var(--border);       background: var(--glass); }
 .btn-action.warn    { color: var(--warn-light);   border-color: rgba(245,158,11,.3); background: rgba(245,158,11,.08); }
 .btn-action.danger  { color: var(--crit-light);   border-color: rgba(239,68,68,.3);  background: rgba(239,68,68,.08); }
