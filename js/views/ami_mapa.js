@@ -963,6 +963,20 @@ function verOrden(id) {
       ${o.motivoVisita ? `<div class="panel-detail-item full"><div class="panel-detail-key">Motivo visita</div><div class="panel-detail-val" style="color:#fbbf24">${o.motivoVisita}${o.observacionVisita ? ' — ' + o.observacionVisita : ''}</div></div>` : ''}
     </div>
 
+    ${(o.estadoCampo === 'hecha' || o.estadoCampo === 'aprobada') ? (() => {
+      const fmt = (ts) => { const d = ts?.toDate ? ts.toDate() : (ts ? new Date(ts) : null); return d ? d.toLocaleString('es-SV', {day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}) : ''; };
+      const pareja = Array.isArray(o.parejaDelDia) && o.parejaDelDia.length ? o.parejaDelDia.join(', ') : (o.pareja || '');
+      return `
+      <div style="margin-top:12px;padding:10px 12px;background:rgba(34,197,94,.08);border:1px solid rgba(34,197,94,.25);border-radius:10px">
+        <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:#22c55e;margin-bottom:6px">Trazabilidad</div>
+        ${o.hechaPor ? `<div style="display:flex;justify-content:space-between;gap:10px;font-size:12px;margin-bottom:3px"><span style="color:#94a3b8">Marcó</span><span style="color:#e2e8f0;text-align:right">${o.hechaPor}</span></div>` : ''}
+        ${pareja ? `<div style="display:flex;justify-content:space-between;gap:10px;font-size:12px;margin-bottom:3px"><span style="color:#94a3b8">Cuadrilla</span><span style="color:#e2e8f0;text-align:right">${pareja}</span></div>` : ''}
+        ${o.fechaHecha ? `<div style="display:flex;justify-content:space-between;gap:10px;font-size:12px;margin-bottom:3px"><span style="color:#94a3b8">Cuándo</span><span style="color:#e2e8f0;text-align:right">${fmt(o.fechaHecha)}</span></div>` : ''}
+        ${o.estadoCampo === 'aprobada' && o.aprobadoPor ? `<div style="display:flex;justify-content:space-between;gap:10px;font-size:12px;margin-bottom:3px"><span style="color:#94a3b8">Confirmó</span><span style="color:#22c55e;text-align:right">${o.aprobadoPor}${o.fechaAprobacion ? ' · ' + fmt(o.fechaAprobacion) : ''}</span></div>` : ''}
+        ${o.actualizadaDelsur === false ? `<div style="font-size:11px;color:#fbbf24;margin-top:4px">Pendiente actualizar en DELSUR</div>` : ''}
+      </div>`;
+    })() : ''}
+
     ${o.telefono ? `
     <div class="panel-orden-tel">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="13" height="13">
