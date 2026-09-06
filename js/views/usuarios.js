@@ -13,7 +13,7 @@ const DESTINOS = {
   CAMBIOS: ['Pareja 1', 'Pareja 2', 'Pareja 3', 'Pareja 4'],
   Caracterizacion: ['Pareja 1', 'Pareja 2', 'Pareja 3'],
   Reclamos: ['Pareja 1', 'Pareja 2'],
-  AMI: ['Pareja 1', 'Pareja 2', 'Pareja 3'],
+  AMI: ['Pareja 1', 'Pareja 2', 'Pareja 3', 'Pareja 4', 'Pareja 5', 'Pareja 6'],
   OTC:     ['NALVAR', 'RGONZA', 'JPEREZ'],
 };
 const ROLES = ['tecnico', 'asistente', 'admin'];
