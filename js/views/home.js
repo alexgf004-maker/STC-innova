@@ -106,7 +106,7 @@ function intentarPintarPendientes(intento){
 }
 
 const CAMP_LABEL_HOME = { CAMBIOS:'Cambio de Medidores', AMI:'AMI', Caracterizacion:'Caracterización', ReclamosSIGET:'Reclamos SIGET' };
-const CAMP_COLOR_HOME = { CAMBIOS:'#2dd4bf', AMI:'#a78bfa', Caracterizacion:'#ef4444', ReclamosSIGET:'#f472b6' };
+const CAMP_COLOR_HOME = { CAMBIOS:'#2dd4bf', AMI:'#fbbf24', Caracterizacion:'#a78bfa', ReclamosSIGET:'#f472b6' };
 
 function renderDespachosPendientesTecnico(cont) {
   document.getElementById('despachos-pend-tec')?.remove();
@@ -307,10 +307,10 @@ async function cargarDatosTecnico(session, area, destino) {
     if (destino) {
       const snap = await db.collection('users')
         .where('asignacionActual.destino', '==', destino)
+        .where('asignacionActual.area', '==', area)
         .where('active', '==', true).get();
       companeros = snap.docs
         .map(d => d.data())
-        .filter(u => u.asignacionActual?.area === area)
         .map(u => u.displayName)
         .filter(n => n !== session.displayName);
     }
@@ -341,6 +341,38 @@ async function cargarDatosTecnico(session, area, destino) {
       pendientes = ordenes.filter(o => !o.estadoCampo).length;
       pct        = total ? Math.round((aprobadas / total) * 100) : 0;
     }
+
+    // ── Meta del día ──────────────────────────────────
+    // Cambios: 15 fija · Caracterización: 7 fija · AMI: configurable (ami_config)
+    try {
+      const claveHoy = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; })();
+      const esDeHoy = (ts) => { const d = ts?.toDate ? ts.toDate() : (ts ? new Date(ts) : null); if (!d) return false; return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}` === claveHoy; };
+      let meta = 0, hechasHoy = 0;
+      if (area === 'CAMBIOS') {
+        meta = 15;
+        hechasHoy = ordenes.filter(o => (o.estadoCampo === 'hecha' || o.estadoCampo === 'aprobada') && esDeHoy(o.fechaHecha)).length;
+      } else if (area === 'Caracterizacion') {
+        meta = 7;
+        hechasHoy = ordenes.filter(o => o.estado === 'hecha' && esDeHoy(o.fechaHecha)).length;
+      } else if (area === 'AMI') {
+        try {
+          const cfg = await db.collection('ami_config').doc('metas').get();
+          const metas = cfg.exists ? (cfg.data().parejas || {}) : {};
+          meta = Number(metas[destino] || 0);
+        } catch(e) { meta = 0; }
+        hechasHoy = ordenes.filter(o => (o.estadoCampo === 'hecha' || o.estadoCampo === 'aprobada') && esDeHoy(o.fechaHecha)).length;
+      }
+      if (meta > 0) {
+        const metaCard = document.getElementById('meta-card');
+        if (metaCard) metaCard.style.display = '';
+        const pctMeta = Math.min(100, Math.round((hechasHoy / meta) * 100));
+        const setTxt = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+        setTxt('meta-frac', `${hechasHoy} / ${meta}`);
+        setTxt('meta-sub', hechasHoy >= meta ? 'Meta alcanzada' : `Faltan ${meta - hechasHoy} para la meta`);
+        const mbar = document.getElementById('meta-bar');
+        if (mbar) mbar.style.width = pctMeta + '%';
+      }
+    } catch(e) { /* si algo falla, la tarjeta de meta simplemente no se muestra */ }
 
     // Actualizar chips
     const setVal = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
@@ -506,6 +538,9 @@ function renderHomeTecnico(container, session, area, destino) {
   const accentColor = isCambios ? '#2dd4bf' : isCaract ? '#ef4444' : isAMI ? '#a78bfa' : '#60a5fa';
   const rgbAccent   = isCambios ? '13,148,136' : isCaract ? '239,68,68' : isAMI ? '139,92,246' : '37,99,235';
   const areaLabel   = CAMP_LABEL_HOME[area] || 'Órdenes de campo';
+  // Rutas de las vistas según el área (para los accesos rápidos)
+  const rutaOrdenes = isCaract ? 'caracterizacion' : isAMI ? 'ami' : 'cambios';
+  const rutaMapa    = isCaract ? 'caracterizacion_mapa' : isAMI ? 'ami_mapa' : 'mapa';
 
   const hoy = new Date().toLocaleDateString('es-SV', { weekday:'long', day:'numeric', month:'long' });
   const fechaLabel = hoy.charAt(0).toUpperCase() + hoy.slice(1);
@@ -536,6 +571,18 @@ function renderHomeTecnico(container, session, area, destino) {
         <div style="font-size:11px;color:var(--text-4);margin-top:6px" id="prog-total-sub">Cargando…</div>
       </div>
 
+      <!-- Meta del día -->
+      <div class="progress-card ${color} anim-up d1" id="meta-card" style="display:none">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+          <div style="font-size:13px;font-weight:700">Meta de hoy</div>
+          <div style="font-size:14px;font-weight:800;color:var(--${color}-light)" id="meta-frac">—</div>
+        </div>
+        <div class="progress-bar-bg">
+          <div class="progress-bar-fill ${color}" id="meta-bar" style="width:0%;transition:width .6s ease"></div>
+        </div>
+        <div style="font-size:11px;color:var(--text-4);margin-top:6px" id="meta-sub">Cargando…</div>
+      </div>
+
       <!-- Stats -->
       <div class="stat-row anim-up d2">
         <div class="stat-chip" style="border-color:rgba(245,158,11,.25);background:rgba(245,158,11,.06)">
@@ -555,7 +602,7 @@ function renderHomeTecnico(container, session, area, destino) {
       <!-- Accesos rápidos -->
       <div class="section-label anim-up d3">Accesos rápidos</div>
       <div class="quick-grid anim-up d3">
-        <div class="quick-card" onclick="window.__router.navigateTo('${isCaract ? 'caracterizacion' : 'cambios'}')">
+        <div class="quick-card" onclick="window.__router.navigateTo('${rutaOrdenes}')">
           <div class="qc-icon" style="background:rgba(${rgbAccent},.15)">
             <svg viewBox="0 0 24 24" fill="none" stroke="${accentColor}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/>
@@ -567,7 +614,7 @@ function renderHomeTecnico(container, session, area, destino) {
           <div class="qc-sub">Ver listado del día</div>
         </div>
 
-        <div class="quick-card" onclick="window.__router.navigateTo('${isCaract ? 'caracterizacion_mapa' : 'mapa'}')">
+        <div class="quick-card" onclick="window.__router.navigateTo('${rutaMapa}')">
           <div class="qc-icon" style="background:rgba(${rgbAccent},.15)">
             <svg viewBox="0 0 24 24" fill="none" stroke="${accentColor}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/>
