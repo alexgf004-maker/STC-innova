@@ -1728,3 +1728,69 @@ body {
 }
 .ayuda-opcion:active,
 .ayuda-opcion:hover { background: var(--glass-hov); border-color: var(--cm-light); }
+
+/* ═══════════════════════════════════════════════════════════════════
+   SISTEMA DE DISEÑO (ds-*) — estilo premium unificado
+   Clases reutilizables para migrar toda la app a un look coherente.
+   Usan los tokens ya existentes (--glass, --border, --text-*, colores
+   por área). Prefijo ds- para no chocar con clases actuales.
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* Contenedor de vista con aire */
+.ds-view { padding: 6px 2px 22px; }
+
+/* — Tipografía — números finos y elegantes, etiquetas tenues — */
+.ds-hero-num   { font-size: 50px; font-weight: 500; letter-spacing: -.02em; line-height: 1; }
+.ds-hero-num small { font-size: 18px; font-weight: 400; color: var(--text-3); }
+.ds-num-lg     { font-size: 34px; font-weight: 500; letter-spacing: -.02em; line-height: 1; }
+.ds-num-md     { font-size: 25px; font-weight: 500; letter-spacing: -.01em; line-height: 1; }
+.ds-lbl        { font-size: 13px; font-weight: 400; color: var(--text-2); }
+.ds-lbl-sm     { font-size: 10px; font-weight: 500; letter-spacing: .04em; text-transform: uppercase; color: var(--text-3); }
+.ds-sec        { font-size: 15px; font-weight: 600; letter-spacing: -.01em; color: var(--text); margin: 6px 0 13px; }
+.ds-title-area { font-size: 32px; font-weight: 600; letter-spacing: -.02em; line-height: 1; }
+
+/* — Tarjetas planas sobrias — */
+.ds-card { background: var(--glass); border: 1px solid var(--border); border-radius: 16px; padding: 15px; }
+.ds-card-lg { border-radius: 20px; padding: 20px; }
+
+/* — Tarjeta premium con degradado (una por vista, la protagonista) — */
+.ds-pcard { position: relative; overflow: hidden; border-radius: 22px; padding: 21px; }
+.ds-pcard::after { content:''; position:absolute; top:-45%; right:-12%; width:200px; height:200px; border-radius:50%; background:rgba(255,255,255,.07); }
+.ds-pcard > * { position: relative; }
+.ds-pcard.cm { background: linear-gradient(150deg,#2dd4bf 0%,#1a9e94 60%,#0f5f5a 100%); box-shadow: 0 16px 34px -14px rgba(45,212,191,.4); }
+.ds-pcard.cr { background: linear-gradient(150deg,#f87171 0%,#c2443f 60%,#7a2825 100%); box-shadow: 0 16px 34px -14px rgba(239,68,68,.4); }
+.ds-pcard.am { background: linear-gradient(150deg,#6d54c8 0%,#4f3a9e 60%,#332363 100%); box-shadow: 0 16px 34px -14px rgba(109,84,200,.5); }
+.ds-pcard.rc { background: linear-gradient(150deg,#fbbf24 0%,#d97706 60%,#92590a 100%); box-shadow: 0 16px 34px -14px rgba(251,191,36,.4); }
+.ds-pcard.otc{ background: linear-gradient(150deg,#5b8def 0%,#3f63b0 60%,#26386e 100%); box-shadow: 0 16px 34px -14px rgba(96,165,250,.4); }
+.ds-pcard-badge { font-size:11px; font-weight:500; background:rgba(255,255,255,.16); padding:4px 12px; border-radius:20px; }
+.ds-pcard-lbl { font-size:12px; color:rgba(255,255,255,.65); }
+.ds-pcard-foot { font-size:11px; color:rgba(255,255,255,.7); }
+
+/* — Fila de acciones con íconos — */
+.ds-acts { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; }
+.ds-act { background: var(--glass); border:1px solid var(--border); border-radius:16px; padding:16px 6px 12px; text-align:center; cursor:pointer; }
+.ds-act:active { background: var(--glass-hov); }
+.ds-act .ds-act-t { font-size:11px; font-weight:500; color:var(--text-2); margin-top:9px; }
+
+/* — Mini stats — */
+.ds-mini { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; }
+.ds-m { background:var(--glass); border:1px solid var(--border); border-radius:16px; padding:15px 10px; text-align:center; }
+
+/* — Barras de progreso finas — */
+.ds-bar { height:6px; background:rgba(255,255,255,.07); border-radius:5px; overflow:hidden; }
+.ds-bar > i { display:block; height:100%; border-radius:5px; transition:width .6s ease; }
+.ds-bar.on-grad { background:rgba(255,255,255,.22); }
+.ds-bar.on-grad > i { background:#fff; }
+.ds-bar > i.cm { background: var(--cm-light); }
+.ds-bar > i.cr { background: var(--cr-light); }
+.ds-bar > i.am { background: var(--am-light); }
+.ds-bar > i.rc { background: var(--rc-light); }
+.ds-bar > i.otc{ background: var(--otc-light); }
+
+/* — Chips — */
+.ds-chip { font-size:12px; font-weight:500; padding:8px 14px; border-radius:13px; background:var(--glass); color:var(--text-2); }
+.ds-chip.muted { color: var(--text-3); }
+.ds-chip.self.cm { background: var(--cm-glass); color: var(--cm-light); font-weight:600; }
+.ds-chip.self.cr { background: var(--cr-glass); color: var(--cr-light); font-weight:600; }
+.ds-chip.self.am { background: var(--am-glass); color: var(--am-light); font-weight:600; }
+.ds-chip.self.rc { background: var(--rc-glass); color: var(--rc-light); font-weight:600; }
