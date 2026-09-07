@@ -616,7 +616,7 @@ function updateStatChip() {
     txt.textContent = `${sinAsig} sin asignar · ${hechas}/${total} pendientes`;
     document.querySelector('.mapa-stat-dot').style.background = '#f59e0b';
   } else if (total === 0) {
-    txt.textContent = `${aprobadas} órdenes aprobadas ✓`;
+    txt.textContent = `${aprobadas} órdenes aprobadas`;
     document.querySelector('.mapa-stat-dot').style.background = '#22c55e';
   } else {
     txt.textContent = `${hechas} realizadas · ${total - hechas} pendientes · ${aprobadas} aprobadas`;
@@ -653,11 +653,10 @@ function verOrden(id) {
   }
 
   content.innerHTML = `
-    <div class="panel-orden-header">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:11px">
       <div style="flex:1;min-width:0">
-        <div class="panel-orden-wo">WO ${o.wo || '—'}</div>
-        <div class="panel-orden-cliente">${o.cliente || '—'}</div>
-        <div class="panel-orden-dir">${o.direccion || ''}</div>
+        <div style="font-size:17px;font-weight:800;color:#fff;letter-spacing:-.01em">WO ${o.wo || '—'}</div>
+        <div style="font-size:13px;font-weight:500;color:rgba(255,255,255,.85);margin-top:2px">${o.cliente || '—'}</div>
       </div>
       <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0">
         ${o.pareja ? `<div class="pareja-chip" style="color:${c};border-color:${c}33;background:${c}15">${o.pareja}</div>` : ''}
@@ -667,15 +666,43 @@ function verOrden(id) {
       </div>
     </div>
 
+    <!-- Dirección — legible bajo el sol -->
+    ${o.direccion ? `
+    <div style="display:flex;align-items:flex-start;gap:8px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);border-radius:11px;padding:10px 12px;margin-bottom:11px">
+      <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" style="flex-shrink:0;margin-top:1px"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>
+      <div style="font-size:13px;font-weight:500;color:rgba(255,255,255,.95);line-height:1.4">${o.direccion}</div>
+    </div>` : ''}
+
     <!-- Info técnica -->
-    <div class="panel-detail-grid">
-      ${o.nc          ? `<div class="panel-detail-item"><div class="panel-detail-key">NC</div><div class="panel-detail-val">${o.nc}</div></div>` : ''}
-      ${(o.serieActual || o.serie) ? `<div class="panel-detail-item"><div class="panel-detail-key">Serie medidor</div><div class="panel-detail-val" style="font-family:monospace;font-weight:700;color:var(--cm-light)">${o.serieActual || o.serie}</div></div>` : ''}
-      ${o.marca       ? `<div class="panel-detail-item"><div class="panel-detail-key">Marca</div><div class="panel-detail-val">${o.marca}</div></div>` : ''}
-      ${o.dsct        ? `<div class="panel-detail-item"><div class="panel-detail-key">DSCT</div><div class="panel-detail-val">${o.dsct}</div></div>` : ''}
-      ${o.unidadLectura ? `<div class="panel-detail-item"><div class="panel-detail-key">MRU</div><div class="panel-detail-val">${o.unidadLectura}</div></div>` : ''}
-      ${o.concepto ? `<div class="panel-detail-item full"><div class="panel-detail-key">Concepto</div><div class="panel-detail-val">${o.concepto}</div></div>` : ''}
-      ${o.motivoVisita ? `<div class="panel-detail-item full"><div class="panel-detail-key">Motivo visita</div><div class="panel-detail-val" style="color:#fbbf24">${o.motivoVisita}${o.observacionVisita ? ' — ' + o.observacionVisita : ''}</div></div>` : ''}
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:14px">
+      ${(o.serieActual || o.serie) ? `<div style="background:var(--glass);border:1px solid var(--border);border-radius:10px;padding:9px 11px;grid-column:1 / -1">
+        <div style="font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:rgba(255,255,255,.45);margin-bottom:3px">Serie medidor</div>
+        <div style="font-size:15px;font-weight:700;color:var(--cm-light);font-family:monospace">${o.serieActual || o.serie}</div>
+      </div>` : ''}
+      ${o.nc ? `<div style="background:var(--glass);border:1px solid var(--border);border-radius:10px;padding:9px 11px">
+        <div style="font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:rgba(255,255,255,.45);margin-bottom:3px">NC</div>
+        <div style="font-size:14px;font-weight:700;color:#fff">${o.nc}</div>
+      </div>` : ''}
+      ${o.marca ? `<div style="background:var(--glass);border:1px solid var(--border);border-radius:10px;padding:9px 11px">
+        <div style="font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:rgba(255,255,255,.45);margin-bottom:3px">Marca</div>
+        <div style="font-size:14px;font-weight:700;color:#fff">${o.marca}</div>
+      </div>` : ''}
+      ${o.dsct ? `<div style="background:var(--glass);border:1px solid var(--border);border-radius:10px;padding:9px 11px">
+        <div style="font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:rgba(255,255,255,.45);margin-bottom:3px">DSCT</div>
+        <div style="font-size:14px;font-weight:700;color:#fff">${o.dsct}</div>
+      </div>` : ''}
+      ${o.unidadLectura ? `<div style="background:var(--glass);border:1px solid var(--border);border-radius:10px;padding:9px 11px">
+        <div style="font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:rgba(255,255,255,.45);margin-bottom:3px">MRU</div>
+        <div style="font-size:14px;font-weight:700;color:#fff">${o.unidadLectura}</div>
+      </div>` : ''}
+      ${o.concepto ? `<div style="background:var(--glass);border:1px solid var(--border);border-radius:10px;padding:9px 11px;grid-column:1 / -1">
+        <div style="font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:rgba(255,255,255,.45);margin-bottom:3px">Concepto</div>
+        <div style="font-size:13px;font-weight:600;color:#fff">${o.concepto}</div>
+      </div>` : ''}
+      ${o.motivoVisita ? `<div style="background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.3);border-radius:10px;padding:9px 11px;grid-column:1 / -1">
+        <div style="font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:#fbbf24;margin-bottom:3px">Motivo visita</div>
+        <div style="font-size:13px;font-weight:600;color:#fff">${o.motivoVisita}${o.observacionVisita ? ' — ' + o.observacionVisita : ''}</div>
+      </div>` : ''}
     </div>
 
     ${o.telefono ? `
@@ -895,7 +922,7 @@ function abrirPedirAyuda(id) {
 function enviarAyudaWhatsApp(motivo) {
   const o = selectedOrden_;
   if (!o) return;
-  const msg = `⚠️ Necesito ayuda con una orden\n`
+  const msg = `Necesito ayuda con una orden\n`
     + `WO: ${o.wo || '—'}\n`
     + `NC: ${o.nc || '—'}\n`
     + `Cliente: ${o.cliente || '—'}\n`
