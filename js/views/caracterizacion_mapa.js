@@ -306,13 +306,24 @@ function abrirDetalleRetiro(retiroId) {
       <div style="width:9px;height:9px;background:${RETIRO_COLOR};border-radius:2px"></div>
       <span style="font-size:11px;font-weight:800;letter-spacing:.04em;color:${RETIRO_COLOR}">RETIRO</span>
     </div>
-    <div style="font-size:15px;font-weight:800;margin-bottom:2px">${r.nombre || r.nc}</div>
-    <div style="font-size:11px;color:var(--text-4);margin-bottom:12px">NC ${r.nc}${r.pareja ? ' · ' + r.pareja : ''}</div>
+    <div style="font-size:17px;font-weight:800;color:#fff;margin-bottom:2px">${r.nombre || r.nc}</div>
+    <div style="font-size:13px;font-weight:600;color:rgba(255,255,255,.8);margin-bottom:12px">NC ${r.nc}${r.pareja ? ' · ' + r.pareja : ''}</div>
 
-    <div style="font-size:11px;color:var(--text-3);line-height:1.6;margin-bottom:14px">
-      ${r.direccion ? `<div>${r.direccion}</div>` : ''}
-      ${r.medidor ? `<div>Medidor: <span style="color:var(--text-2)">${r.medidor}</span></div>` : ''}
-      ${r.ds ? `<div>DS: <span style="color:var(--text-2)">${r.ds}</span></div>` : ''}
+    ${r.direccion ? `
+    <div style="display:flex;align-items:flex-start;gap:8px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);border-radius:11px;padding:10px 12px;margin-bottom:12px">
+      <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" style="flex-shrink:0;margin-top:1px"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>
+      <div style="font-size:13px;font-weight:500;color:rgba(255,255,255,.95);line-height:1.4">${r.direccion}</div>
+    </div>` : ''}
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:14px">
+      ${r.medidor ? `<div style="background:var(--glass);border:1px solid var(--border);border-radius:10px;padding:9px 11px;grid-column:1 / -1">
+        <div style="font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:rgba(255,255,255,.45);margin-bottom:3px">Medidor</div>
+        <div style="font-size:15px;font-weight:700;color:${RETIRO_COLOR};font-family:monospace">${r.medidor}</div>
+      </div>` : ''}
+      ${r.ds ? `<div style="background:var(--glass);border:1px solid var(--border);border-radius:10px;padding:9px 11px">
+        <div style="font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:rgba(255,255,255,.45);margin-bottom:3px">DS</div>
+        <div style="font-size:14px;font-weight:700;color:#fff">${r.ds}</div>
+      </div>` : ''}
     </div>
 
     ${hecho ? `
@@ -422,21 +433,35 @@ function abrirDetalle(ordenId, nivel) {
       <span style="font-size:13px;font-weight:800;letter-spacing:.06em;color:${UPR_COLOR}">UPR</span>
       <span style="font-size:11px;color:var(--text-3)">${o.tarifa ? 'Tarifa ' + o.tarifa : 'Punto UPR'}</span>
     </div>` : ''}
-    <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
       <div style="width:10px;height:10px;border-radius:50%;background:${(o.esUPR && nivel==='titular') ? UPR_COLOR : NIVEL_COLOR[nivel]}"></div>
       <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:${(o.esUPR && nivel==='titular') ? UPR_COLOR : NIVEL_COLOR[nivel]}">${NIVEL_LABEL[nivel]}</div>
     </div>
-    <div style="font-size:16px;font-weight:800;margin-bottom:2px">${p.nombre || '—'}</div>
-    <div style="font-size:12px;color:var(--text-3);margin-bottom:2px">NC ${p.nc}</div>
-    <div style="font-size:11px;color:var(--text-4);margin-bottom:14px">${p.direccion || ''}</div>
+    <div style="font-size:17px;font-weight:800;color:#fff;margin-bottom:2px">${p.nombre || '—'}</div>
+    <div style="font-size:13px;font-weight:600;color:rgba(255,255,255,.8);margin-bottom:12px">NC ${p.nc}</div>
 
-    <div style="display:flex;gap:8px;font-size:11px;color:var(--text-4);margin-bottom:${visitas.length?'10px':'16px'}">
-      ${o.tarifa ? `<div>Tarifa: <span style="color:var(--text-2)">${o.tarifa}</span></div>` : ''}
-      ${p.medidor ? `<div>Medidor: <span style="color:var(--text-2)">${p.medidor}</span></div>` : ''}
-      ${p.ds ? `<div>DS: <span style="color:var(--text-2)">${p.ds}</span></div>` : ''}
+    ${p.direccion ? `
+    <div style="display:flex;align-items:flex-start;gap:8px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);border-radius:11px;padding:10px 12px;margin-bottom:12px">
+      <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" style="flex-shrink:0;margin-top:1px"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>
+      <div style="font-size:13px;font-weight:500;color:rgba(255,255,255,.95);line-height:1.4">${p.direccion}</div>
+    </div>` : ''}
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:${visitas.length?'12px':'16px'}">
+      ${p.medidor ? `<div style="background:var(--glass);border:1px solid var(--border);border-radius:10px;padding:9px 11px;grid-column:1 / -1">
+        <div style="font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:rgba(255,255,255,.45);margin-bottom:3px">Medidor</div>
+        <div style="font-size:15px;font-weight:700;color:#f472b6;font-family:monospace">${p.medidor}</div>
+      </div>` : ''}
+      ${p.ds ? `<div style="background:var(--glass);border:1px solid var(--border);border-radius:10px;padding:9px 11px">
+        <div style="font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:rgba(255,255,255,.45);margin-bottom:3px">DS</div>
+        <div style="font-size:14px;font-weight:700;color:#fff">${p.ds}</div>
+      </div>` : ''}
+      ${o.tarifa ? `<div style="background:var(--glass);border:1px solid var(--border);border-radius:10px;padding:9px 11px">
+        <div style="font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:rgba(255,255,255,.45);margin-bottom:3px">Tarifa</div>
+        <div style="font-size:14px;font-weight:700;color:#fff">${o.tarifa}</div>
+      </div>` : ''}
     </div>
 
-    ${visitas.length ? `<div style="font-size:11px;color:#fbbf24;margin-bottom:16px">Visitas: ${visitas.map(v=>NIVEL_LABEL[v]).join(', ')}</div>` : ''}
+    ${visitas.length ? `<div style="font-size:12px;color:#fbbf24;margin-bottom:16px;font-weight:600">Visitas: ${visitas.map(v=>NIVEL_LABEL[v]).join(', ')}</div>` : ''}
 
     ${cerrada ? `
       <div style="text-align:center;padding:12px;border-radius:12px;background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.3);font-size:13px;font-weight:700;color:#fbbf24">
