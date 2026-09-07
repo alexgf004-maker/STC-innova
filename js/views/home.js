@@ -28,12 +28,8 @@ export async function init(container, session) {
   }
   if (role === 'asistente') {
     renderHomeAsistente(container, session);
-    cargarDatosAsistente(session);
-    cargarPersonalHoy();
     setupRefreshBtn(async () => {
-      await recalcularStats();
-      await cargarDatosAsistente(session);
-      await cargarPersonalHoy();
+      renderHomeAsistente(container, session);
     });
     return;
   }
@@ -831,55 +827,54 @@ function renderHomeAdmin(container, session) {
 // ── Home Asistente ────────────────────────────────
 function renderHomeAsistente(container, session) {
   const hoy = new Date().toLocaleDateString('es-SV', { weekday:'long', day:'numeric', month:'long' });
+  const fechaLabel = hoy.charAt(0).toUpperCase() + hoy.slice(1);
+  const fechaCorta = new Date().toLocaleDateString('es-SV', { day:'numeric', month:'short' });
+
+  const acceso = (ruta, color, titulo, sub, iconSvg) => `
+    <div class="ds-act" onclick="window.__router.navigateTo('${ruta}')" style="text-align:left;padding:16px">
+      <div style="display:flex;align-items:center;gap:12px">
+        <div style="width:40px;height:40px;border-radius:12px;background:${color}22;display:flex;align-items:center;justify-content:center;flex-shrink:0">${iconSvg}</div>
+        <div style="min-width:0">
+          <div style="font-size:14px;font-weight:600;color:var(--text-1)">${titulo}</div>
+          <div style="font-size:11px;color:var(--text-3);margin-top:1px">${sub}</div>
+        </div>
+      </div>
+    </div>`;
+  const ic = (color, path) => `<svg viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="20" height="20">${path}</svg>`;
+
   container.innerHTML = `
-    <div class="flex-col gap-12" style="padding-top:4px">
-      <div class="welcome-card office anim-up">
-        <div class="welcome-area-label">${hoy.charAt(0).toUpperCase()+hoy.slice(1)}</div>
-        <div class="welcome-name">${session.displayName}</div>
-        <div class="welcome-role">Asistente · Operación diaria</div>
-      </div>
-      <div class="stat-row anim-up d1">
-        <div class="stat-chip cm-accent"><div class="val" id="a-stat-cm">—</div><div class="lbl">CM hoy</div></div>
-        <div class="stat-chip" style="border-color:var(--purple-border);background:var(--purple-glass)"><div class="val" style="color:var(--purple)" id="a-stat-sol">—</div><div class="lbl">Solicitudes</div></div>
-      </div>
+    <div class="ds-view anim-up">
 
-      <!-- Aviso de solicitudes de material -->
-      <div id="aviso-solicitudes"></div>
-
-      <!-- Indicador corte del 15 -->
-      <div id="indicador-corte" class="anim-up d2"></div>
-
-      <!-- Personal asignado hoy -->
-      <div id="personal-hoy" class="anim-up d3"></div>
-
-      <div class="quick-grid anim-up d3">
-        <div class="quick-card cm" onclick="window.__router.navigateTo('cambios')">
-          <div class="qc-icon" style="background:rgba(13,148,136,.15)">
-            <svg viewBox="0 0 24 24" fill="none" stroke="var(--cm-light)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v2M12 20v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M2 12h2M20 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+      <div class="ds-pcard otc" style="margin-bottom:26px">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start">
+          <div>
+            <div style="font-size:18px;font-weight:700;color:#fff;line-height:1.1">${session.displayName}</div>
+            <div style="font-size:13px;color:rgba(255,255,255,.75);margin-top:3px">Asistente · Operación diaria</div>
           </div>
-          <div class="qc-title" style="color:var(--cm-light)">Panel Cambios</div>
-          <div class="qc-sub">Confirmar · Asignar</div>
-        </div>
-        <div class="quick-card" onclick="window.__router.navigateTo('bodega')">
-          <div class="qc-icon" style="background:var(--purple-glass)">
-            <svg viewBox="0 0 24 24" fill="none" stroke="var(--purple)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
-          </div>
-          <div class="qc-title">Bodega</div>
-          <div class="qc-sub">Aprobar solicitudes</div>
-        </div>
-        <div class="quick-card" onclick="window.__router.navigateTo('usuarios')">
-          <div class="qc-icon" style="background:var(--glass)">
-            <svg viewBox="0 0 24 24" fill="none" stroke="var(--text-2)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
-          </div>
-          <div class="qc-title">Usuarios</div>
-          <div class="qc-sub">Asignar área del día</div>
+          <div class="ds-pcard-badge">${fechaCorta}</div>
         </div>
       </div>
+
+      <div class="ds-sec">Campañas</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:20px">
+        ${acceso('cambios', '#2dd4bf', 'Cambios', 'Confirmar y asignar', ic('#2dd4bf','<circle cx="12" cy="12" r="3"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>'))}
+        ${acceso('caracterizacion', '#ef4444', 'Caracterización', 'Instalación y retiro', ic('#ef4444','<path d="M3 3v18h18"/><path d="M18 17V9M13 17V5M8 17v-3"/>'))}
+        ${acceso('ami', '#a78bfa', 'AMI', 'Medidores remotos', ic('#a78bfa','<path d="M4.9 16.1a10 10 0 010-8.2M7.8 13.8a6 6 0 010-3.6M19.1 7.9a10 10 0 010 8.2M16.2 10.2a6 6 0 010 3.6"/><circle cx="12" cy="12" r="2"/>'))}
+        ${acceso('reclamos', '#fbbf24', 'Reclamos SIGET', 'Bitácora de órdenes', ic('#fbbf24','<path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>'))}
+      </div>
+
+      <div class="ds-sec">Gestión</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:26px">
+        ${acceso('bodega', '#8b5cf6', 'Bodega', 'Aprobar solicitudes', ic('#8b5cf6','<path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/>'))}
+        ${acceso('usuarios', '#94a3b8', 'Usuarios', 'Gestión y asignación', ic('#94a3b8','<path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/>'))}
+      </div>
+
+      <div class="ds-sec">Personal activo hoy</div>
+      <div id="personal-hoy"><div class="ds-lbl" style="text-align:center;padding:16px">Cargando…</div></div>
+
     </div>
   `;
-  renderIndicadorCorte(null);
   cargarPersonalHoy();
-  pintarAvisoSolicitudes();
 }
 
 // ══════════════════════════════════════════════════════════════
