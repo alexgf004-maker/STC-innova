@@ -1,4 +1,4 @@
- /***
+/**
  * js/views/home.js
  * Vista home — renderiza según rol del usuario.
  * Exporta: init(container, session)
@@ -392,13 +392,10 @@ async function cargarDatosTecnico(session, area, destino) {
 
     // Actualizar compañeros
     const compRow = document.getElementById('companeros-row');
-    if (compRow && destino) {
-      compRow.innerHTML = `
-        <div class="companero-chip self">${destino}</div>
-        ${companeros.length
-          ? companeros.map(c => `<div class="companero-chip">${c}</div>`).join('')
-          : '<div class="companero-chip muted">Sin compañero asignado hoy</div>'}
-      `;
+    if (compRow) {
+      compRow.textContent = companeros.length
+        ? `Con ${companeros.join(', ')}`
+        : 'Sin compañero asignado hoy';
     }
   } catch(err) {
     console.warn('[home] Error cargando datos técnico:', err);
@@ -492,17 +489,21 @@ function renderIndicadorCorte(sinActualizar) {
 function renderHomeReclamos(container, session) {
   const hoy = new Date().toLocaleDateString('es-SV', { weekday:'long', day:'numeric', month:'long' });
   const fechaLabel = hoy.charAt(0).toUpperCase() + hoy.slice(1);
+  const fechaCorta = new Date().toLocaleDateString('es-SV', { day:'numeric', month:'short' });
 
   container.innerHTML = `
     <div class="ds-view anim-up">
 
-      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:22px">
-        <div style="font-size:13px;font-weight:700;padding:6px 13px;border-radius:20px;background:var(--rc-glass);color:var(--rc-light)">Reclamos SIGET</div>
-        <div class="ds-lbl" style="font-size:12px">${fechaLabel}</div>
+      <!-- Tarjeta protagonista de identidad -->
+      <div class="ds-pcard rc" style="margin-bottom:24px">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start">
+          <div>
+            <div style="font-size:18px;font-weight:700;color:#fff;line-height:1.1">${session.displayName}</div>
+            <div style="font-size:13px;color:rgba(255,255,255,.75);margin-top:3px">Reclamos SIGET</div>
+          </div>
+          <div class="ds-pcard-badge">${fechaCorta}</div>
+        </div>
       </div>
-
-      <div class="ds-lbl" style="margin-bottom:4px">Hola,</div>
-      <div class="ds-title" style="font-size:26px;margin-bottom:26px">${session.displayName}</div>
 
       <div class="ds-sec">Accesos rápidos</div>
       <div class="ds-acts" style="grid-template-columns:repeat(2,1fr)">
@@ -562,8 +563,8 @@ function renderHomeTecnico(container, session, area, destino) {
 
     <div class="ds-view anim-up">
 
-      <!-- Tarjeta protagonista: identidad + avance del día -->
-      <div class="ds-pcard ${color}" style="margin-bottom:22px">
+      <!-- Tarjeta protagonista: identidad + avance del día + cuadrilla -->
+      <div class="ds-pcard ${color}" style="margin-bottom:24px">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:18px">
           <div>
             <div style="font-size:18px;font-weight:700;color:#fff;line-height:1.1">${session.displayName}</div>
@@ -574,12 +575,11 @@ function renderHomeTecnico(container, session, area, destino) {
         <div class="ds-pcard-lbl" style="margin-bottom:4px">Avance de hoy</div>
         <div style="font-size:38px;font-weight:500;letter-spacing:-.02em;line-height:1;color:#fff" id="prog-total-pct">—</div>
         <div style="font-size:12px;color:rgba(255,255,255,.7);margin-top:8px" id="prog-total-sub">Cargando…</div>
-      </div>
-
-      <div class="ds-sec" style="font-size:14px">Tu cuadrilla</div>
-      <div class="dtec-crew-${color}" id="companeros-row" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:26px">
-        <div class="companero-chip self">${destino || ''}</div>
-        <div class="companero-chip muted">Cargando…</div>
+        <div style="height:1px;background:rgba(255,255,255,.15);margin:16px 0 12px"></div>
+        <div style="display:flex;align-items:center;gap:7px">
+          <svg viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.6)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15" style="flex-shrink:0"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
+          <div style="font-size:13px;color:rgba(255,255,255,.9);font-weight:500" id="companeros-row">Cargando…</div>
+        </div>
       </div>
 
       <div class="ds-acts" style="margin:28px 0">
