@@ -653,6 +653,7 @@ function verOrden(id) {
   }
 
   content.innerHTML = `
+    <div class="panel-scroll-info">
     <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:11px">
       <div style="flex:1;min-width:0">
         <div style="font-size:17px;font-weight:800;color:#fff;letter-spacing:-.01em">WO ${o.wo || '—'}</div>
@@ -712,8 +713,9 @@ function verOrden(id) {
       </svg>
       <a href="tel:${o.telefono}">${o.telefono}</a>
     </div>` : ''}
+    </div><!-- fin panel-scroll-info -->
 
-    <div class="panel-orden-actions">
+    <div class="panel-orden-actions panel-actions-fixed">
       ${isTecnico && (!o.estadoCampo || o.estadoCampo === 'visita') ? `
         <button class="btn-action cm" onclick="window.__mapa.marcarHecha('${o.id}')">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>

@@ -317,11 +317,25 @@ async function cargarDatosTecnico(session, area, destino) {
     const snap = await db.collection(col).where(campo, '==', destino).get();
     const ordenes = snap.docs.map(d => ({ id: d.id, ...d.data() }));
 
+    // Caracterización lleva instalaciones Y retiros: cargar también los retiros
+    let retiros = [];
+    if (area === 'Caracterizacion') {
+      try {
+        const snapR = await db.collection('caracterizacion_retiros').where('pareja', '==', destino).get();
+        retiros = snapR.docs.map(d => ({ id: d.id, ...d.data() }));
+      } catch(e) { retiros = []; }
+    }
+
     let total, aprobadas, pendientes, pct;
     if (area === 'Caracterizacion') {
-      total      = ordenes.length;
-      aprobadas  = ordenes.filter(o => o.estado === 'hecha').length;
-      pendientes = ordenes.filter(o => o.estado !== 'hecha' && o.estado !== 'no_hecha').length;
+      // Instalaciones hechas: estado 'hecha' · Retiros hechos: 'retirado' o 'no_retirado'
+      const instHechas = ordenes.filter(o => o.estado === 'hecha').length;
+      const instPend   = ordenes.filter(o => o.estado !== 'hecha' && o.estado !== 'no_hecha').length;
+      const retHechos  = retiros.filter(r => r.estado === 'retirado' || r.estado === 'no_retirado').length;
+      const retPend    = retiros.filter(r => r.estado !== 'retirado' && r.estado !== 'no_retirado').length;
+      total      = ordenes.length + retiros.length;
+      aprobadas  = instHechas + retHechos;
+      pendientes = instPend + retPend;
       pct        = total ? Math.round((aprobadas / total) * 100) : 0;
     } else if (area === 'AMI') {
       total      = ordenes.length;
@@ -346,7 +360,9 @@ async function cargarDatosTecnico(session, area, destino) {
         hechasHoy = ordenes.filter(o => (o.estadoCampo === 'hecha' || o.estadoCampo === 'aprobada') && esDeHoy(o.fechaHecha)).length;
       } else if (area === 'Caracterizacion') {
         meta = 7;
-        hechasHoy = ordenes.filter(o => o.estado === 'hecha' && esDeHoy(o.fechaHecha)).length;
+        const instHoy = ordenes.filter(o => o.estado === 'hecha' && esDeHoy(o.fechaHecha)).length;
+        const retHoy = retiros.filter(r => (r.estado === 'retirado' || r.estado === 'no_retirado') && esDeHoy(r.fechaHecho)).length;
+        hechasHoy = instHoy + retHoy;
       } else if (area === 'AMI') {
         try {
           const cfg = await db.collection('ami_config').doc('metas').get();
