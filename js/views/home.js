@@ -561,12 +561,11 @@ function renderHomeTecnico(container, session, area, destino) {
 
     <div class="ds-view anim-up">
 
-      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:16px">
-        <div class="dtec-camp-chip-${color}" style="font-size:13px;font-weight:700;padding:6px 13px;border-radius:20px;background:${accentGlass};color:${accentColor}">${area === 'CAMBIOS' ? 'Cambios' : area === 'Caracterizacion' ? 'Caracterización' : area} · ${destino || ''}</div>
-        <div class="ds-lbl" style="font-size:12px">${fechaLabel}</div>
-      </div>
+      <!-- Cabecera: el chip de campaña como protagonista, arriba del todo -->
+      <div style="display:inline-block;font-size:14px;font-weight:700;padding:8px 16px;border-radius:22px;background:${accentGlass};color:${accentColor};margin-bottom:9px">${area === 'CAMBIOS' ? 'Cambios' : area === 'Caracterizacion' ? 'Caracterización' : area} · ${destino || ''}</div>
+      <div class="ds-lbl" style="font-size:12px;margin-bottom:16px">${fechaLabel}</div>
 
-      <div class="dtec-crew-${color}" id="companeros-row" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:26px">
+      <div class="dtec-crew-${color}" id="companeros-row" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:28px">
         <div class="companero-chip self">${destino || ''}</div>
         <div class="companero-chip muted">Cargando…</div>
       </div>
