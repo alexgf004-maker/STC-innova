@@ -1730,31 +1730,60 @@ body {
 .ayuda-opcion:active,
 .ayuda-opcion:hover { background: var(--glass-hov); border-color: var(--cm-light); }
 
+
 /* ═══════════════════════════════════════════════════════════════════
-   SISTEMA DE DISEÑO (ds-*) — estilo premium unificado
-   Clases reutilizables para migrar toda la app a un look coherente.
-   Usan los tokens ya existentes (--glass, --border, --text-*, colores
-   por área). Prefijo ds- para no chocar con clases actuales.
+   SISTEMA DE DISEÑO (ds-*) — estándar visual de la app
+   ───────────────────────────────────────────────────────────────────
+   GUÍA DE USO (para migrar pantallas de forma consistente):
+
+   TIPOGRAFÍA
+     .ds-hero-num   -> número protagonista (avance del día, saldo)
+     .ds-num-lg     -> número grande secundario (meta)
+     .ds-num-md     -> número mediano (stats)
+     .ds-title      -> título de pantalla
+     .ds-sec        -> título de sección
+     .ds-lbl        -> texto/etiqueta normal (gris suave)
+     .ds-lbl-sm     -> etiqueta pequeña en mayúsculas (KEY de un dato)
+     .ds-val        -> valor de un dato (blanco, legible)
+     .ds-val-strong -> valor destacado (más grande, para leer al sol)
+
+   CHIPS / BADGES (usar los YA existentes, no crear nuevos):
+     estado -> .estado-badge  con .ok / .warn / .crit / .muted
+     pareja -> .pareja-chip   (color por área se pasa inline)
+     acento -> .stat-chip     con .cm-accent/.cr-accent/.am-accent/...
+
+   TARJETAS
+     .ds-card            -> tarjeta plana sobria
+     .ds-pcard  + área   -> tarjeta premium con degradado (.cm/.cr/.am/.rc/.otc)
+
+   ACCIONES / STATS / BARRAS
+     .ds-acts / .ds-act  -> fila de botones de acción con ícono
+     .ds-mini / .ds-m    -> fila de mini-stats
+     .ds-bar  + i.área   -> barra de progreso fina
+
+   Todo usa los tokens de color existentes. No duplica clases previas.
    ═══════════════════════════════════════════════════════════════════ */
 
-/* Contenedor de vista con aire */
 .ds-view { padding: 6px 2px 22px; }
 
-/* — Tipografía — números finos y elegantes, etiquetas tenues — */
-.ds-hero-num   { font-size: 50px; font-weight: 500; letter-spacing: -.02em; line-height: 1; }
+/* — Tipografía estandarizada — */
+.ds-hero-num   { font-size: 50px; font-weight: 500; letter-spacing: -.02em; line-height: 1; color: var(--text); }
 .ds-hero-num small { font-size: 18px; font-weight: 400; color: var(--text-3); }
 .ds-num-lg     { font-size: 34px; font-weight: 500; letter-spacing: -.02em; line-height: 1; }
 .ds-num-md     { font-size: 25px; font-weight: 500; letter-spacing: -.01em; line-height: 1; }
-.ds-lbl        { font-size: 13px; font-weight: 400; color: var(--text-2); }
-.ds-lbl-sm     { font-size: 10px; font-weight: 500; letter-spacing: .04em; text-transform: uppercase; color: var(--text-3); }
+.ds-title      { font-size: 20px; font-weight: 700; letter-spacing: -.01em; color: var(--text); }
+.ds-title-area { font-size: 30px; font-weight: 600; letter-spacing: -.02em; line-height: 1; }
 .ds-sec        { font-size: 15px; font-weight: 600; letter-spacing: -.01em; color: var(--text); margin: 6px 0 13px; }
-.ds-title-area { font-size: 32px; font-weight: 600; letter-spacing: -.02em; line-height: 1; }
+.ds-lbl        { font-size: 13px; font-weight: 400; color: var(--text-2); }
+.ds-lbl-sm     { font-size: 10px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--text-3); }
+.ds-val        { font-size: 14px; font-weight: 600; color: rgba(255,255,255,.9); }
+.ds-val-strong { font-size: 16px; font-weight: 700; color: #fff; }   /* legible bajo el sol */
 
-/* — Tarjetas planas sobrias — */
+/* — Tarjetas — */
 .ds-card { background: var(--glass); border: 1px solid var(--border); border-radius: 16px; padding: 15px; }
 .ds-card-lg { border-radius: 20px; padding: 20px; }
 
-/* — Tarjeta premium con degradado (una por vista, la protagonista) — */
+/* — Tarjeta premium con degradado (una por vista) — */
 .ds-pcard { position: relative; overflow: hidden; border-radius: 22px; padding: 21px; }
 .ds-pcard::after { content:''; position:absolute; top:-45%; right:-12%; width:200px; height:200px; border-radius:50%; background:rgba(255,255,255,.07); }
 .ds-pcard > * { position: relative; }
@@ -1764,12 +1793,12 @@ body {
 .ds-pcard.rc { background: linear-gradient(150deg,#fbbf24 0%,#d97706 60%,#92590a 100%); box-shadow: 0 16px 34px -14px rgba(251,191,36,.4); }
 .ds-pcard.otc{ background: linear-gradient(150deg,#5b8def 0%,#3f63b0 60%,#26386e 100%); box-shadow: 0 16px 34px -14px rgba(96,165,250,.4); }
 .ds-pcard-badge { font-size:11px; font-weight:500; background:rgba(255,255,255,.16); padding:4px 12px; border-radius:20px; }
-.ds-pcard-lbl { font-size:12px; color:rgba(255,255,255,.65); }
-.ds-pcard-foot { font-size:11px; color:rgba(255,255,255,.7); }
+.ds-pcard-lbl   { font-size:12px; color:rgba(255,255,255,.65); }
+.ds-pcard-foot  { font-size:11px; color:rgba(255,255,255,.7); }
 
-/* — Fila de acciones con íconos — */
+/* — Fila de acciones — */
 .ds-acts { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; }
-.ds-act { background: var(--glass); border:1px solid var(--border); border-radius:16px; padding:16px 6px 12px; text-align:center; cursor:pointer; }
+.ds-act  { background: var(--glass); border:1px solid var(--border); border-radius:16px; padding:16px 6px 12px; text-align:center; cursor:pointer; }
 .ds-act:active { background: var(--glass-hov); }
 .ds-act .ds-act-t { font-size:11px; font-weight:500; color:var(--text-2); margin-top:9px; }
 
@@ -1788,10 +1817,7 @@ body {
 .ds-bar > i.rc { background: var(--rc-light); }
 .ds-bar > i.otc{ background: var(--otc-light); }
 
-/* — Chips — */
-.ds-chip { font-size:12px; font-weight:500; padding:8px 14px; border-radius:13px; background:var(--glass); color:var(--text-2); }
-.ds-chip.muted { color: var(--text-3); }
-.ds-chip.self.cm { background: var(--cm-glass); color: var(--cm-light); font-weight:600; }
-.ds-chip.self.cr { background: var(--cr-glass); color: var(--cr-light); font-weight:600; }
-.ds-chip.self.am { background: var(--am-glass); color: var(--am-light); font-weight:600; }
-.ds-chip.self.rc { background: var(--rc-glass); color: var(--rc-light); font-weight:600; }
+/* — Recuadro de dato destacado (para leer bajo el sol: dirección, medidor) — */
+.ds-hilite { background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.12); border-radius: 11px; padding: 10px 12px; }
+.ds-hilite .k { font-size:10px; font-weight:700; letter-spacing:.05em; text-transform:uppercase; color:rgba(255,255,255,.45); margin-bottom:3px; }
+.ds-hilite .v { font-size:15px; font-weight:700; color:#fff; }
