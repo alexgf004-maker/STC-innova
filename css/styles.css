@@ -1,7 +1,7 @@
 /* ═══════════════════════════════════════════════
    INNOVA STC v1 — styles.css
    Design tokens + componentes base
-══════════════════════════════════════════════ */
+═══════════════════════════════════════════════ */
 
 /* ── TOKENS ──────────────────────────────────── */
 :root {
@@ -330,33 +330,34 @@ body {
   position: relative; z-index: 10;
 }
 .topbar-logo {
-  width: 34px; height: 34px;
-  border-radius: 10px;
-  background: linear-gradient(135deg, var(--cm), var(--otc));
+  width: 36px; height: 36px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #3b82f6, #22d3ee);
   display: flex; align-items: center; justify-content: center;
   flex-shrink: 0;
+  box-shadow: 0 4px 12px -4px rgba(59,130,246,.5);
 }
-.topbar-logo svg { width: 16px; height: 16px; }
+.topbar-logo svg { width: 17px; height: 17px; }
 .topbar-title { flex: 1; min-width: 0; }
 .topbar-title h2 {
-  font-size: 15px; font-weight: 700; letter-spacing: -.01em;
+  font-size: 16px; font-weight: 700; letter-spacing: -.02em;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .topbar-title p {
-  font-size: 10px; font-weight: 300; color: var(--text-3); margin-top: 1px;
+  font-size: 11px; font-weight: 400; color: var(--text-3); margin-top: 2px;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .topbar-actions { display: flex; gap: 8px; flex-shrink: 0; }
 .topbar-btn {
-  width: 36px; height: 36px;
-  border-radius: 10px;
+  width: 38px; height: 38px;
+  border-radius: 12px;
   background: var(--glass);
   border: 1px solid var(--border);
   display: flex; align-items: center; justify-content: center;
   cursor: pointer; color: var(--text-2);
-  transition: background .15s;
+  transition: background .15s, color .15s, transform .1s;
 }
-.topbar-btn:active { background: var(--glass-hov); }
+.topbar-btn:active { background: var(--glass-hov); color: var(--text-1); transform: scale(.94); }
 
 /* main-col — columna principal (topbar + content) */
 .main-col {
@@ -390,21 +391,28 @@ body {
   z-index: 10;
 }
 .nav-item {
-  flex: 1; height: 56px;
-  border-radius: 12px;
+  flex: 1; height: 58px;
+  border-radius: 14px;
   display: flex; flex-direction: column;
-  align-items: center; justify-content: center; gap: 3px;
+  align-items: center; justify-content: center; gap: 4px;
   cursor: pointer; color: var(--text-4);
-  transition: color .2s, background .2s;
+  transition: color .2s, background .2s, transform .1s;
   position: relative;
 }
-.nav-item svg { width: 20px; height: 20px; stroke-width: 1.8; }
+.nav-item:active { transform: scale(.93); }
+.nav-item svg { width: 21px; height: 21px; stroke-width: 1.8; transition: transform .2s; }
 .nav-item span { font-size: 9px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
-.nav-item.active       { color: var(--cm-light);  background: rgba(45,212,191,.06); }
-.nav-item.active.otc   { color: var(--otc-light); background: rgba(96,165,250,.06); }
-.nav-item.active.cr    { color: var(--cr-light);  background: rgba(239,68,68,.06); }
-.nav-item.active.am    { color: var(--am-light);  background: rgba(139,92,246,.06); }
-.nav-item.active.rc    { color: var(--rc-light);  background: rgba(251,191,36,.06); }
+.nav-item.active svg { transform: translateY(-1px); }
+/* Indicador superior del ítem activo — toque premium */
+.nav-item.active::before {
+  content: ''; position: absolute; top: 6px; left: 50%; transform: translateX(-50%);
+  width: 18px; height: 3px; border-radius: 2px; background: currentColor;
+}
+.nav-item.active       { color: var(--cm-light);  background: rgba(45,212,191,.08); }
+.nav-item.active.otc   { color: var(--otc-light); background: rgba(96,165,250,.08); }
+.nav-item.active.cr    { color: var(--cr-light);  background: rgba(239,68,68,.08); }
+.nav-item.active.am    { color: var(--am-light);  background: rgba(139,92,246,.08); }
+.nav-item.active.rc    { color: var(--rc-light);  background: rgba(251,191,36,.08); }
 .nav-item .nav-badge {
   position: absolute; top: 8px; right: calc(50% - 14px);
   min-width: 16px; height: 16px; border-radius: 8px;
