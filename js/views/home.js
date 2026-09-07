@@ -561,103 +561,68 @@ function renderHomeTecnico(container, session, area, destino) {
 
   container.innerHTML = `
     <style>
-      .dtec{padding:6px 2px 20px}
-      .dtec-camp{font-size:32px;font-weight:600;letter-spacing:-.02em;line-height:1;color:${accentColor};margin-bottom:4px}
-      .dtec-camp-sub{font-size:13px;color:var(--text-2);font-weight:400;margin-bottom:14px}
-      .dtec-crew-top{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:26px}
-      .dtec-crew-top .companero-chip{font-size:12px;font-weight:500;padding:8px 14px;border-radius:13px;background:var(--glass);color:var(--text-2)}
-      .dtec-crew-top .companero-chip.self{background:${accentGlass};color:${accentColor};font-weight:600}
-      .dtec-crew-top .companero-chip.muted{color:var(--text-3)}
-      .dtec-hlbl{font-size:13px;color:var(--text-2);margin-bottom:11px;font-weight:400}
-      .dtec-hnum{font-size:50px;font-weight:500;letter-spacing:-.02em;line-height:1}
-      .dtec-hnum small{font-size:18px;font-weight:400;color:var(--text-3)}
-      .dtec-hsub{font-size:13px;color:var(--text-2);margin-top:11px;font-weight:400}
-      .dtec-acts{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:28px 0}
-      .dtec-act{background:var(--glass);border:1px solid var(--border);border-radius:16px;padding:16px 6px 12px;text-align:center;cursor:pointer}
-      .dtec-act .ic{display:flex;justify-content:center;margin-bottom:9px}
-      .dtec-act .t{font-size:11px;font-weight:500;color:var(--text-2)}
-      .dtec-sec{font-size:15px;font-weight:600;margin:4px 0 13px}
-      .dtec-pcard{border-radius:22px;padding:21px;position:relative;overflow:hidden;margin-bottom:24px;background:linear-gradient(150deg,${gradA} 0%,${gradB} 60%,${gradC} 100%);box-shadow:0 16px 34px -14px ${gradShadow}}
-      .dtec-pcard::after{content:'';position:absolute;top:-45%;right:-12%;width:200px;height:200px;border-radius:50%;background:rgba(255,255,255,.07)}
-      .dtec-pc-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;position:relative}
-      .dtec-pc-area{font-size:13px;font-weight:600}
-      .dtec-pc-badge{font-size:11px;font-weight:500;background:rgba(255,255,255,.16);padding:4px 12px;border-radius:20px}
-      .dtec-pc-lbl{font-size:12px;color:rgba(255,255,255,.65);margin-bottom:6px;position:relative}
-      .dtec-pc-num{font-size:38px;font-weight:500;letter-spacing:-.02em;line-height:1;margin-bottom:15px;position:relative}
-      .dtec-pc-num span{font-size:18px;font-weight:400;opacity:.6}
-      .dtec-pc-bar{height:6px;background:rgba(255,255,255,.22);border-radius:5px;overflow:hidden;position:relative}
-      .dtec-pc-bar>i{display:block;height:100%;background:#fff;border-radius:5px;width:0%;transition:width .6s ease}
-      .dtec-pc-foot{display:flex;justify-content:space-between;margin-top:10px;font-size:11px;color:rgba(255,255,255,.7);position:relative}
-      .dtec-mini{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:26px}
-      .dtec-m{background:var(--glass);border:1px solid var(--border);border-radius:16px;padding:15px 10px;text-align:center}
-      .dtec-m .n{font-size:25px;font-weight:500;letter-spacing:-.01em}
-      .dtec-m .t{font-size:10px;font-weight:500;letter-spacing:.04em;text-transform:uppercase;color:var(--text-3);margin-top:4px}
-      .dtec-m.a .n{color:#fbbf24} .dtec-m.b .n{color:#22c55e}
-      .dtec-prog{margin-bottom:26px}
-      .dtec-prog .ph{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:9px}
-      .dtec-prog .ph .t{font-size:13px;color:var(--text-2)}
-      .dtec-prog .ph .p{font-size:15px;font-weight:600;color:${accentColor}}
-      .dtec-prog .bar{height:6px;background:rgba(255,255,255,.07);border-radius:5px;overflow:hidden}
-      .dtec-prog .bar>i{display:block;height:100%;background:${accentColor};border-radius:5px;width:0%;transition:width .6s ease}
-      .dtec-crew{display:flex;flex-wrap:wrap;gap:8px}
-      .dtec-crew .companero-chip{font-size:12px;font-weight:500;padding:8px 14px;border-radius:13px;background:var(--glass);color:var(--text-2)}
-      .dtec-crew .companero-chip.self{background:${accentGlass};color:${accentColor};font-weight:600}
-      .dtec-crew .companero-chip.muted{color:var(--text-3)}
+      /* Solo lo dinámico por área que no puede ser clase fija */
+      .dtec-camp-${color}{color:${accentColor}}
+      .dtec-crew-${color} .companero-chip.self{background:${accentGlass};color:${accentColor};font-weight:600}
+      .dtec-act-ic-${color}{color:${accentColor}}
     </style>
 
-    <div class="dtec anim-up">
+    <div class="ds-view anim-up">
 
-      <div class="dtec-camp">${area === 'CAMBIOS' ? 'Cambios' : area === 'Caracterizacion' ? 'Caracterización' : area}</div>
-      <div class="dtec-camp-sub">${destino || ''} · ${areaLabel}</div>
-      <div class="dtec-crew-top" id="companeros-row">
+      <div class="ds-title-area dtec-camp-${color}" style="margin-bottom:4px">${area === 'CAMBIOS' ? 'Cambios' : area === 'Caracterizacion' ? 'Caracterización' : area}</div>
+      <div class="ds-lbl" style="margin-bottom:14px">${destino || ''} · ${areaLabel}</div>
+      <div class="dtec-crew-${color}" id="companeros-row" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:26px">
         <div class="companero-chip self">${destino || ''}</div>
         <div class="companero-chip muted">Cargando…</div>
       </div>
 
-      <div class="dtec-hlbl">Avance de hoy · ${fechaLabel}</div>
-      <div class="dtec-hnum" id="prog-total-pct">—</div>
-      <div class="dtec-hsub" id="prog-total-sub">Cargando…</div>
+      <div class="ds-lbl" style="margin-bottom:11px">Avance de hoy · ${fechaLabel}</div>
+      <div class="ds-hero-num" id="prog-total-pct">—</div>
+      <div class="ds-lbl" id="prog-total-sub" style="margin-top:11px">Cargando…</div>
 
-      <div class="dtec-acts">
-        <div class="dtec-act" onclick="window.__router.navigateTo('${rutaOrdenes}')">
-          <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="${accentColor}" stroke-width="1.8" stroke-linecap="round" width="20" height="20"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg></div>
-          <div class="t">Órdenes</div>
+      <div class="ds-acts" style="margin:28px 0">
+        <div class="ds-act" onclick="window.__router.navigateTo('${rutaOrdenes}')">
+          <div class="dtec-act-ic-${color}"><svg viewBox="0 0 24 24" fill="none" stroke="${accentColor}" stroke-width="1.8" stroke-linecap="round" width="20" height="20"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg></div>
+          <div class="ds-act-t">Órdenes</div>
         </div>
-        <div class="dtec-act" onclick="window.__router.navigateTo('${rutaMapa}')">
-          <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="${accentColor}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="20" height="20"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg></div>
-          <div class="t">Mapa</div>
+        <div class="ds-act" onclick="window.__router.navigateTo('${rutaMapa}')">
+          <div class="dtec-act-ic-${color}"><svg viewBox="0 0 24 24" fill="none" stroke="${accentColor}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="20" height="20"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg></div>
+          <div class="ds-act-t">Mapa</div>
         </div>
-        <div class="dtec-act" onclick="window.__router.navigateTo('bodega')">
-          <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="${accentColor}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="20" height="20"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg></div>
-          <div class="t">Bodega</div>
+        <div class="ds-act" onclick="window.__router.navigateTo('bodega')">
+          <div class="dtec-act-ic-${color}"><svg viewBox="0 0 24 24" fill="none" stroke="${accentColor}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="20" height="20"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg></div>
+          <div class="ds-act-t">Bodega</div>
         </div>
-        <div class="dtec-act" onclick="window.__abrirDevolucion()">
-          <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="${accentColor}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="20" height="20"><polyline points="9 10 4 15 9 20"/><path d="M20 4v7a4 4 0 01-4 4H4"/></svg></div>
-          <div class="t">Devolver</div>
+        <div class="ds-act" onclick="window.__abrirDevolucion()">
+          <div class="dtec-act-ic-${color}"><svg viewBox="0 0 24 24" fill="none" stroke="${accentColor}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="20" height="20"><polyline points="9 10 4 15 9 20"/><path d="M20 4v7a4 4 0 01-4 4H4"/></svg></div>
+          <div class="ds-act-t">Devolver</div>
         </div>
       </div>
 
-      <div class="dtec-sec">Tu meta de hoy</div>
-      <div class="dtec-pcard" id="meta-card" style="display:none">
-        <div class="dtec-pc-top">
-          <div class="dtec-pc-area">${area === 'CAMBIOS' ? 'Cambios' : area === 'Caracterizacion' ? 'Caracterización' : area} · ${destino || ''}</div>
-          <div class="dtec-pc-badge">Hoy</div>
+      <div class="ds-sec">Tu meta de hoy</div>
+      <div class="ds-pcard ${color}" id="meta-card" style="display:none;margin-bottom:24px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+          <div style="font-size:13px;font-weight:600;color:#fff">${area === 'CAMBIOS' ? 'Cambios' : area === 'Caracterizacion' ? 'Caracterización' : area} · ${destino || ''}</div>
+          <div class="ds-pcard-badge">Hoy</div>
         </div>
-        <div class="dtec-pc-lbl">Meta del día</div>
-        <div class="dtec-pc-num" id="meta-frac">—</div>
-        <div class="dtec-pc-bar"><i id="meta-bar"></i></div>
-        <div class="dtec-pc-foot"><span id="meta-sub">Cargando…</span></div>
+        <div class="ds-pcard-lbl" style="margin-bottom:6px">Meta del día</div>
+        <div class="ds-num-lg" id="meta-frac" style="color:#fff;margin-bottom:15px">—</div>
+        <div class="ds-bar on-grad"><i id="meta-bar"></i></div>
+        <div class="ds-pcard-foot" style="margin-top:10px"><span id="meta-sub">Cargando…</span></div>
       </div>
 
-      <div class="dtec-mini">
-        <div class="dtec-m a"><div class="n" id="stat-pendientes">—</div><div class="t">Pendientes</div></div>
-        <div class="dtec-m b"><div class="n" id="stat-hechas">—</div><div class="t">Hechas</div></div>
-        <div class="dtec-m"><div class="n" id="stat-total">—</div><div class="t">Total</div></div>
+      <div class="ds-mini" style="margin-bottom:26px">
+        <div class="ds-m"><div class="ds-num-md" id="stat-pendientes" style="color:#fbbf24">—</div><div class="ds-lbl-sm" style="margin-top:4px">Pendientes</div></div>
+        <div class="ds-m"><div class="ds-num-md" id="stat-hechas" style="color:#22c55e">—</div><div class="ds-lbl-sm" style="margin-top:4px">Hechas</div></div>
+        <div class="ds-m"><div class="ds-num-md" id="stat-total">—</div><div class="ds-lbl-sm" style="margin-top:4px">Total</div></div>
       </div>
 
-      <div class="dtec-prog">
-        <div class="ph"><span class="t">Progreso total de la pareja</span><span class="p" id="prog-total-bar-pct">—</span></div>
-        <div class="bar"><i id="prog-total-bar"></i></div>
+      <div style="margin-bottom:26px">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:9px">
+          <span class="ds-lbl">Progreso total de la pareja</span>
+          <span style="font-size:15px;font-weight:600;color:${accentColor}" id="prog-total-bar-pct">—</span>
+        </div>
+        <div class="ds-bar"><i id="prog-total-bar" class="${color}"></i></div>
       </div>
 
     </div>
