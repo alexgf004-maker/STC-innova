@@ -354,36 +354,60 @@ async function cargarDatosTecnico(session, area, destino) {
     try {
       const claveHoy = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; })();
       const esDeHoy = (ts) => { const d = ts?.toDate ? ts.toDate() : (ts ? new Date(ts) : null); if (!d) return false; return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}` === claveHoy; };
-      let meta = 0, hechasHoy = 0;
-      if (area === 'CAMBIOS') {
-        meta = 15;
-        hechasHoy = ordenes.filter(o => (o.estadoCampo === 'hecha' || o.estadoCampo === 'aprobada') && esDeHoy(o.fechaHecha)).length;
-      } else if (area === 'Caracterizacion') {
-        meta = 7;
+      const setTxt = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+
+      if (area === 'Caracterizacion') {
+        // Dos metas separadas: 10 instalaciones y 12 retiros
+        const META_INST = 10, META_RET = 12;
         const instHoy = ordenes.filter(o => o.estado === 'hecha' && esDeHoy(o.fechaHecha)).length;
         const retHoy = retiros.filter(r => (r.estado === 'retirado' || r.estado === 'no_retirado') && esDeHoy(r.fechaHecho)).length;
-        hechasHoy = instHoy + retHoy;
-      } else if (area === 'AMI') {
-        try {
-          const cfg = await db.collection('ami_config').doc('metas').get();
-          const metas = cfg.exists ? (cfg.data().parejas || {}) : {};
-          meta = Number(metas[destino] || 0);
-        } catch(e) { meta = 0; }
-        hechasHoy = ordenes.filter(o => (o.estadoCampo === 'hecha' || o.estadoCampo === 'aprobada') && esDeHoy(o.fechaHecha)).length;
-      }
-      const setTxt = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
-      if (meta > 0) {
-        const pctMeta = Math.min(100, Math.round((hechasHoy / meta) * 100));
-        setTxt('meta-frac', `${hechasHoy} / ${meta}`);
-        setTxt('meta-sub', hechasHoy >= meta ? 'Meta alcanzada' : `Faltan ${meta - hechasHoy} para la meta`);
-        const mbar = document.getElementById('meta-bar');
-        if (mbar) mbar.style.width = pctMeta + '%';
+        const pctInst = Math.min(100, Math.round((instHoy / META_INST) * 100));
+        const pctRet  = Math.min(100, Math.round((retHoy / META_RET) * 100));
+        // Reemplazar SOLO la parte de meta (no la identidad ni cuadrilla)
+        const metaInner = document.getElementById('meta-inner');
+        if (metaInner) {
+          metaInner.innerHTML = `
+            <div class="ds-pcard-lbl" style="margin-bottom:12px">Meta del día</div>
+            <div style="margin-bottom:14px">
+              <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px">
+                <span style="font-size:12px;color:rgba(255,255,255,.8);font-weight:500">Instalaciones</span>
+                <span style="font-size:15px;font-weight:700;color:#fff">${instHoy} / ${META_INST}</span>
+              </div>
+              <div class="ds-bar on-grad"><i style="width:${pctInst}%;background:#fff"></i></div>
+            </div>
+            <div>
+              <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px">
+                <span style="font-size:12px;color:rgba(255,255,255,.8);font-weight:500">Retiros</span>
+                <span style="font-size:15px;font-weight:700;color:#fff">${retHoy} / ${META_RET}</span>
+              </div>
+              <div class="ds-bar on-grad"><i style="width:${pctRet}%;background:#fff"></i></div>
+            </div>`;
+        }
       } else {
-        // Sin meta configurada: mostrar lo hecho hoy sin fracción
-        setTxt('meta-frac', `${hechasHoy}`);
-        setTxt('meta-sub', 'Sin meta configurada · hechas hoy');
-        const mbar = document.getElementById('meta-bar');
-        if (mbar) mbar.style.width = '0%';
+        let meta = 0, hechasHoy = 0;
+        if (area === 'CAMBIOS') {
+          meta = 15;
+          hechasHoy = ordenes.filter(o => (o.estadoCampo === 'hecha' || o.estadoCampo === 'aprobada') && esDeHoy(o.fechaHecha)).length;
+        } else if (area === 'AMI') {
+          try {
+            const cfg = await db.collection('ami_config').doc('metas').get();
+            const metas = cfg.exists ? (cfg.data().parejas || {}) : {};
+            meta = Number(metas[destino] || 0);
+          } catch(e) { meta = 0; }
+          hechasHoy = ordenes.filter(o => (o.estadoCampo === 'hecha' || o.estadoCampo === 'aprobada') && esDeHoy(o.fechaHecha)).length;
+        }
+        if (meta > 0) {
+          const pctMeta = Math.min(100, Math.round((hechasHoy / meta) * 100));
+          setTxt('meta-frac', `${hechasHoy} / ${meta}`);
+          setTxt('meta-sub', hechasHoy >= meta ? 'Meta alcanzada' : `Faltan ${meta - hechasHoy} para la meta`);
+          const mbar = document.getElementById('meta-bar');
+          if (mbar) mbar.style.width = pctMeta + '%';
+        } else {
+          setTxt('meta-frac', `${hechasHoy}`);
+          setTxt('meta-sub', 'Sin meta configurada · hechas hoy');
+          const mbar = document.getElementById('meta-bar');
+          if (mbar) mbar.style.width = '0%';
+        }
       }
     } catch(e) { /* si algo falla, la tarjeta muestra los valores por defecto */ }
 
@@ -585,10 +609,12 @@ function renderHomeTecnico(container, session, area, destino) {
           </div>
           <div class="ds-pcard-badge">${fechaCorta}</div>
         </div>
-        <div class="ds-pcard-lbl" style="margin-bottom:4px">Meta del día</div>
-        <div style="font-size:38px;font-weight:500;letter-spacing:-.02em;line-height:1;color:#fff" id="meta-frac">—</div>
-        <div class="ds-bar on-grad" style="margin-top:14px"><i id="meta-bar"></i></div>
-        <div style="font-size:12px;color:rgba(255,255,255,.7);margin-top:9px" id="meta-sub">Cargando…</div>
+        <div id="meta-inner">
+          <div class="ds-pcard-lbl" style="margin-bottom:4px">Meta del día</div>
+          <div style="font-size:38px;font-weight:500;letter-spacing:-.02em;line-height:1;color:#fff" id="meta-frac">—</div>
+          <div class="ds-bar on-grad" style="margin-top:14px"><i id="meta-bar"></i></div>
+          <div style="font-size:12px;color:rgba(255,255,255,.7);margin-top:9px" id="meta-sub">Cargando…</div>
+        </div>
         <div style="height:1px;background:rgba(255,255,255,.15);margin:16px 0 12px"></div>
         <div style="display:flex;align-items:center;gap:7px">
           <svg viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.6)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15" style="flex-shrink:0"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
