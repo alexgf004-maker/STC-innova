@@ -550,6 +550,7 @@ function renderHomeTecnico(container, session, area, destino) {
 
   const hoy = new Date().toLocaleDateString('es-SV', { weekday:'long', day:'numeric', month:'long' });
   const fechaLabel = hoy.charAt(0).toUpperCase() + hoy.slice(1);
+  const fechaCorta = new Date().toLocaleDateString('es-SV', { day:'numeric', month:'short' });
 
   container.innerHTML = `
     <style>
@@ -561,18 +562,25 @@ function renderHomeTecnico(container, session, area, destino) {
 
     <div class="ds-view anim-up">
 
-      <!-- Cabecera: el chip de campaña como protagonista, arriba del todo -->
-      <div style="display:inline-block;font-size:14px;font-weight:700;padding:8px 16px;border-radius:22px;background:${accentGlass};color:${accentColor};margin-bottom:9px">${area === 'CAMBIOS' ? 'Cambios' : area === 'Caracterizacion' ? 'Caracterización' : area} · ${destino || ''}</div>
-      <div class="ds-lbl" style="font-size:12px;margin-bottom:16px">${fechaLabel}</div>
+      <!-- Tarjeta protagonista: identidad + avance del día -->
+      <div class="ds-pcard ${color}" style="margin-bottom:22px">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:18px">
+          <div>
+            <div style="font-size:18px;font-weight:700;color:#fff;line-height:1.1">${session.displayName}</div>
+            <div style="font-size:13px;color:rgba(255,255,255,.75);margin-top:3px">${area === 'CAMBIOS' ? 'Cambios' : area === 'Caracterizacion' ? 'Caracterización' : area} · ${destino || ''}</div>
+          </div>
+          <div class="ds-pcard-badge">${fechaCorta}</div>
+        </div>
+        <div class="ds-pcard-lbl" style="margin-bottom:4px">Avance de hoy</div>
+        <div style="font-size:38px;font-weight:500;letter-spacing:-.02em;line-height:1;color:#fff" id="prog-total-pct">—</div>
+        <div style="font-size:12px;color:rgba(255,255,255,.7);margin-top:8px" id="prog-total-sub">Cargando…</div>
+      </div>
 
-      <div class="dtec-crew-${color}" id="companeros-row" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:28px">
+      <div class="ds-sec" style="font-size:14px">Tu cuadrilla</div>
+      <div class="dtec-crew-${color}" id="companeros-row" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:26px">
         <div class="companero-chip self">${destino || ''}</div>
         <div class="companero-chip muted">Cargando…</div>
       </div>
-
-      <div class="ds-lbl" style="margin-bottom:11px">Avance de hoy</div>
-      <div class="ds-hero-num" id="prog-total-pct">—</div>
-      <div class="ds-lbl" id="prog-total-sub" style="margin-top:11px">Cargando…</div>
 
       <div class="ds-acts" style="margin:28px 0">
         <div class="ds-act" onclick="window.__router.navigateTo('${rutaOrdenes}')">
@@ -594,9 +602,9 @@ function renderHomeTecnico(container, session, area, destino) {
       </div>
 
       <div class="ds-sec">Tu meta de hoy</div>
-      <div class="ds-pcard ${color}" id="meta-card" style="display:none;margin-bottom:24px">
+      <div class="ds-pcard" id="meta-card" style="display:none;margin-bottom:24px;background:linear-gradient(150deg,#0ea5a4 0%,#0c7d7c 60%,#0a5c5c 100%);box-shadow:0 16px 34px -14px rgba(14,165,164,.4)">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
-          <div style="font-size:13px;font-weight:600;color:#fff">${area === 'CAMBIOS' ? 'Cambios' : area === 'Caracterizacion' ? 'Caracterización' : area} · ${destino || ''}</div>
+          <div style="font-size:13px;font-weight:600;color:#fff">Meta de ${destino || 'la pareja'}</div>
           <div class="ds-pcard-badge">Hoy</div>
         </div>
         <div class="ds-pcard-lbl" style="margin-bottom:6px">Meta del día</div>
