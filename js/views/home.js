@@ -572,7 +572,7 @@ function renderHomeTecnico(container, session, area, destino) {
           </div>
           <div class="ds-pcard-badge">${fechaCorta}</div>
         </div>
-        <div class="ds-pcard-lbl" style="margin-bottom:4px">Avance de hoy</div>
+        <div class="ds-pcard-lbl" style="margin-bottom:4px">Avance total</div>
         <div style="font-size:38px;font-weight:500;letter-spacing:-.02em;line-height:1;color:#fff" id="prog-total-pct">—</div>
         <div style="font-size:12px;color:rgba(255,255,255,.7);margin-top:8px" id="prog-total-sub">Cargando…</div>
         <div style="height:1px;background:rgba(255,255,255,.15);margin:16px 0 12px"></div>
@@ -602,15 +602,13 @@ function renderHomeTecnico(container, session, area, destino) {
       </div>
 
       <div class="ds-sec">Tu meta de hoy</div>
-      <div class="ds-pcard" id="meta-card" style="display:none;margin-bottom:24px;background:linear-gradient(150deg,#0ea5a4 0%,#0c7d7c 60%,#0a5c5c 100%);box-shadow:0 16px 34px -14px rgba(14,165,164,.4)">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
-          <div style="font-size:13px;font-weight:600;color:#fff">Meta de ${destino || 'la pareja'}</div>
-          <div class="ds-pcard-badge">Hoy</div>
+      <div class="ds-card" id="meta-card" style="display:none;margin-bottom:24px">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:14px">
+          <div style="font-size:13px;font-weight:600;color:var(--text-2)">Meta del día</div>
+          <div class="ds-num-md" id="meta-frac" style="color:${accentColor}">—</div>
         </div>
-        <div class="ds-pcard-lbl" style="margin-bottom:6px">Meta del día</div>
-        <div class="ds-num-lg" id="meta-frac" style="color:#fff;margin-bottom:15px">—</div>
-        <div class="ds-bar on-grad"><i id="meta-bar"></i></div>
-        <div class="ds-pcard-foot" style="margin-top:10px"><span id="meta-sub">Cargando…</span></div>
+        <div class="ds-bar"><i id="meta-bar" class="${color}"></i></div>
+        <div class="ds-lbl" style="margin-top:9px;font-size:12px"><span id="meta-sub">Cargando…</span></div>
       </div>
 
       <div class="ds-mini" style="margin-bottom:26px">
