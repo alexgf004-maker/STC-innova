@@ -362,17 +362,21 @@ async function cargarDatosTecnico(session, area, destino) {
         } catch(e) { meta = 0; }
         hechasHoy = ordenes.filter(o => (o.estadoCampo === 'hecha' || o.estadoCampo === 'aprobada') && esDeHoy(o.fechaHecha)).length;
       }
+      const setTxt = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
       if (meta > 0) {
-        const metaCard = document.getElementById('meta-card');
-        if (metaCard) metaCard.style.display = '';
         const pctMeta = Math.min(100, Math.round((hechasHoy / meta) * 100));
-        const setTxt = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
         setTxt('meta-frac', `${hechasHoy} / ${meta}`);
         setTxt('meta-sub', hechasHoy >= meta ? 'Meta alcanzada' : `Faltan ${meta - hechasHoy} para la meta`);
         const mbar = document.getElementById('meta-bar');
         if (mbar) mbar.style.width = pctMeta + '%';
+      } else {
+        // Sin meta configurada: mostrar lo hecho hoy sin fracción
+        setTxt('meta-frac', `${hechasHoy}`);
+        setTxt('meta-sub', 'Sin meta configurada · hechas hoy');
+        const mbar = document.getElementById('meta-bar');
+        if (mbar) mbar.style.width = '0%';
       }
-    } catch(e) { /* si algo falla, la tarjeta de meta simplemente no se muestra */ }
+    } catch(e) { /* si algo falla, la tarjeta muestra los valores por defecto */ }
 
     // Actualizar chips
     const setVal = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
@@ -563,8 +567,8 @@ function renderHomeTecnico(container, session, area, destino) {
 
     <div class="ds-view anim-up">
 
-      <!-- Tarjeta protagonista: identidad + avance del día + cuadrilla -->
-      <div class="ds-pcard ${color}" style="margin-bottom:24px">
+      <!-- Tarjeta protagonista: identidad + meta del día + cuadrilla -->
+      <div class="ds-pcard ${color}" id="meta-card" style="margin-bottom:24px">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:18px">
           <div>
             <div style="font-size:18px;font-weight:700;color:#fff;line-height:1.1">${session.displayName}</div>
@@ -572,9 +576,10 @@ function renderHomeTecnico(container, session, area, destino) {
           </div>
           <div class="ds-pcard-badge">${fechaCorta}</div>
         </div>
-        <div class="ds-pcard-lbl" style="margin-bottom:4px">Avance total</div>
-        <div style="font-size:38px;font-weight:500;letter-spacing:-.02em;line-height:1;color:#fff" id="prog-total-pct">—</div>
-        <div style="font-size:12px;color:rgba(255,255,255,.7);margin-top:8px" id="prog-total-sub">Cargando…</div>
+        <div class="ds-pcard-lbl" style="margin-bottom:4px">Meta del día</div>
+        <div style="font-size:38px;font-weight:500;letter-spacing:-.02em;line-height:1;color:#fff" id="meta-frac">—</div>
+        <div class="ds-bar on-grad" style="margin-top:14px"><i id="meta-bar"></i></div>
+        <div style="font-size:12px;color:rgba(255,255,255,.7);margin-top:9px" id="meta-sub">Cargando…</div>
         <div style="height:1px;background:rgba(255,255,255,.15);margin:16px 0 12px"></div>
         <div style="display:flex;align-items:center;gap:7px">
           <svg viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.6)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15" style="flex-shrink:0"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
@@ -601,28 +606,20 @@ function renderHomeTecnico(container, session, area, destino) {
         </div>
       </div>
 
-      <div class="ds-sec">Tu meta de hoy</div>
-      <div class="ds-card" id="meta-card" style="display:none;margin-bottom:24px">
-        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:14px">
-          <div style="font-size:13px;font-weight:600;color:var(--text-2)">Meta del día</div>
-          <div class="ds-num-md" id="meta-frac" style="color:${accentColor}">—</div>
+      <div class="ds-sec">Avance total de la pareja</div>
+      <div class="ds-card" style="margin-bottom:24px">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:12px">
+          <div class="ds-num-md" id="prog-total-pct" style="color:var(--text-1)">—</div>
+          <div style="font-size:15px;font-weight:600;color:${accentColor}" id="prog-total-bar-pct">—</div>
         </div>
-        <div class="ds-bar"><i id="meta-bar" class="${color}"></i></div>
-        <div class="ds-lbl" style="margin-top:9px;font-size:12px"><span id="meta-sub">Cargando…</span></div>
+        <div class="ds-bar"><i id="prog-total-bar" class="${color}"></i></div>
+        <div class="ds-lbl" style="margin-top:9px;font-size:12px"><span id="prog-total-sub">Cargando…</span></div>
       </div>
 
       <div class="ds-mini" style="margin-bottom:26px">
         <div class="ds-m"><div class="ds-num-md" id="stat-pendientes" style="color:#fbbf24">—</div><div class="ds-lbl-sm" style="margin-top:4px">Pendientes</div></div>
         <div class="ds-m"><div class="ds-num-md" id="stat-hechas" style="color:#22c55e">—</div><div class="ds-lbl-sm" style="margin-top:4px">Hechas</div></div>
         <div class="ds-m"><div class="ds-num-md" id="stat-total">—</div><div class="ds-lbl-sm" style="margin-top:4px">Total</div></div>
-      </div>
-
-      <div style="margin-bottom:26px">
-        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:9px">
-          <span class="ds-lbl">Progreso total de la pareja</span>
-          <span style="font-size:15px;font-weight:600;color:${accentColor}" id="prog-total-bar-pct">—</span>
-        </div>
-        <div class="ds-bar"><i id="prog-total-bar" class="${color}"></i></div>
       </div>
 
     </div>
