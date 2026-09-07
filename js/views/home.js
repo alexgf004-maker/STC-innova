@@ -1,4 +1,4 @@
- /**
+ /***
  * js/views/home.js
  * Vista home — renderiza según rol del usuario.
  * Exporta: init(container, session)
