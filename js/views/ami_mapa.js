@@ -208,30 +208,30 @@ function renderShell(container) {
       </button>` : ''}
 
       <!-- Leyenda -->
-      <div class="mapa-leyenda" id="mapa-leyenda">
+      <div class="mapa-leyenda" id="mapa-leyenda" style="background:rgba(10,15,26,.92);border:1px solid rgba(255,255,255,.1);border-radius:12px;padding:10px 12px;backdrop-filter:blur(8px)">
         ${isTecnico ? '' : Object.entries(PAREJA_COLORS)
           .filter(([k]) => k !== 'null')
           .map(([p, c]) => `
-            <div class="leyenda-item">
-              <div class="leyenda-dot" style="background:${c}"></div>
-              <span>${p}</span>
+            <div class="leyenda-item" style="display:flex;align-items:center;gap:7px;margin-bottom:5px">
+              <div class="leyenda-dot" style="width:11px;height:11px;border-radius:50%;background:${c}"></div>
+              <span style="font-size:12px;color:rgba(255,255,255,.85);font-weight:500">${p}</span>
             </div>
           `).join('')}
-        <div class="leyenda-item">
-          <div class="leyenda-dot" style="background:#22c55e"></div>
-          <span>Realizada</span>
+        <div class="leyenda-item" style="display:flex;align-items:center;gap:7px;margin-bottom:5px">
+          <div class="leyenda-dot" style="width:11px;height:11px;border-radius:50%;background:#22c55e"></div>
+          <span style="font-size:12px;color:rgba(255,255,255,.85);font-weight:500">Realizada</span>
         </div>
-        <div class="leyenda-item">
-          <div class="leyenda-dot" style="background:#111827;border:1.5px solid #4b5563"></div>
-          <span>Visita</span>
+        <div class="leyenda-item" style="display:flex;align-items:center;gap:7px;margin-bottom:5px">
+          <div class="leyenda-dot" style="width:11px;height:11px;border-radius:50%;background:#111827;border:1.5px solid #6b7280"></div>
+          <span style="font-size:12px;color:rgba(255,255,255,.85);font-weight:500">Visita</span>
         </div>
-        <div class="leyenda-item">
-          <div class="leyenda-dot" style="background:#f97316;border-radius:4px"></div>
-          <span>Ya cambiado</span>
+        <div class="leyenda-item" style="display:flex;align-items:center;gap:7px;margin-bottom:5px">
+          <div class="leyenda-dot" style="width:11px;height:11px;border-radius:3px;background:#f97316"></div>
+          <span style="font-size:12px;color:rgba(255,255,255,.85);font-weight:500">Ya cambiado</span>
         </div>
-        <div class="leyenda-item">
-          <div class="leyenda-dot" style="background:#8b5cf6;border-radius:4px"></div>
-          <span>Mal ubicado</span>
+        <div class="leyenda-item" style="display:flex;align-items:center;gap:7px">
+          <div class="leyenda-dot" style="width:11px;height:11px;border-radius:3px;background:#8b5cf6"></div>
+          <span style="font-size:12px;color:rgba(255,255,255,.85);font-weight:500">Mal ubicado</span>
         </div>
       </div>
 
@@ -1003,7 +1003,7 @@ function verOrden(id) {
 
     <div class="panel-orden-actions">
       ${isTecnico && (!o.estadoCampo || o.estadoCampo === 'visita') ? `
-        <button class="btn-action cm" onclick="window.__mapa.marcarHecha('${o.id}')">
+        <button class="btn-action am" onclick="window.__mapa.marcarHecha('${o.id}')">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
           Realizada
         </button>` : ''}
@@ -1012,7 +1012,7 @@ function verOrden(id) {
         Navegar
       </button>
       ${!isTecnico ? `
-        <button class="btn-action cm" onclick="window.__mapa.asignarIndividual('${o.id}')">
+        <button class="btn-action am" onclick="window.__mapa.asignarIndividual('${o.id}')">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M17 3a2.828 2.828 0 114 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>
           Asignar pareja
         </button>` : ''}
@@ -1870,7 +1870,7 @@ function sheetsMapaHTML() {
             Confirma si ya ingresaste esta orden en el sistema de DELSUR.
           </p>
           <div style="display:flex;flex-direction:column;gap:8px">
-            <button class="btn-action cm" id="btn-si-delsur" onclick="window.__mapa.confirmarRealizada(true)">
+            <button class="btn-action am" id="btn-si-delsur" onclick="window.__mapa.confirmarRealizada(true)">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
               Sí, ya actualicé en DELSUR
             </button>
