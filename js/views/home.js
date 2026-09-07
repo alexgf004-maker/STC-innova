@@ -569,14 +569,17 @@ function renderHomeTecnico(container, session, area, destino) {
 
     <div class="ds-view anim-up">
 
-      <div class="ds-title-area dtec-camp-${color}" style="margin-bottom:4px">${area === 'CAMBIOS' ? 'Cambios' : area === 'Caracterizacion' ? 'Caracterización' : area}</div>
-      <div class="ds-lbl" style="margin-bottom:14px">${destino || ''} · ${areaLabel}</div>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:16px">
+        <div class="dtec-camp-chip-${color}" style="font-size:13px;font-weight:700;padding:6px 13px;border-radius:20px;background:${accentGlass};color:${accentColor}">${area === 'CAMBIOS' ? 'Cambios' : area === 'Caracterizacion' ? 'Caracterización' : area} · ${destino || ''}</div>
+        <div class="ds-lbl" style="font-size:12px">${fechaLabel}</div>
+      </div>
+
       <div class="dtec-crew-${color}" id="companeros-row" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:26px">
         <div class="companero-chip self">${destino || ''}</div>
         <div class="companero-chip muted">Cargando…</div>
       </div>
 
-      <div class="ds-lbl" style="margin-bottom:11px">Avance de hoy · ${fechaLabel}</div>
+      <div class="ds-lbl" style="margin-bottom:11px">Avance de hoy</div>
       <div class="ds-hero-num" id="prog-total-pct">—</div>
       <div class="ds-lbl" id="prog-total-sub" style="margin-top:11px">Cargando…</div>
 
