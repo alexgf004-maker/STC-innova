@@ -324,9 +324,9 @@ async function cargarDatosTecnico(session, area, destino) {
 
     let total, aprobadas, pendientes, pct;
     if (area === 'Caracterizacion') {
-      // Instalaciones hechas: estado 'hecha' · Retiros hechos: 'retirado' o 'no_retirado'
-      const instHechas = ordenes.filter(o => o.estado === 'hecha').length;
-      const instPend   = ordenes.filter(o => o.estado !== 'hecha' && o.estado !== 'no_hecha').length;
+      // Instalaciones hechas: 'por_confirmar' (marcada en campo) o 'confirmada' (ya aprobada)
+      const instHechas = ordenes.filter(o => o.estado === 'por_confirmar' || o.estado === 'confirmada').length;
+      const instPend   = ordenes.filter(o => o.estado !== 'por_confirmar' && o.estado !== 'confirmada' && o.estado !== 'no_hecha').length;
       const retHechos  = retiros.filter(r => r.estado === 'retirado' || r.estado === 'no_retirado').length;
       const retPend    = retiros.filter(r => r.estado !== 'retirado' && r.estado !== 'no_retirado').length;
       total      = ordenes.length + retiros.length;
@@ -355,7 +355,7 @@ async function cargarDatosTecnico(session, area, destino) {
       if (area === 'Caracterizacion') {
         // Dos metas separadas: 10 instalaciones y 12 retiros
         const META_INST = 10, META_RET = 12;
-        const instHoy = ordenes.filter(o => o.estado === 'hecha' && esDeHoy(o.fechaHecha)).length;
+        const instHoy = ordenes.filter(o => (o.estado === 'por_confirmar' || o.estado === 'confirmada') && esDeHoy(o.fechaHecha)).length;
         const retHoy = retiros.filter(r => (r.estado === 'retirado' || r.estado === 'no_retirado') && esDeHoy(r.fechaHecho)).length;
         const pctInst = Math.min(100, Math.round((instHoy / META_INST) * 100));
         const pctRet  = Math.min(100, Math.round((retHoy / META_RET) * 100));
