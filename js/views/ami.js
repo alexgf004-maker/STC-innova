@@ -324,8 +324,10 @@ function renderPanel() {
     </div>` : ''}
 
     ${total === 0
-      ? bloquePreparacion('Aún no hay órdenes cargadas',
-          'Cuando se cargue el listado de órdenes de AMI, aquí verás el avance por cuadrilla y el estado del día, igual que en Cambios.')
+      ? `<div class="dev-module">
+          <div class="dev-title">Aún no hay órdenes cargadas</div>
+          <p>Cuando se cargue el listado de órdenes de AMI, aquí verás el avance por cuadrilla y el estado del día, igual que en Cambios.</p>
+        </div>`
       : `
       <div class="progress-card" style="margin-bottom:16px">
         <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px">
@@ -359,8 +361,10 @@ function renderOrdenes() {
 
   const listaOrdenes = () => {
     if (!ordenes_.length) {
-      return bloquePreparacion('Sin órdenes por ahora',
-        'El listado de órdenes AMI se cargará más adelante. Cada orden se identificará por su NC (estos medidores no traen WO).');
+      return `<div class="dev-module">
+        <div class="dev-title">Sin órdenes por ahora</div>
+        <p>El listado de órdenes AMI se cargará más adelante. Cada orden se identificará por su NC (estos medidores no traen WO).</p>
+      </div>`;
     }
     const residuos = ordenes_.filter(esResiduo);
     // "Hechas, por confirmar": marcadas 'hecha' por el técnico, aún no aprobadas
