@@ -1022,6 +1022,10 @@ body {
 }
 .orden-card.hecha     { border-color: rgba(34,197,94,.2);  background: rgba(34,197,94,.04); }
 .orden-card.bloqueada { opacity: .5; cursor: default; }
+/* Variante apilada (AMI, Caracterización, Reclamos): la tarjeta solo
+   muestra info, no es táctil — evita repetir este override inline. */
+.orden-card.stacked { flex-direction: column; align-items: stretch; cursor: default; }
+.orden-card.stacked:active { background: var(--glass); }
 
 .orden-card-left {
   display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0;
