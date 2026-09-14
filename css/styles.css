@@ -1834,10 +1834,11 @@ body {
 .ds-hilite .k { font-size:10px; font-weight:700; letter-spacing:.05em; text-transform:uppercase; color:rgba(255,255,255,.45); margin-bottom:3px; }
 .ds-hilite .v { font-size:15px; font-weight:700; color:#fff; }
 
-/* — Panel del mapa con botones fijos abajo (Cambios) — */
+/* — Panel del mapa con botones fijos abajo (Cambios, AMI, Caracterización) — */
 /* Cuando el contenido usa .panel-scroll-info + .panel-actions-fixed,
    la info scrollea y los botones quedan pegados al fondo, siempre visibles. */
-.mapa-panel:has(.panel-actions-fixed) { overflow: hidden; display: flex; flex-direction: column; }
+.mapa-panel:has(.panel-actions-fixed),
+.crc-hoja:has(.panel-actions-fixed) { overflow: hidden; display: flex; flex-direction: column; }
 .mapa-panel:has(.panel-actions-fixed) .mapa-panel-handle { flex-shrink: 0; }
 .mapa-panel:has(.panel-actions-fixed) #mapa-panel-content {
   display: flex; flex-direction: column;

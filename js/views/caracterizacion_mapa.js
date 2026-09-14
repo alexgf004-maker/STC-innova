@@ -301,6 +301,7 @@ function abrirDetalleRetiro(retiroId) {
   const hecho = r.estado === 'retirado' || r.estado === 'no_retirado';
 
   sheet.innerHTML = `
+    <div class="panel-scroll-info">
     <div style="width:36px;height:4px;background:var(--border);border-radius:2px;margin:0 auto 14px"></div>
     <div style="display:inline-flex;align-items:center;gap:6px;background:rgba(245,158,11,.14);border:1px solid rgba(245,158,11,.4);border-radius:8px;padding:3px 10px;margin-bottom:10px">
       <div style="width:9px;height:9px;background:${RETIRO_COLOR};border-radius:2px"></div>
@@ -325,7 +326,9 @@ function abrirDetalleRetiro(retiroId) {
         <div style="font-size:14px;font-weight:700;color:#fff">${r.ds}</div>
       </div>` : ''}
     </div>
+    </div><!-- fin panel-scroll-info -->
 
+    <div class="panel-actions-fixed">
     ${hecho ? `
       <div style="background:var(--glass);border:1px solid var(--border);border-radius:12px;padding:12px;margin-bottom:8px">
         <div style="font-size:12px;font-weight:700;color:${r.estado === 'retirado' ? '#22c55e' : '#ef4444'}">${r.estado === 'retirado' ? 'Retirado' : 'No se pudo retirar'}</div>
@@ -339,6 +342,7 @@ function abrirDetalleRetiro(retiroId) {
         <button id="crc-ret-ok" style="flex:2;padding:13px;border-radius:12px;border:none;background:#22c55e;color:#0a1628;font-size:13px;font-weight:800;cursor:pointer;font-family:inherit">Retirado</button>
       </div>
     `}
+    </div>
   `;
   sheet.classList.add('abierta');
 
@@ -428,6 +432,7 @@ function abrirDetalle(ordenId, nivel) {
   const visitas = Array.isArray(o.visitas) ? o.visitas : [];
 
   sheet.innerHTML = `
+    <div class="panel-scroll-info">
     <div style="width:36px;height:4px;background:var(--border);border-radius:2px;margin:0 auto 14px"></div>
     ${o.esUPR ? `<div style="display:flex;align-items:center;gap:7px;background:rgba(56,189,248,.14);border:1px solid rgba(56,189,248,.45);border-radius:10px;padding:9px 12px;margin-bottom:12px">
       <span style="font-size:13px;font-weight:800;letter-spacing:.06em;color:${UPR_COLOR}">UPR</span>
@@ -462,7 +467,9 @@ function abrirDetalle(ordenId, nivel) {
     </div>
 
     ${visitas.length ? `<div style="font-size:12px;color:#fbbf24;margin-bottom:16px;font-weight:600">Visitas: ${visitas.map(v=>NIVEL_LABEL[v]).join(', ')}</div>` : ''}
+    </div><!-- fin panel-scroll-info -->
 
+    <div class="panel-actions-fixed">
     ${cerrada ? `
       <div style="text-align:center;padding:12px;border-radius:12px;background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.3);font-size:13px;font-weight:700;color:#fbbf24">
         ${o.logranoEn ? `Hecha en ${NIVEL_LABEL[o.logranoEn]}` : 'Sin lograr'} · esperando confirmación
@@ -479,6 +486,7 @@ function abrirDetalle(ordenId, nivel) {
       ${haySiguiente ? `<div style="font-size:10px;color:var(--text-4);text-align:center;margin-top:10px">Si registras visita, pasarás a ${NIVEL_LABEL[siguiente]}</div>`
         : nivel==='suplente2' ? `<div style="font-size:10px;color:var(--text-4);text-align:center;margin-top:10px">Último punto. Si registras visita, la orden queda sin lograr.</div>` : ''}
     `}
+    </div>
   `;
 
   sheet.classList.add('abierta');
