@@ -163,6 +163,116 @@ mes llega un archivo oficial de DELSUR con el detalle completo; ese
 archivo debe COMPLETAR (no duplicar) lo que los técnicos ya metieron
 día a día con lo mínimo.
 
+## Decisiones de diseño específicas (el "por qué" de cómo se ve cada cosa)
+
+Estas son decisiones de gusto/producto ya validadas con el usuario tras
+varias iteraciones. No cambiar sin que el usuario lo pida — si algo parece
+mejorable, preguntar primero, porque probablemente ya se probó otra forma
+y se descartó por una razón concreta.
+
+**Referencia de estilo elegida**: apps tipo fintech premium (Payloop). Se
+evaluaron dos referencias (una app fiscal más sobria, y Payloop con tarjeta
+de degradado) — el usuario prefirió el estilo Payloop: tarjeta con
+degradado y sombra como elemento protagonista, tipografía fina.
+
+**Tipografía**: los números grandes deben ser peso 500 (fino/elegante),
+NO 800 (se ve "grueso" y no gustó en la primera iteración). Mucho aire
+entre líneas y secciones — el primer intento se sintió "muy cargado" antes
+de espaciarlo.
+
+**Regla de "una sola tarjeta premium por vista"**: probamos poner dos
+tarjetas con degradado en la misma pantalla (identidad+avance Y la meta) y
+se sintió que "competían" visualmente — cansa. Se quedó en UNA protagonista
+por vista; lo demás plano/sobrio (`ds-card`, no `ds-pcard`).
+
+**Dashboard del técnico — estructura final acordada** (iterada varias veces,
+esta es la versión aprobada):
+  1. Tarjeta premium (degradado del color del área) arriba de todo, con:
+     nombre del técnico, "Área · Pareja", fecha (badge arriba-derecha),
+     LA META DEL DÍA (número grande, barra, "faltan N para la meta"), y
+     debajo de una línea divisoria, la cuadrilla en texto ("Con Fulano,
+     Mengano") — NO como chips sueltos, NO como sección aparte con título
+     "Tu cuadrilla" (se probó y "se veía feo", desencajaba).
+  2. Fila de accesos rápidos (Órdenes, Mapa, Bodega, Devolver) — planos,
+     sin degradado.
+  3. Tarjeta PLANA (`ds-card`, no premium) con el AVANCE TOTAL de la
+     campaña (acumulado histórico de la pareja) — barra simple, label
+     "Avance total" (nunca decir "avance de hoy" para un número que es el
+     acumulado — confunde).
+  4. Mini-stats (pendientes/hechas/total) en tarjetas planas.
+  Nota: se intentó al revés (avance arriba en la premium, meta abajo
+  plana) y el usuario pidió invertirlo — la meta es lo accionable del día,
+  merece ser protagonista; el acumulado es solo contexto.
+
+  Caso especial Caracterización: en vez de una barra de meta única, van
+  DOS barras dentro de la misma tarjeta premium (Instalaciones X/10,
+  Retiros X/12) porque son dos metas independientes.
+
+**Chip de identidad (versión descartada)**: se probó un chip pequeño tipo
+píldora ("AMI · Pareja 1") flotando como header separado de la tarjeta —
+el usuario dijo "me encanta el chip pero debería estar arriba del todo,
+integrado" → de ahí se llegó a fusionarlo dentro de la tarjeta premium
+como está ahora. El estilo visual del chip (color de fondo del área al
+15% de opacidad, texto en el color sólido del área) SÍ se conservó, solo
+cambió dónde vive.
+
+**Dashboard del admin/asistente — simplificado a propósito**: el usuario
+pidió explícitamente NO reconstruir el panel viejo (que leía stats de
+todas las áreas — caro en lecturas de Firebase). Versión aprobada: tarjeta
+premium simple (nombre, rol, fecha, SIN métricas dentro) + accesos directos
+en grid 2 columnas agrupados por "Campañas" y "Gestión" + sección "Personal
+activo hoy" (sí se pidió explícitamente reincorporar esto, es información
+que el admin considera crucial: quién trabaja, en qué área, con quién,
+agrupado por área/pareja en chips).
+
+**Reclamos usa el mismo patrón de tarjeta premium** que las demás áreas
+(identidad + fecha) pero sin meta/avance porque no aplica a su flujo de
+bitácora — solo accesos rápidos debajo.
+
+**Legibilidad de campo (paneles de detalle en los 3 mapas)**: iteración
+importante — la primera versión "legible" se pasó de tamaño (letras
+gigantes, "se ve feo" fue el feedback). Se ajustó a un punto medio: el
+peso real de la legibilidad lo da el CONTRASTE (blanco casi puro sobre
+fondo con recuadro semitransparente), no el tamaño de fuente exagerado.
+Tamaños finales: NC/WO título ~17px, dirección en recuadro destacado ~13px
+peso 500, datos técnicos (medidor/DS/etc.) en grid de tarjetas ~14-15px.
+
+**Botones de acción fijos (sticky) en el panel del mapa**: se pidió
+SOLO para Cambios por ahora (no AMI ni Caracterización todavía) porque en
+Cambios las direcciones son más largas y el panel scrollea más — el
+usuario notó que tenía que hacer scroll para llegar a "Realizada". Técnica:
+CSS `:has()` para separar un `.panel-scroll-info` (scrollea) de
+`.panel-actions-fixed` (pegado abajo). Es CSS moderno; si algún teléfono
+muy viejo no lo soporta, degrada con gracia a scroll normal (no rompe).
+
+**Barra/leyenda de los mapas**: se evaluó rediseñarlas a fondo y se
+concluyó que YA estaban bien (blur, buen contraste) — solo se les dio un
+pulido de coherencia menor (efecto de escala al tocar, igual que la
+navbar; redondeado de esquinas unificado). No vale la pena over-engineer
+algo que ya funciona bien.
+
+**Agrupamiento de pines en el mapa (spiderfy/cluster) — PROBADO Y
+REVERTIDO**: se implementó con `Leaflet.markercluster` para resolver pines
+muy encimados en AMI, pero los TÉCNICOS reportaron que les resultaba
+incómodo en campo → se quitó por completo (incluidas las líneas de
+`index.html`, que se pueden dejar sin usar, no estorban). En su lugar, el
+problema de "no puedo tocar el pin de abajo" se resolvió distinto: al
+tocar un punto, si hay varias órdenes dentro de un radio de ~22px en
+pantalla, se muestra una LISTA para elegir cuál abrir — sin mover ni
+agrupar visualmente ningún pin. Esta es la solución que se queda. No
+reintroducir clustering sin que el usuario lo pida de nuevo explícitamente.
+
+**Colores de degradado de tarjeta premium por área** (ya en `ds-pcard`):
+cm (Cambios) `#2dd4bf→#1a9e94→#0f5f5a`, cr (Caracterización)
+`#f87171→#c2443f→#7a2825`, am (AMI) `#6d54c8→#4f3a9e→#332363`, rc
+(Reclamos) `#fbbf24→#d97706→#92590a`, otc/admin `#5b8def→#3f63b0→#26386e`.
+
+**Login**: rediseño solo de CSS (no se tocó el HTML ni la lógica de auth).
+Logo con degradado azul-cian (`#3b82f6→#22d3ee`) con sombra, botón de
+ingresar sólido con el mismo degradado (antes era outline vacío — se
+cambió a sólido para que se sintiera más "premium"/invitante).
+
+## Pendientes de fondo conocidos (no resueltos, anotados a propósito)
 
 
 - **Service Worker**: cachea de forma agresiva: subir un archivo nuevo no
@@ -172,4 +282,3 @@ día a día con lo mínimo.
 - **Lecturas de Firebase**: vigilar el volumen (picos grandes cuando varias
   parejas abren la app a la vez en la mañana). El dashboard de admin se
   simplificó a propósito (ya no lee todas las áreas) para no agravarlo.
-  
