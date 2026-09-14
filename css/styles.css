@@ -1856,3 +1856,6 @@ body {
   border-top: 1px solid var(--border);
   background: rgba(10,22,40,.96);
 }
+/* Dentro de .crc-hoja el fondo del panel es #0d1117 (sin transparencia),
+   no rgba(10,22,40,.96) — igualarlo para que no se note el recuadro. */
+.crc-hoja .panel-actions-fixed { background: #0d1117; }
