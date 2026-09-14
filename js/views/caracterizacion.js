@@ -624,7 +624,10 @@ function renderLista() {
   const el = container_.querySelector('#crc-lista');
   if (!el) return;
   if (!ordenes_.length) {
-    el.innerHTML = `<div style="text-align:center;padding:32px 16px;color:var(--text-4);font-size:13px">No hay órdenes cargadas.<br>Usa el botón de arriba para cargar el Excel del día.</div>`;
+    el.innerHTML = `<div class="dev-module">
+      <div class="dev-title">No hay órdenes cargadas</div>
+      <p>Usa el botón de arriba para cargar el Excel del día.</p>
+    </div>`;
     return;
   }
 
@@ -1266,7 +1269,12 @@ function renderListaRetiros() {
   const el = container_.querySelector('#crc-lista');
   if (!el) return;
   if (!retiros_.length) {
-    el.innerHTML = `<div style="text-align:center;padding:32px 16px;color:var(--text-4);font-size:13px">${esAdmin_ ? 'No hay retiros cargados. Usa el botón naranja para subir el Excel.' : 'No tienes retiros asignados.'}</div>`;
+    el.innerHTML = esAdmin_
+      ? `<div class="dev-module">
+          <div class="dev-title">No hay retiros cargados</div>
+          <p>Usa el botón naranja para subir el Excel.</p>
+        </div>`
+      : `<div class="dev-module"><div class="dev-title">No tienes retiros asignados</div></div>`;
     return;
   }
 

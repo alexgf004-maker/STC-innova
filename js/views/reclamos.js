@@ -153,10 +153,14 @@ function renderLista() {
     );
   }
   if (!arr.length) {
-    el.innerHTML = `<div style="text-align:center;padding:32px 16px;color:var(--text-4);font-size:13px">${
-      registros_.length ? 'No hay resultados para tu búsqueda.' :
-      esAdmin_ ? 'Aún no hay órdenes registradas.' : 'No has registrado órdenes.<br>Usa el botón + para agregar la primera.'
-    }</div>`;
+    el.innerHTML = registros_.length
+      ? `<div class="dev-module"><div class="dev-title">No hay resultados para tu búsqueda</div></div>`
+      : esAdmin_
+        ? `<div class="dev-module"><div class="dev-title">Aún no hay órdenes registradas</div></div>`
+        : `<div class="dev-module">
+            <div class="dev-title">No has registrado órdenes</div>
+            <p>Usa el botón + para agregar la primera.</p>
+          </div>`;
     return;
   }
   el.innerHTML = `<div style="display:flex;flex-direction:column;gap:8px">${
