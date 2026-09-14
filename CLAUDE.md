@@ -101,10 +101,15 @@ plano. Ya aplicado en los tres mapas.
 ## Migración de rediseño — estado
 
 Hecho: dashboards (técnico, admin, asistente, Reclamos), login, topbar/navbar,
-paneles de detalle de los 3 mapas, botones fijos abajo en el panel de Cambios.
-Pendiente cuando se retome: mismo tratamiento de "botones fijos" en AMI y
-Caracterización, leyendas/barras de control de los mapas si hace falta más
-pulido, listas de órdenes, Bodega, Usuarios.
+paneles de detalle de los 3 mapas, botones fijos abajo en el panel de Cambios,
+AMI y Caracterización (esta última vía `.crc-hoja:has(.panel-actions-fixed)`,
+su propio contenedor de hoja, distinto de `.mapa-panel`). Listas de órdenes
+(Cambios/AMI/Caracterización/Reclamos) normalizadas: clase `.orden-card.stacked`
+en vez de repetir el override inline de layout, barra de búsqueda compartida
+`.buscar-wrap`/`.buscar-input`, y estado vacío unificado en `.dev-module` en
+las 4 (antes cada una tenía su propia variante).
+Pendiente cuando se retome: leyendas/barras de control de los mapas si hace
+falta más pulido, Bodega, Usuarios.
 
 ## Cómo funciona la app en la operación real (contexto de negocio)
 
