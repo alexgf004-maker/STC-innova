@@ -57,9 +57,9 @@ export async function init(container, session) {
         </div>
       </div>
 
-      <div style="position:relative;margin-bottom:14px">
-        <svg viewBox="0 0 24 24" fill="none" stroke="var(--text-4)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" style="position:absolute;left:12px;top:50%;transform:translateY(-50%)"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-        <input id="rc-buscar" type="text" placeholder="Buscar por WO, NC, cliente, censo…" style="width:100%;padding:11px 12px 11px 36px;border-radius:12px;border:1px solid var(--border);background:var(--glass);color:var(--text-2);font-size:13px;font-family:inherit;outline:none"/>
+      <div class="buscar-wrap" style="margin-bottom:14px">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14" style="color:var(--text-4);flex-shrink:0"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input class="buscar-input" id="rc-buscar" type="text" placeholder="Buscar por WO, NC, cliente, censo…"/>
       </div>
 
       <div id="rc-estado"></div>
@@ -161,7 +161,7 @@ function renderLista() {
   }
   el.innerHTML = `<div style="display:flex;flex-direction:column;gap:8px">${
     arr.map(r => `
-      <div class="orden-card" style="flex-direction:column;align-items:stretch;cursor:default;border-left:3px solid #fbbf24">
+      <div class="orden-card stacked" style="border-left:3px solid #fbbf24">
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
           <div class="orden-wo" style="color:#fbbf24;font-size:14px">WO ${r.wo || '—'}</div>
           ${r.nc ? `<div style="font-size:11px;color:var(--text-3)">NC ${escapar(r.nc)}</div>` : ''}

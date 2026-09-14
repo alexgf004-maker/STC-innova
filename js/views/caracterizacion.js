@@ -273,9 +273,11 @@ export async function init(container, session) {
 
       ${esAdmin_ ? `
       <div style="margin-bottom:14px">
-        <input id="crc-buscar" type="text" placeholder="Buscar por NC, medidor o nombre…"
-          style="width:100%;box-sizing:border-box;padding:11px 14px;border-radius:12px;border:1px solid var(--border);background:var(--glass);color:var(--text-1);font-size:13px;font-family:inherit;outline:none"/>
-        <div style="font-size:11px;color:var(--text-4);margin-top:4px">Busca en instalaciones y retiros. Deja vacío para ver la lista normal.</div>
+        <div class="buscar-wrap" style="margin-bottom:4px">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14" style="color:var(--text-4);flex-shrink:0"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input class="buscar-input" id="crc-buscar" type="text" placeholder="Buscar por NC, medidor o nombre…"/>
+        </div>
+        <div style="font-size:11px;color:var(--text-4)">Busca en instalaciones y retiros. Deja vacío para ver la lista normal.</div>
       </div>
       <div id="crc-busqueda"></div>` : ''}
 
@@ -378,7 +380,7 @@ async function buscarOrdenes(texto) {
     const yaHecha = o.estado === 'por_confirmar' || o.estado === 'confirmada';
     const faltaRevisar = o.estado === 'por_confirmar';
     return `
-      <div class="orden-card" style="flex-direction:column;align-items:stretch;cursor:default;border-left:3px solid #ef4444">
+      <div class="orden-card stacked" style="border-left:3px solid #ef4444">
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px">
           <div class="orden-wo" style="color:#ef4444">NC ${o.ncTitular || '—'}</div>
           <div style="flex:1"></div>
@@ -407,7 +409,7 @@ async function buscarOrdenes(texto) {
   const tarjetaRet = (r) => {
     const est = estadoRet(r);
     return `
-      <div class="orden-card" style="flex-direction:column;align-items:stretch;cursor:default;border-left:3px solid #f59e0b">
+      <div class="orden-card stacked" style="border-left:3px solid #f59e0b">
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px">
           <div class="orden-wo" style="color:#f59e0b">NC ${r.nc || '—'}</div>
           <div style="flex:1"></div>
@@ -680,7 +682,7 @@ function tarjetaOrden(o) {
     : '';
 
   return `
-    <div class="orden-card" style="flex-direction:column;align-items:stretch;cursor:default${o.esUPR?';border-left:3px solid #38bdf8':''}">
+    <div class="orden-card stacked" style="${o.esUPR?'border-left:3px solid #38bdf8':''}">
       <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px">
         <div class="orden-card-left" style="align-items:flex-start">
           <div class="status-dot ${dotClase}" ${dotStyle} style="margin-top:4px"></div>
@@ -1282,7 +1284,7 @@ function renderListaRetiros() {
       ? `${r.hechoPor ? 'Por ' + r.hechoPor : ''}${r.fechaHecho ? ' · ' + fmtFechaHora(r.fechaHecho) : ''}${r.pareja ? ' · ' + r.pareja : ''}`
       : (r.pareja || '');
     return `
-      <div class="orden-card" style="flex-direction:column;align-items:stretch;cursor:default;border-left:3px solid ${color}">
+      <div class="orden-card stacked" style="border-left:3px solid ${color}">
         <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px">
           <div class="orden-card-left" style="align-items:flex-start">
             <div class="status-dot ${dotClase}" ${dotStyle} style="margin-top:4px"></div>

@@ -349,9 +349,11 @@ function renderPanel() {
 function renderOrdenes() {
   const buscador = esAdmin_ ? `
     <div style="margin-bottom:12px">
-      <input id="ami-buscar-hist" type="text" inputmode="numeric" placeholder="Buscar NC (órdenes actuales e historial)…"
-        style="width:100%;box-sizing:border-box;padding:11px 14px;border-radius:12px;border:1px solid var(--border);background:var(--glass);color:var(--text-1);font-size:13px;font-family:inherit;outline:none"/>
-      <div style="font-size:11px;color:var(--text-4);margin-top:4px">Escribe un NC para ver qué se hizo. Deja vacío para ver las órdenes de la ruta.</div>
+      <div class="buscar-wrap" style="margin-bottom:4px">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14" style="color:var(--text-4);flex-shrink:0"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input class="buscar-input" id="ami-buscar-hist" type="text" inputmode="numeric" placeholder="Buscar NC (órdenes actuales e historial)…"/>
+      </div>
+      <div style="font-size:11px;color:var(--text-4)">Escribe un NC para ver qué se hizo. Deja vacío para ver las órdenes de la ruta.</div>
     </div>
     <div id="ami-hist-resultados"></div>` : '';
 
@@ -369,7 +371,7 @@ function renderOrdenes() {
       const dias = diasArrastrada(o);
       const residuo = esResiduo(o);
       return `
-        <div class="orden-card" style="flex-direction:column;align-items:stretch;cursor:default;border-left:3px solid ${o._yaCambiada ? '#16a34a' : residuo ? '#f59e0b' : ACCENT}">
+        <div class="orden-card stacked" style="border-left:3px solid ${o._yaCambiada ? '#16a34a' : residuo ? '#f59e0b' : ACCENT}">
           <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
             <div class="orden-wo" style="color:${ACCENT}">NC ${o.nc || '—'}</div>
             ${o.cliente ? `<div class="orden-cliente" style="flex:1;min-width:120px">${o.cliente}</div>` : '<div style="flex:1"></div>'}
@@ -383,7 +385,7 @@ function renderOrdenes() {
 
     // Tarjeta especial para "por confirmar": incluye botón Confirmar (admin)
     const tarjetaConfirmar = (o) => `
-      <div class="orden-card" style="flex-direction:column;align-items:stretch;cursor:default;border-left:3px solid #22c55e">
+      <div class="orden-card stacked" style="border-left:3px solid #22c55e">
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
           <div class="orden-wo" style="color:${ACCENT}">NC ${o.nc || '—'}</div>
           ${o.cliente ? `<div class="orden-cliente" style="flex:1;min-width:120px">${o.cliente}</div>` : '<div style="flex:1"></div>'}
@@ -505,7 +507,7 @@ async function buscarHistorial(nc) {
             const cuadrilla = Array.isArray(o.parejaDelDia) && o.parejaDelDia.length ? o.parejaDelDia.join(', ') : '';
             const hecha = o.estadoCampo === 'hecha';
             return `
-            <div class="orden-card" style="flex-direction:column;align-items:stretch;cursor:default;border-left:3px solid ${o.estadoCampo === 'aprobada' || o.estadoCampo === 'hecha' ? '#22c55e' : ACCENT}">
+            <div class="orden-card stacked" style="border-left:3px solid ${o.estadoCampo === 'aprobada' || o.estadoCampo === 'hecha' ? '#22c55e' : ACCENT}">
               <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:4px">
                 <div class="orden-wo" style="color:${ACCENT}">NC ${o.nc || '—'}</div>
                 <div style="flex:1"></div>
@@ -540,7 +542,7 @@ async function buscarHistorial(nc) {
         </div>
         <div style="display:flex;flex-direction:column;gap:8px">
           ${regs.map(r => `
-            <div class="orden-card" style="flex-direction:column;align-items:stretch;cursor:default;border-left:3px solid #16a34a">
+            <div class="orden-card stacked" style="border-left:3px solid #16a34a">
               <div style="background:var(--glass);border-radius:8px;padding:8px 10px">
                 ${fila('Trabajo', r.trabajo)}
                 ${fila('Medidor nuevo', r.medidorNuevo)}
