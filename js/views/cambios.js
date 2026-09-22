@@ -148,8 +148,11 @@ function renderShell() {
     <div class="sheet-backdrop" id="sheet-import">
       <div class="sheet">
         <div class="sheet-handle"></div>
-        <div class="sheet-title">Importar órdenes DELSUR</div>
+        <div class="sheet-title">Importar órdenes</div>
         <div class="sheet-body">
+          <div style="font-size:12px;color:var(--text-4);margin-bottom:14px;line-height:1.6">
+            Acepta el Excel oficial de DELSUR o el formato simple con <strong>WO</strong> al inicio (WO, NC, nombre, dirección, DS, medidor, latitud, longitud).
+          </div>
           <div class="import-dropzone" id="import-dropzone">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" width="32" height="32" style="color:var(--text-4)">
               <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
@@ -272,6 +275,36 @@ function renderShell() {
       </div>
     </div>
 
+    <!-- Sheet importar urgentes (Excel) -->
+    <div class="sheet-backdrop" id="sheet-urgentes-import">
+      <div class="sheet">
+        <div class="sheet-handle"></div>
+        <div class="sheet-title" style="color:#ef4444">Órdenes urgentes (Excel)</div>
+        <div class="sheet-body">
+          <div style="font-size:12px;color:var(--text-4);margin-bottom:14px;line-height:1.6">
+            Sube un Excel con las WO urgentes (columna <strong>WO</strong> obligatoria; opcionales NC, nombre, dirección, DS, medidor, latitud, longitud). Las WO que ya estén en el mapa se marcarán en rojo; las nuevas se crearán como urgentes.
+          </div>
+          <div class="import-dropzone" id="urg-import-dropzone">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" width="32" height="32" style="color:var(--text-4)">
+              <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+              <polyline points="17 8 12 3 7 8"/>
+              <line x1="12" y1="3" x2="12" y2="15"/>
+            </svg>
+            <p>Toca para seleccionar archivo Excel</p>
+            <span>.xlsx · .xlsm · .xls</span>
+          </div>
+          <input type="file" id="urg-import-file" accept=".xlsx,.xlsm,.xls" style="display:none"/>
+          <div id="urg-import-preview" style="display:none">
+            <div class="import-info" id="urg-import-info"></div>
+            <div id="urg-import-error" class="form-error"></div>
+            <button class="btn-primary full" id="btn-confirmar-urgentes-import" style="background:rgba(239,68,68,.2);border:1px solid rgba(239,68,68,.4);color:#f87171">
+              <span id="btn-urgentes-import-label">Marcar / crear urgentes</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- Sheet mal ubicadas -->
     <div class="sheet-backdrop" id="sheet-mal-ubicadas">
       <div class="sheet" style="max-height:90vh">
@@ -331,7 +364,7 @@ function renderShell() {
   });
 
   // Cerrar sheets
-  ['sheet-orden', 'sheet-campo', 'sheet-import', 'sheet-lecturas', 'sheet-import-lecturas', 'sheet-buscar', 'sheet-ya-cambiadas', 'sheet-urgente', 'sheet-mal-ubicadas'].forEach(id => {
+  ['sheet-orden', 'sheet-campo', 'sheet-import', 'sheet-lecturas', 'sheet-import-lecturas', 'sheet-buscar', 'sheet-ya-cambiadas', 'sheet-urgente', 'sheet-urgentes-import', 'sheet-mal-ubicadas'].forEach(id => {
     const el = document.getElementById(id);
     if (!el) return;
     el.addEventListener('click', e => { if (e.target === el) closeSheet(id); });
@@ -349,6 +382,13 @@ function renderShell() {
   dropzone?.addEventListener('click', () => fileInput.click());
   fileInput?.addEventListener('change', handleFileSelect);
   document.getElementById('btn-confirmar-import')?.addEventListener('click', confirmarImport);
+
+  // Import urgentes Excel
+  const urgDropzone = document.getElementById('urg-import-dropzone');
+  const urgFileInput = document.getElementById('urg-import-file');
+  urgDropzone?.addEventListener('click', () => urgFileInput.click());
+  urgFileInput?.addEventListener('change', handleUrgentesFileSelect);
+  document.getElementById('btn-confirmar-urgentes-import')?.addEventListener('click', confirmarUrgentesImport);
 
   // Exponer para onclick
   // Gestionar lecturas
@@ -372,7 +412,7 @@ function renderShell() {
   });
   document.getElementById('btn-confirmar-urgente')?.addEventListener('click', confirmarNuevaUrgente);
 
-  window.__cambios = { verOrden, verOrdenDesdeBuscar, marcarHecha, marcarVisita, actualizadaDelsur, aprobar, aprobarYaCambiado, rechazar, revertirYaCambiado, openCampo, openImport, openImportLecturas, openGestionarLecturas, openBuscar, openYaCambiadas, openMalUbicadas, corregirCoordenadas, revertirMalUbicado, openNuevaUrgente, marcarUrgente, eliminarOrden, filtrarSinActualizar, buscarSinActualizar, toggleAcordeon, descargarHoy, descargarMensual, toggleMenuAcciones };
+  window.__cambios = { verOrden, verOrdenDesdeBuscar, marcarHecha, marcarVisita, actualizadaDelsur, aprobar, aprobarYaCambiado, rechazar, revertirYaCambiado, openCampo, openImport, openImportLecturas, openGestionarLecturas, openBuscar, openYaCambiadas, openMalUbicadas, corregirCoordenadas, revertirMalUbicado, openNuevaUrgente, openUrgentesImport, marcarUrgente, eliminarOrden, filtrarSinActualizar, buscarSinActualizar, toggleAcordeon, descargarHoy, descargarMensual, toggleMenuAcciones };
 }
 
 // ── Cargar datos ──────────────────────────────────
@@ -725,11 +765,15 @@ function renderPanel() {
       <div id="menu-acciones" style="display:none" class="anim-up">        <div class="flex-col gap-6" style="background:var(--glass);border:1px solid var(--border);border-radius:var(--radius);padding:8px;margin-bottom:4px">
           <button class="menu-accion-btn" onclick="window.__cambios.openImport();window.__cambios.toggleMenuAcciones()">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-            Importar órdenes (Excel DELSUR)
+            Importar órdenes (Excel)
           </button>
           <button class="menu-accion-btn" onclick="window.__cambios.openNuevaUrgente();window.__cambios.toggleMenuAcciones()" style="color:#f87171">
             <svg viewBox="0 0 24 24" fill="none" stroke="#f87171" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
             Nueva orden urgente
+          </button>
+          <button class="menu-accion-btn" onclick="window.__cambios.openUrgentesImport();window.__cambios.toggleMenuAcciones()" style="color:#f87171">
+            <svg viewBox="0 0 24 24" fill="none" stroke="#f87171" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            Órdenes urgentes (Excel)
           </button>
           <button class="menu-accion-btn" onclick="window.__cambios.openImportLecturas();window.__cambios.toggleMenuAcciones()">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
@@ -1753,6 +1797,119 @@ async function marcarUrgente(id, urgente = true) {
   }
 }
 
+// ── Órdenes urgentes en lote (Excel) ──────────────
+let urgentesImportData = [];
+
+function openUrgentesImport() {
+  urgentesImportData = [];
+  document.getElementById('urg-import-preview').style.display = 'none';
+  document.getElementById('urg-import-error').style.display = 'none';
+  const inp = document.getElementById('urg-import-file');
+  if (inp) inp.value = '';
+  openSheet('sheet-urgentes-import');
+}
+
+function handleUrgentesFileSelect(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const errEl = document.getElementById('urg-import-error');
+
+  const reader = new FileReader();
+  reader.onload = evt => {
+    try {
+      const wb   = XLSX.read(evt.target.result, { type: 'binary' });
+      const ws   = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+
+      const { error, data } = mapearOrdenesExcel(rows);
+      if (error) { errEl.textContent = error; errEl.style.display = 'block'; return; }
+      urgentesImportData = data;
+
+      document.getElementById('urg-import-info').innerHTML = `
+        <div class="import-info-box">
+          <div class="import-info-num">${urgentesImportData.length}</div>
+          <div class="import-info-label">WO urgentes en el archivo</div>
+          <div style="font-size:11px;color:var(--text-4);margin-top:4px">${file.name}</div>
+        </div>
+      `;
+      document.getElementById('urg-import-preview').style.display = '';
+      errEl.style.display = 'none';
+    } catch (err) {
+      console.error('[cambios] Error leyendo Excel urgentes:', err);
+      errEl.textContent = 'Error al leer el archivo. Verifica que sea un Excel válido.';
+      errEl.style.display = 'block';
+    }
+  };
+  reader.readAsBinaryString(file);
+}
+
+async function confirmarUrgentesImport() {
+  if (!urgentesImportData.length) return;
+  const errEl = document.getElementById('urg-import-error');
+  errEl.style.display = 'none';
+  setLoading('btn-urgentes-import-label', 'Procesando…', true);
+
+  try {
+    // WOs existentes (por WO normalizada) para no duplicar.
+    const existSnap = await db.collection('cambios_ordenes').get();
+    const existentes = {};
+    existSnap.docs.forEach(d => {
+      const wo = String(d.data().wo ?? '').trim();
+      if (wo && existentes[wo] === undefined) existentes[wo] = d.id;
+    });
+
+    let batch = db.batch();
+    let count = 0;
+    const commits = [];
+    const flush = () => { if (count) { commits.push(batch.commit()); batch = db.batch(); count = 0; } };
+    const push = () => { if (++count === 499) flush(); };
+
+    let marcadas = 0, creadas = 0;
+    const vistas = new Set();   // evita procesar la misma WO dos veces dentro del archivo
+
+    for (const orden of urgentesImportData) {
+      const wo = String(orden.wo ?? '').trim();
+      if (!wo || vistas.has(wo)) continue;
+      vistas.add(wo);
+
+      const docId = existentes[wo];
+      if (docId) {
+        batch.update(db.collection('cambios_ordenes').doc(docId), { urgente: true });
+        marcadas++;
+      } else {
+        const ref = db.collection('cambios_ordenes').doc();
+        batch.set(ref, {
+          ...orden,
+          pareja:            null,
+          urgente:           true,
+          estadoCampo:       null,
+          actualizadaDelsur: false,
+          generadaEnCampo:   false,
+          importadaEn:       firebase.firestore.Timestamp.now(),
+          creadaPor:         session_.displayName,
+        });
+        creadas++;
+      }
+      push();
+    }
+    flush();
+    await Promise.all(commits);
+
+    invalidateOrdenes();
+    closeSheet('sheet-urgentes-import');
+    await loadOrdenes();
+
+    toast(`${marcadas} marcada${marcadas === 1 ? '' : 's'} en rojo · ${creadas} creada${creadas === 1 ? '' : 's'}`, 'ok');
+    urgentesImportData = [];
+  } catch (err) {
+    console.error('[cambios] Error importando urgentes:', err);
+    errEl.textContent = `Error: ${err.message}`;
+    errEl.style.display = 'block';
+  } finally {
+    setLoading('btn-urgentes-import-label', 'Marcar / crear urgentes', false);
+  }
+}
+
 function openCampo() { openSheet('sheet-campo'); }
 
 async function guardarOrdenCampo() {
@@ -1804,6 +1961,64 @@ async function guardarOrdenCampo() {
 // ── Import Excel ──────────────────────────────────
 let importData = [];
 
+// Mapea las filas crudas de un Excel a órdenes de Cambios. Acepta dos formatos
+// por nombre de columna (sin distinguir mayúsculas ni tildes):
+//  · Export oficial DELSUR: MRU, NC, WO, CLIENT, # SERIES, TRADEMARK, DS/CT,
+//    ADDRESS, CONCEPT, WO CLASS, LECTURAS Y OBSERVACIONES, LATITUD, LONGITUD.
+//  · Formato simple tipo AMI con WO al inicio: WO, NC, NOMBRE, DIRECCION, DS,
+//    MEDIDOR, LATITUD, LONGITUD.
+// Devuelve { error, data }.
+function mapearOrdenesExcel(rows) {
+  const norm = s => String(s ?? '').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+
+  // Buscar la fila de encabezados (la que contiene WO); en el export DELSUR
+  // hay filas de metadata antes.
+  let headerRowIdx = -1;
+  for (let i = 0; i < Math.min(rows.length, 6); i++) {
+    if ((rows[i] || []).some(h => norm(h) === 'WO')) { headerRowIdx = i; break; }
+  }
+  if (headerRowIdx === -1) return { error: 'No se encontró la columna WO. Verifica el archivo.', data: [] };
+
+  const headers = (rows[headerRowIdx] || []).map(norm);
+  const col = (...alias) => headers.findIndex(h => alias.includes(h));
+  const idx = {
+    wo:            col('WO'),
+    nc:            col('NC'),
+    cliente:       col('CLIENT', 'CLIENTE', 'NOMBRE'),
+    serieActual:   col('# SERIES', 'SERIES', 'MEDIDOR', 'SERIE'),
+    marca:         col('TRADEMARK', 'MARCA'),
+    dsct:          col('DS/CT', 'DSCT', 'DS'),
+    direccion:     col('ADDRESS', 'DIRECCION'),
+    concepto:      col('CONCEPT', 'CONCEPTO'),
+    woClass:       col('WO CLASS', 'WOCLASS'),
+    unidadLectura: col('MRU'),
+    lecturas:      col('LECTURAS Y OBSERVACIONES', 'LECTURAS', 'OBSERVACIONES'),
+    latitud:       col('LATITUD', 'LAT'),
+    longitud:      col('LONGITUD', 'LONG', 'LNG'),
+  };
+  if (idx.wo === -1) return { error: 'No se encontró la columna WO.', data: [] };
+
+  const val = (r, i) => (i >= 0 ? String(r[i] ?? '').trim() : '');
+  const data = rows.slice(headerRowIdx + 1)
+    .filter(r => val(r, idx.wo))
+    .map(r => ({
+      wo:            val(r, idx.wo),
+      nc:            val(r, idx.nc),
+      cliente:       val(r, idx.cliente),
+      direccion:     val(r, idx.direccion),
+      latitud:       parseFloat(r[idx.latitud])  || null,
+      longitud:      parseFloat(r[idx.longitud]) || null,
+      serieActual:   val(r, idx.serieActual),
+      marca:         val(r, idx.marca),
+      dsct:          val(r, idx.dsct),
+      unidadLectura: val(r, idx.unidadLectura),
+      concepto:      val(r, idx.concepto),
+      woClass:       val(r, idx.woClass),
+      lecturas:      val(r, idx.lecturas),
+    }));
+  return { error: null, data };
+}
+
 function openImport() { openSheet('sheet-import'); }
 
 function handleFileSelect(e) {
@@ -1817,68 +2032,13 @@ function handleFileSelect(e) {
       const ws   = wb.Sheets[wb.SheetNames[0]];
       const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
 
-      // El Excel de DELSUR tiene 2 filas de cabecera antes de los datos:
-      // Fila 0: metadata (título, fecha entrega)
-      // Fila 1: encabezados reales (MRU, NC, WO, Client...)
-      // Fila 2+: datos
-
-      // Buscar la fila de encabezados reales (la que contiene "WO")
-      let headerRowIdx = -1;
-      for (let i = 0; i < Math.min(rows.length, 5); i++) {
-        const row = rows[i].map(h => String(h).toUpperCase().trim());
-        if (row.includes('WO')) { headerRowIdx = i; break; }
-      }
-
-      if (headerRowIdx === -1) {
-        document.getElementById('import-error').textContent = 'No se encontró la columna WO. Verifica el archivo.';
+      const { error, data } = mapearOrdenesExcel(rows);
+      if (error) {
+        document.getElementById('import-error').textContent = error;
         document.getElementById('import-error').style.display = 'block';
         return;
       }
-
-      const headers = rows[headerRowIdx].map(h => String(h).trim());
-
-      // Mapeo exacto de columnas del Excel de DELSUR
-      const col = {};
-      headers.forEach((h, i) => {
-        const hu = h.toUpperCase().trim();
-        if (hu === 'MRU')                          col.unidadLectura = i;
-        else if (hu === 'NC')                      col.nc            = i;
-        else if (hu === 'WO')                      col.wo            = i;
-        else if (hu === 'CLIENT')                  col.cliente       = i;
-        else if (hu === '# SERIES')                col.serieActual   = i;
-        else if (hu === 'TRADEMARK')               col.marca         = i;
-        else if (hu === 'DS/CT')                   col.dsct          = i;
-        else if (hu === 'ADDRESS')                 col.direccion     = i;
-        else if (hu === 'CONCEPT')                 col.concepto      = i;
-        else if (hu === 'WO CLASS')                col.woClass       = i;
-        else if (hu === 'LECTURAS Y OBSERVACIONES') col.lecturas     = i;
-        else if (hu === 'LATITUD')                 col.latitud       = i;
-        else if (hu === 'LONGITUD')                col.longitud      = i;
-      });
-
-      if (col.wo === undefined) {
-        document.getElementById('import-error').textContent = 'No se encontró la columna WO.';
-        document.getElementById('import-error').style.display = 'block';
-        return;
-      }
-
-      importData = rows.slice(headerRowIdx + 1)
-        .filter(r => r[col.wo] && String(r[col.wo]).trim())
-        .map(r => ({
-          wo:            String(r[col.wo]            ?? '').trim(),
-          nc:            String(r[col.nc]            ?? '').trim(),
-          cliente:       String(r[col.cliente]       ?? '').trim(),
-          direccion:     String(r[col.direccion]     ?? '').trim(),
-          latitud:       parseFloat(r[col.latitud])  || null,
-          longitud:      parseFloat(r[col.longitud]) || null,
-          serieActual:   String(r[col.serieActual]   ?? '').trim(),
-          marca:         String(r[col.marca]         ?? '').trim(),
-          dsct:          String(r[col.dsct]          ?? '').trim(),
-          unidadLectura: String(r[col.unidadLectura] ?? '').trim(),
-          concepto:      String(r[col.concepto]      ?? '').trim(),
-          woClass:       String(r[col.woClass]       ?? '').trim(),
-          lecturas:      String(r[col.lecturas]      ?? '').trim(),
-        }));
+      importData = data;
 
       document.getElementById('import-info').innerHTML = `
         <div class="import-info-box">
