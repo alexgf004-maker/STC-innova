@@ -36,7 +36,7 @@ export async function init(container, session) {
   container.scrollTop = 0;
 
   container.innerHTML = `
-    <div style="padding:16px 16px 32px;max-width:900px;margin:0 auto">
+    <div style="max-width:900px;margin:0 auto">
       <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:16px">
         <div>
           <div class="section-title">Reclamos SIGET</div>
