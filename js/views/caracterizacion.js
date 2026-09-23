@@ -233,7 +233,7 @@ export async function init(container, session) {
   esAdmin_ = (session.role === 'admin' || session.role === 'asistente');
   container.scrollTop = 0;
   container.innerHTML = `
-    <div style="padding:4px 16px 32px;max-width:1100px;margin:0 auto">
+    <div style="max-width:1100px;margin:0 auto">
       <div style="margin-bottom:18px">
         <div style="font-size:24px;font-weight:600;letter-spacing:-.02em;line-height:1.15">Caracterización de la Carga</div>
         <div style="font-size:12px;color:var(--text-4);margin-top:4px">${esAdmin_ ? 'Órdenes del día' : 'Tus órdenes del día'}</div>
