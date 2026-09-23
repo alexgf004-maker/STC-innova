@@ -86,36 +86,33 @@ function seccionMetas() {
     const pct = meta > 0 ? Math.min(100, Math.round((hechas / meta) * 100)) : 0;
     const col = colorPareja(p);
     const cumplida = meta > 0 && hechas >= meta;
+    const acc = cumplida ? '#22c55e' : col;
     return `
-      <div class="progress-card" style="margin-bottom:10px">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-          <div style="display:flex;align-items:center;gap:8px">
-            <span style="width:9px;height:9px;border-radius:50%;background:${col}"></span>
-            <span style="font-size:13px;font-weight:700">${p}</span>
-            ${cumplida ? '<span class="estado-badge ok" style="font-size:10px">Meta cumplida</span>' : ''}
+      <div class="ds-card" style="margin-bottom:10px;border-color:${cumplida?'rgba(34,197,94,.4)':'var(--border)'}">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:10px">
+          <div style="display:flex;align-items:center;gap:7px;min-width:0">
+            <span style="width:9px;height:9px;border-radius:50%;background:${col};flex-shrink:0"></span>
+            <span style="font-size:13px;font-weight:600;color:${acc};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${p}</span>
+            ${cumplida ? '<span class="estado-badge ok" style="font-size:10px;flex-shrink:0">Meta &#10003;</span>' : ''}
           </div>
           ${esAdmin_ ? `
-            <div style="display:flex;align-items:center;gap:6px">
+            <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
               <span style="font-size:11px;color:var(--text-4)">Meta</span>
               <input type="number" min="0" class="ami-meta-input" data-pareja="${p}" value="${meta || ''}" placeholder="0"
-                style="width:56px;padding:5px 8px;border-radius:8px;border:1px solid var(--border);background:var(--glass);color:var(--text-1);font-size:13px;font-family:inherit;text-align:center;outline:none"/>
-            </div>` : `<span style="font-size:12px;color:var(--text-4)">Meta: ${meta || '—'}</span>`}
+                style="width:52px;padding:5px 8px;border-radius:8px;border:1px solid var(--border);background:var(--glass);color:var(--text-1);font-size:13px;font-family:inherit;text-align:center;outline:none"/>
+            </div>` : `<span style="font-size:12px;color:var(--text-4);flex-shrink:0">Meta: ${meta || '—'}</span>`}
         </div>
-        <div class="progress-bar-bg">
-          <div class="progress-bar-fill" style="width:${pct}%;background:${cumplida ? '#22c55e' : col}"></div>
+        <div style="display:flex;align-items:baseline;gap:4px;margin-bottom:10px">
+          <span class="ds-num-md" style="color:${acc}">${hechas}</span>
+          <span style="font-size:11px;color:var(--text-4);font-weight:500">/ ${meta || '—'} hoy</span>
         </div>
-        <div style="display:flex;justify-content:space-between;margin-top:6px;font-size:11px;color:var(--text-4)">
-          <span>${hechas} hechas hoy</span>
-          <span>${meta > 0 ? pct + '%' : 'sin meta'}</span>
-        </div>
+        <div class="ds-bar"><i style="width:${pct}%;background:${acc}"></i></div>
+        <div style="margin-top:9px;font-size:11px;color:var(--text-3)">${meta > 0 ? pct + '% de la meta' : 'Sin meta definida'}</div>
       </div>`;
   };
 
   return `
-    <div style="display:flex;align-items:center;gap:8px;margin:4px 0 10px">
-      <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:${ACCENT}">${esAdmin_ ? 'Metas del día por pareja' : 'Tu meta de hoy'}</div>
-      <div style="flex:1;height:1px;background:var(--border)"></div>
-    </div>
+    <div class="ds-sec">${esAdmin_ ? 'Metas del día por pareja' : 'Tu meta de hoy'}</div>
     ${parejas.map(tarjeta).join('')}
     ${esAdmin_ ? `<div style="font-size:11px;color:var(--text-4);margin-top:2px">Escribe la meta de cada pareja. Se guarda sola y se mantiene hasta que la cambies.</div>` : ''}`;
 }
@@ -195,12 +192,18 @@ function renderShell() {
     : [{ id: 'resumen', label: 'Resumen' }, { id: 'ordenes', label: 'Órdenes' }];
 
   container_.innerHTML = `
-    <div class="area-tabs" style="margin-bottom:14px">
-      ${tabs.map((t, i) => `
-        <button class="area-tab ami-tab ${i === 0 ? 'active am' : ''}" data-tab="${t.id}">${t.label}</button>
-      `).join('')}
-    </div>
-    <div id="ami-content"></div>`;
+    <div style="max-width:1100px;margin:0 auto">
+      <div style="margin-bottom:18px">
+        <div style="font-size:24px;font-weight:600;letter-spacing:-.02em;line-height:1.15">Cambio de medidores AMI</div>
+        <div style="font-size:12px;color:var(--text-4);margin-top:4px">${esAdmin_ ? 'Medidores telegestionados · ruta del día' : 'Tu ruta del día'}</div>
+      </div>
+      <div class="area-tabs" style="margin-bottom:14px">
+        ${tabs.map((t, i) => `
+          <button class="area-tab ami-tab ${i === 0 ? 'active am' : ''}" data-tab="${t.id}">${t.label}</button>
+        `).join('')}
+      </div>
+      <div id="ami-content"></div>
+    </div>`;
 
   container_.querySelectorAll('.ami-tab').forEach(tab => {
     tab.onclick = () => setTab(tab.dataset.tab);
@@ -297,26 +300,16 @@ function renderPanel() {
   const pct = total ? Math.round((hechas / total) * 100) : 0;
 
   return `
-    <div class="welcome-card am" style="border-color:${ACCENT_BORDER};background:${ACCENT_GLASS};border-radius:16px;padding:18px;margin-bottom:16px">
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
-        <div style="width:10px;height:10px;border-radius:50%;background:${ACCENT}"></div>
-        <div style="font-size:16px;font-weight:800;color:${ACCENT}">AMI · Medidores telegestionados</div>
-      </div>
-      <div style="font-size:12px;color:var(--text-3);line-height:1.5">
-        Cambio de medidores remotos, en campaña separada. Las órdenes se identifican por NC.
-      </div>
-    </div>
-
     ${esAdmin_ ? `
-    <div style="display:flex;gap:8px;margin-bottom:16px">
-      <button id="ami-btn-importar" style="flex:1;display:flex;align-items:center;justify-content:center;gap:8px;padding:12px;border-radius:12px;border:1px solid ${ACCENT_BORDER};background:${ACCENT_GLASS};color:${ACCENT};font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">
+    <div style="display:flex;gap:8px;margin-bottom:12px">
+      <button id="ami-btn-importar" style="flex:1;display:flex;align-items:center;justify-content:center;gap:8px;padding:12px;border-radius:12px;border:1px solid ${ACCENT_BORDER};background:${ACCENT_GLASS};color:${ACCENT};font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
         Cargar ruta (Excel)
       </button>
       <input type="file" id="ami-file-importar" accept=".xlsx,.xls" style="display:none"/>
     </div>
     <div style="display:flex;gap:8px;margin-bottom:16px">
-      <button id="ami-btn-historial" style="flex:1;display:flex;align-items:center;justify-content:center;gap:8px;padding:11px;border-radius:12px;border:1px solid rgba(22,163,74,.35);background:rgba(22,163,74,.1);color:#16a34a;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">
+      <button id="ami-btn-historial" style="flex:1;display:flex;align-items:center;justify-content:center;gap:8px;padding:11px;border-radius:12px;border:1px solid rgba(22,163,74,.35);background:rgba(22,163,74,.1);color:#16a34a;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><path d="M12 8v4l3 3"/><circle cx="12" cy="12" r="9"/></svg>
         Cargar historial (Excel)
       </button>
@@ -329,19 +322,17 @@ function renderPanel() {
           <p>Cuando se cargue el listado de órdenes de AMI, aquí verás el avance por cuadrilla y el estado del día, igual que en Cambios.</p>
         </div>`
       : `
-      <div class="progress-card" style="margin-bottom:16px">
-        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px">
-          <div style="font-size:13px;font-weight:700">Avance del día</div>
+      <div class="ds-card" style="margin-bottom:16px">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:12px">
+          <div style="font-size:14px;font-weight:600">Avance del día</div>
           <div style="font-size:12px;color:var(--text-4)">${hechas} de ${total} · ${pct}%</div>
         </div>
-        <div class="progress-bar-bg">
-          <div class="progress-bar-fill" style="width:${pct}%;background:${ACCENT}"></div>
-        </div>
-        <div class="progress-stats" style="margin-top:10px">
-          <span><span class="stat-dot muted"></span>${pend} pendientes</span>
-          <span><span class="stat-dot ok"></span>${hechas} hechas</span>
-          ${residuos ? `<span><span class="stat-dot" style="background:#f59e0b"></span>${residuos} arrastradas</span>` : ''}
-          ${yaCambiadas ? `<span><span class="stat-dot" style="background:#16a34a"></span>${yaCambiadas} ya cambiadas</span>` : ''}
+        <div class="ds-bar"><i class="am" style="width:${pct}%"></i></div>
+        <div style="margin-top:12px;display:flex;flex-wrap:wrap;gap:10px 14px;font-size:11px;color:var(--text-3)">
+          <span style="display:flex;align-items:center;gap:6px"><span style="width:7px;height:7px;border-radius:50%;background:var(--text-4)"></span>${pend} pendientes</span>
+          <span style="display:flex;align-items:center;gap:6px"><span style="width:7px;height:7px;border-radius:50%;background:#22c55e"></span>${hechas} hechas</span>
+          ${residuos ? `<span style="display:flex;align-items:center;gap:6px"><span style="width:7px;height:7px;border-radius:50%;background:#f59e0b"></span>${residuos} arrastradas</span>` : ''}
+          ${yaCambiadas ? `<span style="display:flex;align-items:center;gap:6px"><span style="width:7px;height:7px;border-radius:50%;background:#16a34a"></span>${yaCambiadas} ya cambiadas</span>` : ''}
         </div>
       </div>`}
     ${seccionMetas()}`;
