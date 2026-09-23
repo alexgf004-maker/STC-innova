@@ -649,6 +649,12 @@ function updateStat() {
 
 const PAREJAS_CRC = ['Pareja 1','Pareja 2','Pareja 3'];
 
+// Solo se cuentan/asignan por zona los puntos aún pendientes. Los ya hechos
+// (instalación por_confirmar/confirmada, retiro retirado/no_retirado) siguen
+// en los datos pero NO deben re-asignarse a otra pareja al delimitar una zona.
+const instAsignableZona = o => !o.estado || o.estado === 'pendiente';
+const retAsignableZona  = r => !r.estado || r.estado === 'pendiente';
+
 function pointInPolygon(point, vertices) {
   const x = point.lat, y = point.lng;
   let inside = false;
@@ -722,9 +728,9 @@ function cerrarPoligono() {
   if (poliPreview_) { map_.removeLayer(poliPreview_); poliPreview_ = null; }
   zonaPoligono_ = L.polygon(puntos_, { color:'#a78bfa', weight:2, fillOpacity:.12 }).addTo(map_);
 
-  const dentro = ordenes_.filter(o => o.titular?.lat != null &&
+  const dentro = ordenes_.filter(o => instAsignableZona(o) && o.titular?.lat != null &&
     pointInPolygon(L.latLng(o.titular.lat, o.titular.lng), puntos_));
-  const dentroRet = retiros_.filter(r => r.lat != null &&
+  const dentroRet = retiros_.filter(r => retAsignableZona(r) && r.lat != null &&
     pointInPolygon(L.latLng(r.lat, r.lng), puntos_));
 
   abrirSheetZona(dentro.length, dentroRet.length);
@@ -772,9 +778,9 @@ function cancelarZona() {
 async function confirmarZona(pareja) {
   const err = container_.querySelector('#crc-zona-err');
   if (!pareja) { err.textContent = 'Selecciona una pareja o "Sin pareja".'; err.style.display = 'block'; return; }
-  const dentro = ordenes_.filter(o => o.titular?.lat != null &&
+  const dentro = ordenes_.filter(o => instAsignableZona(o) && o.titular?.lat != null &&
     pointInPolygon(L.latLng(o.titular.lat, o.titular.lng), puntos_));
-  const dentroRet = retiros_.filter(r => r.lat != null &&
+  const dentroRet = retiros_.filter(r => retAsignableZona(r) && r.lat != null &&
     pointInPolygon(L.latLng(r.lat, r.lng), puntos_));
   if (!dentro.length && !dentroRet.length) { err.textContent = 'No hay puntos en esa zona.'; err.style.display = 'block'; return; }
 
