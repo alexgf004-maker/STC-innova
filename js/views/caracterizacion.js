@@ -234,13 +234,11 @@ export async function init(container, session) {
   container.scrollTop = 0;
   container.innerHTML = `
     <div style="padding:4px 16px 32px;max-width:1100px;margin:0 auto">
-      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:16px">
-        <div style="flex:1;min-width:0">
-          <div style="font-size:20px;font-weight:800;letter-spacing:-.01em;line-height:1.15">Caracterización de la Carga</div>
-          <div style="font-size:12px;color:var(--text-4);margin-top:3px">${esAdmin_ ? 'Órdenes del día' : 'Tus órdenes del día'}</div>
-        </div>
+      <div style="margin-bottom:18px">
+        <div style="font-size:24px;font-weight:600;letter-spacing:-.02em;line-height:1.15">Caracterización de la Carga</div>
+        <div style="font-size:12px;color:var(--text-4);margin-top:4px">${esAdmin_ ? 'Órdenes del día' : 'Tus órdenes del día'}</div>
         ${esAdmin_ ? `
-        <div style="display:flex;gap:8px;flex-shrink:0">
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px">
           <button class="icon-btn" id="crc-excel" title="Descargar Excel de trazabilidad">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
           </button>
@@ -260,9 +258,11 @@ export async function init(container, session) {
         <input type="file" id="crc-file" accept=".xlsx,.xls" style="display:none"/>
         <input type="file" id="crc-file-comp" accept=".xlsx,.xls" style="display:none"/>
         <input type="file" id="crc-file-retiro" accept=".xlsx,.xls" style="display:none"/>` : `
-        <button class="icon-btn" id="crc-mapa-tec" title="Ver mapa" style="flex-shrink:0">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg>
-        </button>`}
+        <div style="display:flex;gap:8px;margin-top:14px">
+          <button class="icon-btn" id="crc-mapa-tec" title="Ver mapa">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg>
+          </button>
+        </div>`}
       </div>
 
       <!-- Pestañas Instalación / Retiro -->
@@ -541,19 +541,17 @@ function renderResumen() {
 
   el.innerHTML = `
     ${esAdmin_ ? panelParejas() : ''}
-    <div class="progress-card" style="margin-bottom:16px">
-      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px">
-        <div style="font-size:13px;font-weight:700">${esAdmin_ ? 'Avance del día' : 'Tu avance del día'}</div>
+    <div class="ds-card" style="margin-bottom:16px">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:12px">
+        <div style="font-size:14px;font-weight:600">${esAdmin_ ? 'Avance del día' : 'Tu avance del día'}</div>
         <div style="font-size:12px;color:var(--text-4)">${listas} de ${total} · ${pct}%</div>
       </div>
-      <div class="progress-bar-bg">
-        <div class="progress-bar-fill cr" style="width:${pct}%"></div>
-      </div>
-      <div class="progress-stats" style="margin-top:10px">
-        <span><span class="stat-dot muted"></span>${pend} por hacer</span>
-        <span><span class="stat-dot warn" style="background:#fbbf24"></span>${porConfirmar} falta revisar</span>
-        <span><span class="stat-dot ok"></span>${confirmadas} listas</span>
-        ${totalVisitas ? `<span><span class="stat-dot" style="background:#fbbf24"></span>${totalVisitas} visitas cobrables</span>` : ''}
+      <div class="ds-bar"><i class="cr" style="width:${pct}%"></i></div>
+      <div style="margin-top:12px;display:flex;flex-wrap:wrap;gap:10px 14px;font-size:11px;color:var(--text-3)">
+        <span style="display:flex;align-items:center;gap:6px"><span style="width:7px;height:7px;border-radius:50%;background:var(--text-4)"></span>${pend} por hacer</span>
+        <span style="display:flex;align-items:center;gap:6px"><span style="width:7px;height:7px;border-radius:50%;background:#fbbf24"></span>${porConfirmar} falta revisar</span>
+        <span style="display:flex;align-items:center;gap:6px"><span style="width:7px;height:7px;border-radius:50%;background:#22c55e"></span>${confirmadas} listas</span>
+        ${totalVisitas ? `<span style="display:flex;align-items:center;gap:6px"><span style="width:7px;height:7px;border-radius:50%;background:#fbbf24"></span>${totalVisitas} visitas cobrables</span>` : ''}
       </div>
     </div>`;
 }
@@ -584,8 +582,8 @@ function panelParejas() {
   if (!nombres.length) return '';
 
   return `
-    <div style="margin-bottom:16px">
-      <div class="section-label" style="margin-bottom:8px">Avance por pareja · meta diaria ${META_PAREJA}</div>
+    <div style="margin-bottom:18px">
+      <div class="ds-sec">Avance por pareja · meta diaria ${META_PAREJA}</div>
       <div style="display:grid;grid-template-columns:repeat(${Math.min(nombres.length,3)},1fr);gap:10px">
         ${nombres.map(nombre => {
           const d = parejas[nombre];
@@ -594,23 +592,20 @@ function panelParejas() {
           const cumplida = d.ejecutadas >= META_PAREJA;
           const acc = cumplida ? '#22c55e' : color;
           return `
-            <div class="pareja-card" style="border-color:${cumplida?'rgba(34,197,94,.4)':'var(--border)'};background:var(--bg-card)">
-              <div class="pareja-card-header">
-                <div class="pareja-name" style="color:${acc};display:flex;align-items:center;gap:7px">
-                  <span style="width:9px;height:9px;border-radius:50%;background:${color};display:inline-block"></span>${nombre}
-                </div>
-                <div style="display:flex;align-items:baseline;gap:4px">
-                  <div style="font-size:24px;font-weight:900;color:${acc};line-height:1">${d.ejecutadas}</div>
-                  <div style="font-size:10px;color:var(--text-4);font-weight:600">/ ${META_PAREJA} hoy</div>
-                </div>
+            <div class="ds-card" style="border-color:${cumplida?'rgba(34,197,94,.4)':'var(--border)'}">
+              <div style="display:flex;align-items:center;gap:6px;min-width:0;margin-bottom:8px">
+                <span style="width:9px;height:9px;border-radius:50%;background:${color};flex-shrink:0"></span>
+                <span style="font-size:13px;font-weight:600;color:${acc};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${nombre}</span>
               </div>
-              <div class="progress-bar-bg" style="margin:8px 0">
-                <div class="progress-bar-fill" style="width:${pct}%;background:${acc}"></div>
+              <div style="display:flex;align-items:baseline;gap:4px;margin-bottom:10px">
+                <span class="ds-num-md" style="color:${acc}">${d.ejecutadas}</span>
+                <span style="font-size:11px;color:var(--text-4);font-weight:500">/ ${META_PAREJA} hoy</span>
               </div>
-              <div class="pareja-stats">
+              <div class="ds-bar"><i style="width:${pct}%;background:${acc}"></i></div>
+              <div style="margin-top:9px;font-size:11px;color:var(--text-3);display:flex;flex-wrap:wrap;gap:4px">
                 <span>${d.asignadas} asignadas</span>
                 ${d.visitas ? `<span style="color:#fbbf24">· ${d.visitas} visita${d.visitas!==1?'s':''}</span>` : ''}
-                ${cumplida ? `<span style="color:#22c55e;font-weight:700">· META &#10003;</span>` : ''}
+                ${cumplida ? `<span style="color:#22c55e;font-weight:600">· META &#10003;</span>` : ''}
               </div>
             </div>`;
         }).join('')}
