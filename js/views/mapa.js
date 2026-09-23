@@ -1241,6 +1241,14 @@ let zonaPoligono_ = null;
 let poliPreview_  = null;
 let puntos_       = [];
 
+// Solo se cuentan/asignan por zona las órdenes aún pendientes. Las ya hechas
+// o aprobadas siguen en los datos (las 'hecha' se dibujan atenuadas, las
+// 'aprobada' ni se dibujan) pero NO deben re-asignarse a otra pareja al
+// delimitar una zona — antes se "cargaban" e inflaban el conteo.
+function esAsignableZona(o) {
+  return !o.estadoCampo || o.estadoCampo === 'visita';
+}
+
 // Ray casting — punto dentro de polígono
 function pointInPolygon(point, vertices) {
   const x = point.lat, y = point.lng;
@@ -1322,6 +1330,7 @@ function cerrarPoligono() {
   zonaActual_ = zonaPoligono_;
 
   const dentro = ordenes_.filter(o =>
+    esAsignableZona(o) &&
     o.latitud && o.longitud &&
     pointInPolygon(L.latLng(parseFloat(o.latitud), parseFloat(o.longitud)), puntos_)
   );
@@ -1367,6 +1376,7 @@ async function confirmarZona() {
 
   const pareja = parejaVal === 'null' ? null : parejaVal;
   const dentro = ordenes_.filter(o =>
+    esAsignableZona(o) &&
     o.latitud && o.longitud &&
     pointInPolygon(L.latLng(parseFloat(o.latitud), parseFloat(o.longitud)), puntos_)
   );
