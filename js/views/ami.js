@@ -124,6 +124,7 @@ let activeTab_ = 'panel';   // 'panel' | 'ordenes' | 'mapa'
 let esAdmin_ = false;
 let metas_ = {};            // { "Pareja 1": 25, ... } — meta diaria por pareja
 let parejasActivas_ = [];   // parejas con al menos un técnico activo en AMI
+let revAbierto_ = { yc: false, mu: false };  // secciones de revisión (admin) expandidas
 
 // ── Entry point ───────────────────────────────────
 export async function init(container, session) {
@@ -271,7 +272,88 @@ function setTab(tab) {
     cont.querySelectorAll('.ami-meta-input').forEach(inp => {
       inp.onchange = () => guardarMeta(inp.dataset.pareja, inp.value);
     });
+    // Revisión admin: toggles y acciones de ya-cambiadas / mal-ubicadas
+    cont.querySelectorAll('.ami-rev-toggle').forEach(t => {
+      t.onclick = () => {
+        const rev = t.dataset.rev;
+        revAbierto_[rev] = !revAbierto_[rev];
+        const list = cont.querySelector(rev === 'yc' ? '#ami-yc-list' : '#ami-mu-list');
+        if (list) list.hidden = !revAbierto_[rev];
+        const chev = t.querySelector('.ami-rev-chev');
+        if (chev) chev.style.transform = revAbierto_[rev] ? 'rotate(90deg)' : '';
+      };
+    });
+    cont.querySelectorAll('.ami-yc-aprobar').forEach(b => b.onclick = () => aprobarYaCambiadoAdmin(b.dataset.id));
+    cont.querySelectorAll('.ami-yc-revertir').forEach(b => b.onclick = () => revertirYaCambiadoAdmin(b.dataset.id));
+    cont.querySelectorAll('.ami-mu-guardar').forEach(b => b.onclick = () => corregirCoordenadasAdmin(b.dataset.id));
+    cont.querySelectorAll('.ami-mu-revertir').forEach(b => b.onclick = () => revertirMalUbicadoAdmin(b.dataset.id));
   }
+}
+
+// Confirmar que una orden reportada "ya cambiada" la hicimos nosotros →
+// pasa a aprobada (como en Cambios). El comentario/quién reportó queda en el doc.
+async function aprobarYaCambiadoAdmin(id) {
+  if (!confirm('¿Confirmar que esta orden la hicimos nosotros? Pasará a aprobada y quedará registrada.')) return;
+  try {
+    await db.collection(COLECCION).doc(id).update({
+      estadoCampo: 'aprobada',
+      aprobadoPor: session_.displayName,
+      fechaAprobacion: firebase.firestore.Timestamp.now(),
+    });
+    const o = ordenes_.find(x => x.id === id);
+    if (o) { o.estadoCampo = 'aprobada'; o.aprobadoPor = session_.displayName; }
+    revAbierto_.yc = true;
+    setTab('panel');
+    window.dispatchEvent(new CustomEvent('ami:updated'));
+    toast('Orden confirmada como hecha por nosotros', 'ok');
+  } catch (err) { toast('Error: ' + err.message, 'error'); }
+}
+
+async function revertirYaCambiadoAdmin(id) {
+  if (!confirm('¿Revertir esta orden a pendiente? El técnico podrá trabajarla de nuevo.')) return;
+  try {
+    await db.collection(COLECCION).doc(id).update({
+      estadoCampo: null, yaCambiadoPor: null, yaCambiadoEn: null, yaCambiadoComentario: null,
+    });
+    const o = ordenes_.find(x => x.id === id);
+    if (o) { o.estadoCampo = null; o.yaCambiadoPor = null; }
+    revAbierto_.yc = true;
+    setTab('panel');
+    window.dispatchEvent(new CustomEvent('ami:updated'));
+    toast('Orden revertida a pendiente', 'ok');
+  } catch (err) { toast('Error: ' + err.message, 'error'); }
+}
+
+async function corregirCoordenadasAdmin(id) {
+  const lat = parseFloat(document.getElementById(`ami-lat-${id}`)?.value);
+  const lng = parseFloat(document.getElementById(`ami-lng-${id}`)?.value);
+  if (isNaN(lat) || isNaN(lng)) { toast('Ingresa coordenadas válidas', 'error'); return; }
+  try {
+    await db.collection(COLECCION).doc(id).update({
+      latitud: lat, longitud: lng, estadoCampo: null, malUbicadoPor: null, malUbicadoEn: null,
+    });
+    const o = ordenes_.find(x => x.id === id);
+    if (o) { o.latitud = lat; o.longitud = lng; o.estadoCampo = null; }
+    revAbierto_.mu = true;
+    setTab('panel');
+    window.dispatchEvent(new CustomEvent('ami:updated'));
+    toast('Coordenadas actualizadas', 'ok');
+  } catch (err) { toast('Error: ' + err.message, 'error'); }
+}
+
+async function revertirMalUbicadoAdmin(id) {
+  if (!confirm('¿Revertir esta orden a pendiente?')) return;
+  try {
+    await db.collection(COLECCION).doc(id).update({
+      estadoCampo: null, malUbicadoPor: null, malUbicadoEn: null,
+    });
+    const o = ordenes_.find(x => x.id === id);
+    if (o) o.estadoCampo = null;
+    revAbierto_.mu = true;
+    setTab('panel');
+    window.dispatchEvent(new CustomEvent('ami:updated'));
+    toast('Orden revertida a pendiente', 'ok');
+  } catch (err) { toast('Error: ' + err.message, 'error'); }
 }
 
 // Guarda la meta de una pareja (persistente en ami_config/metas).
@@ -288,6 +370,88 @@ async function guardarMeta(pareja, valor) {
   } catch (err) {
     toast('No se pudo guardar la meta: ' + err.message, 'error');
   }
+}
+
+// ── Revisión admin: reportadas "ya cambiadas" y "mal ubicadas" ──
+// Los técnicos las marcan desde el mapa (estadoCampo 'ya_cambiado' /
+// 'mal_ubicado'). Aquí el admin las revisa: confirma si la hicimos nosotros
+// (pasa a aprobada) o revierte a pendiente; y corrige coordenadas.
+function renderRevisiones() {
+  if (!esAdmin_) return '';
+  const yc = ordenes_.filter(o => o.estadoCampo === 'ya_cambiado');
+  const mu = ordenes_.filter(o => o.estadoCampo === 'mal_ubicado');
+  if (!yc.length && !mu.length) return '';
+
+  const fmtF = (ts, conHora) => {
+    const d = ts?.toDate ? ts.toDate() : (ts ? new Date(ts) : null);
+    return d ? d.toLocaleDateString('es-SV', conHora ? { day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' } : { day:'numeric', month:'short' }) : '—';
+  };
+  const chevron = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><polyline points="9 18 15 12 9 6"/></svg>`;
+
+  const ycCard = (o) => `
+    <div style="padding:14px;background:var(--glass);border:1px solid rgba(249,115,22,.25);border-radius:14px" class="flex-col gap-8">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
+        <div style="min-width:0">
+          <div style="font-size:13px;font-weight:700">NC ${o.nc || '—'}</div>
+          <div style="font-size:11px;color:var(--text-3)">${o.cliente || '—'}</div>
+        </div>
+        <div style="font-size:10px;color:var(--text-4);text-align:right;flex-shrink:0">${fmtF(o.yaCambiadoEn, true)}<br>${o.yaCambiadoPor || '—'}</div>
+      </div>
+      ${o.yaCambiadoComentario ? `<div style="font-size:12px;color:var(--text-3);padding:8px 10px;background:rgba(255,255,255,.04);border-radius:8px">${o.yaCambiadoComentario}</div>` : ''}
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <button class="ami-yc-aprobar" data-id="${o.id}" style="height:40px;border-radius:10px;border:1px solid rgba(34,197,94,.3);background:transparent;color:#22c55e;font-size:12px;font-weight:600;font-family:inherit;cursor:pointer">Lo hicimos nosotros</button>
+        <button class="ami-yc-revertir" data-id="${o.id}" style="height:40px;border-radius:10px;border:1px solid var(--border);background:transparent;color:var(--text-3);font-size:12px;font-weight:600;font-family:inherit;cursor:pointer">Revertir</button>
+      </div>
+    </div>`;
+
+  const muCard = (o) => `
+    <div style="padding:14px;background:var(--glass);border:1px solid rgba(139,92,246,.25);border-radius:14px" class="flex-col gap-8">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
+        <div style="min-width:0">
+          <div style="font-size:13px;font-weight:700">NC ${o.nc || '—'}</div>
+          <div style="font-size:11px;color:var(--text-3)">${o.cliente || '—'}</div>
+          <div style="font-size:11px;color:var(--text-4)">${o.direccion || '—'}</div>
+        </div>
+        <div style="font-size:10px;color:var(--text-4);text-align:right;flex-shrink:0">${fmtF(o.malUbicadoEn, false)}<br>${o.malUbicadoPor || '—'}</div>
+      </div>
+      <div style="font-size:11px;color:var(--text-4)">Coordenadas actuales: ${o.latitud || '—'}, ${o.longitud || '—'}</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+        <input id="ami-lat-${o.id}" type="number" step="any" placeholder="Nueva latitud" value="${o.latitud || ''}" style="padding:8px 10px;border-radius:8px;border:1px solid var(--border);background:var(--glass);color:var(--text-1);font-size:12px;font-family:inherit;outline:none"/>
+        <input id="ami-lng-${o.id}" type="number" step="any" placeholder="Nueva longitud" value="${o.longitud || ''}" style="padding:8px 10px;border-radius:8px;border:1px solid var(--border);background:var(--glass);color:var(--text-1);font-size:12px;font-family:inherit;outline:none"/>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <button class="ami-mu-guardar" data-id="${o.id}" style="height:38px;border-radius:10px;border:1px solid rgba(139,92,246,.4);background:rgba(139,92,246,.1);color:#a78bfa;font-size:12px;font-weight:600;font-family:inherit;cursor:pointer">Guardar coordenadas</button>
+        <button class="ami-mu-revertir" data-id="${o.id}" style="height:38px;border-radius:10px;border:1px solid var(--border);background:transparent;color:var(--text-3);font-size:12px;font-weight:600;font-family:inherit;cursor:pointer">Revertir a pendiente</button>
+      </div>
+    </div>`;
+
+  return `
+    ${yc.length ? `
+    <div style="margin-bottom:12px">
+      <div class="ami-rev-toggle" data-rev="yc" style="padding:14px 16px;background:rgba(249,115,22,.1);border:1px solid rgba(249,115,22,.35);border-radius:14px;display:flex;align-items:center;gap:12px;cursor:pointer">
+        <div style="width:36px;height:36px;flex-shrink:0;background:rgba(249,115,22,.15);border-radius:10px;display:flex;align-items:center;justify-content:center">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#fb923c" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        </div>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:13px;font-weight:600;color:#fb923c">${yc.length} orden${yc.length>1?'es':''} reportada${yc.length>1?'s':''} como ya cambiada${yc.length>1?'s':''}</div>
+          <div style="font-size:11px;color:var(--text-4);margin-top:2px">Toca para revisar y marcar si la hicimos</div>
+        </div>
+        <span class="ami-rev-chev" style="display:flex;transition:transform .2s;${revAbierto_.yc?'transform:rotate(90deg)':''}">${chevron}</span>
+      </div>
+      <div id="ami-yc-list" ${revAbierto_.yc?'':'hidden'} style="margin-top:8px" class="flex-col gap-8">${yc.map(ycCard).join('')}</div>
+    </div>` : ''}
+    ${mu.length ? `
+    <div style="margin-bottom:12px">
+      <div class="ami-rev-toggle" data-rev="mu" style="padding:14px 16px;background:rgba(139,92,246,.1);border:1px solid rgba(139,92,246,.35);border-radius:14px;display:flex;align-items:center;gap:12px;cursor:pointer">
+        <div style="width:36px;height:36px;flex-shrink:0;background:rgba(139,92,246,.15);border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:800;color:#8b5cf6">?</div>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:13px;font-weight:600;color:#8b5cf6">${mu.length} orden${mu.length>1?'es':''} mal ubicada${mu.length>1?'s':''}</div>
+          <div style="font-size:11px;color:var(--text-4);margin-top:2px">Toca para corregir coordenadas o revertir</div>
+        </div>
+        <span class="ami-rev-chev" style="display:flex;transition:transform .2s;${revAbierto_.mu?'transform:rotate(90deg)':''}">${chevron}</span>
+      </div>
+      <div id="ami-mu-list" ${revAbierto_.mu?'':'hidden'} style="margin-top:8px" class="flex-col gap-8">${mu.map(muCard).join('')}</div>
+    </div>` : ''}`;
 }
 
 // ── Panel (resumen del área) ──────────────────────
@@ -315,6 +479,8 @@ function renderPanel() {
       </button>
       <input type="file" id="ami-file-historial" accept=".xlsx,.xls" style="display:none"/>
     </div>` : ''}
+
+    ${renderRevisiones()}
 
     ${total === 0
       ? `<div class="dev-module">
