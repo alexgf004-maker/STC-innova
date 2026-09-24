@@ -3,9 +3,10 @@
 Documento para implementar con Claude Code. Leer junto con `CLAUDE.md`
 (reglas de oro, estados reales, patrón de bug de parejas por área).
 
-**Estado:** diseño aprobado. Decisiones de las preguntas abiertas cerradas el
-2026-09-24 (ver sección 10). Sigue bloqueado el arranque de la Fase 1
-(importador) hasta tener el **Excel real de DELSUR** para condominios.
+**Estado:** diseño aprobado y preguntas abiertas cerradas el 2026-09-24 (ver
+sección 10). **Fase 1 lista para construir:** el formato del Excel lo controla
+el usuario (mismo Excel de ruta + 2 columnas EDIFICIO y NIVEL; el nombre del
+condominio se escribe una vez al subir). Ya no depende del formato de DELSUR.
 
 ---
 
@@ -166,9 +167,10 @@ Reglas:
 
 ## 10. Preguntas abiertas (estado al 2026-09-24)
 
-1. **ABIERTA (bloquea Fase 1).** ¿Cómo viene el nivel/cuarto en el Excel de
-   DELSUR? Define el importador. No se construye hasta tener el archivo real
-   (ver sección 12 con el formato que se le pedirá a DELSUR).
+1. **DECIDIDA.** El formato lo controla el usuario, no DELSUR: se usa el mismo
+   Excel de ruta y el usuario agrega 2 columnas, **EDIFICIO** y **NIVEL**. El
+   **nombre del condominio se escribe una vez al subir** el archivo (como la
+   fecha de ruta actual), no va por fila. Ver sección 12 para el formato final.
 2. **DECIDIDA.** Asignación por **nivel** como unidad fina, con un atajo para
    "asignar edificio completo a una pareja". Permite repartir niveles de un
    mismo edificio entre varias parejas (sección 8).
@@ -196,12 +198,12 @@ Reglas:
 No subir cambios a producción con parejas trabajando en campo. Probar cada
 fase con calma antes de pasar a la siguiente.
 
-## 12. Formato de Excel que necesitamos de DELSUR (para desbloquear Fase 1)
+## 12. Formato final del Excel de condominios (Fase 1)
 
 El importador de rutas actual (`importarRuta` en `ami.js`) ya detecta
 encabezados de forma flexible (sin distinguir mayúsculas ni tildes) y maneja
-NC nuevo/existente. Para condominios, el **escenario ideal (1)** es que el
-Excel traiga el nivel en columnas propias. Columnas objetivo:
+NC nuevo/existente. El Excel de condominios es **ese mismo archivo de ruta
+más 2 columnas** que agrega el usuario:
 
 | Columna | Obligatoria | Va al campo | Notas |
 |---|---|---|---|
@@ -212,20 +214,21 @@ Excel traiga el nivel en columnas propias. Columnas objetivo:
 | MEDIDOR | sí* | `medidor` | *clave del flujo principal del técnico (buscador) |
 | LATITUD | no | `latitud` | comparten casi la misma por edificio |
 | LONGITUD | no | `longitud` | |
-| CONDOMINIO | sí | `condominio` | nombre del complejo (normalizar trim) |
-| EDIFICIO | sí | `edificio` | torre; se activa una a la vez |
-| NIVEL | sí | `nivel` | admite "PB", "N3", "Nivel 3"; orden natural |
-| CUARTO | no | `cuarto` | solo si un nivel tiene más de un cuarto |
+| **EDIFICIO** | sí | `edificio` | columna nueva; torre, se activa una a la vez |
+| **NIVEL** | sí | `nivel` | columna nueva; admite "PB", "N3", "Nivel 3"; orden natural |
 
-Las órdenes importadas así llevan además `tipoSitio:'condominio'` (lo escribe
-el importador, no el técnico).
+El **nombre del condominio NO va por fila**: se escribe una sola vez al subir
+el archivo (prompt, como la fecha de ruta actual) y se guarda igual en todas
+las órdenes de ese archivo (`condominio`). Cada orden importada así lleva
+además `tipoSitio:'condominio'` (lo escribe el importador, no el técnico).
 
-**Si el Excel no puede traer esas columnas**, aplican los escenarios 2 y 3 de
-la sección 4 (extraer de la dirección con previsualización de filas sin
-clasificar, o capturar Condominio/Edificio/Nivel al subir). En cualquier caso:
-previsualización obligatoria antes de guardar (total, por edificio, por nivel,
-filas sin clasificar) y no guardar filas sin clasificar sin confirmación.
+Detección: si el archivo trae columnas EDIFICIO y NIVEL → es import de
+condominio (pide el nombre del condominio y guarda los campos nuevos). Si no
+las trae → es una ruta normal (comportamiento actual intacto). `cuarto` queda
+como campo opcional del modelo por si más adelante un nivel tiene más de un
+cuarto (no se pide todavía).
 
-Lo que hay que conseguir de DELSUR antes de construir: **un archivo real de
-ejemplo** (aunque sea de un condominio) para verificar el mapeo con datos
-reales.
+Previsualización obligatoria antes de guardar: total, por edificio y por
+nivel; no guardar filas sin EDIFICIO o NIVEL sin confirmación. Como el formato
+lo controla el usuario, basta un archivo de ejemplo pequeño hecho a mano para
+probar la Fase 1 (no hace falta esperar a DELSUR).
