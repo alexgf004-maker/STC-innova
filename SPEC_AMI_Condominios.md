@@ -117,6 +117,14 @@ Efectos:
   orden normal.
 - Las órdenes normales de ruta se siguen viendo exactamente igual.
 
+**Navegación decidida (2026-09-24): la ENTRADA es la gota del mapa, sin
+pestañas ni botones nuevos.** El modo condominio vive dentro de AMI, donde
+cada rol ya entra:
+- Técnico de AMI: su barra inferior ya es `Inicio · Órdenes · Mapa · Bodega`;
+  entra por **Mapa** (`ami_mapa`) y toca la gota del condominio.
+- Admin/asistente: entra por **Áreas → AMI → pestaña Mapa** y toca la gota.
+No se agrega ítem a la barra inferior ni pestaña "Condominios".
+
 ## 7. Vista Condominio — técnico
 
 Flujo en campo:
