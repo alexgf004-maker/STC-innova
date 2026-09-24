@@ -3,8 +3,9 @@
 Documento para implementar con Claude Code. Leer junto con `CLAUDE.md`
 (reglas de oro, estados reales, patrón de bug de parejas por área).
 
-**Estado:** diseño aprobado en conversación. NO construir el importador hasta
-tener el Excel real de DELSUR para condominios (ver "Preguntas abiertas").
+**Estado:** diseño aprobado. Decisiones de las preguntas abiertas cerradas el
+2026-09-24 (ver sección 10). Sigue bloqueado el arranque de la Fase 1
+(importador) hasta tener el **Excel real de DELSUR** para condominios.
 
 ---
 
@@ -163,16 +164,25 @@ Reglas:
   función nueva requiere que el técnico escriba otro campo, actualizar la
   regla de `ami_ordenes`.
 
-## 10. Preguntas abiertas (resolver antes de construir)
+## 10. Preguntas abiertas (estado al 2026-09-24)
 
-1. ¿Cómo viene el nivel/cuarto en el Excel de DELSUR? (define el importador)
-2. ¿Las parejas se reparten por **nivel** o por **edificio** completo?
-3. ¿Las órdenes de condominio deben excluirse de la lógica de residuos
-   ("arrastradas")? Recomendación: sí.
-4. ¿Nivel y cuarto son siempre lo mismo, o hay niveles con más de un cuarto?
-5. ¿El número de medidor es visible y legible en el tablero físico? (define
-   si el buscador por medidor es el flujo principal)
-6. ¿Se requiere foto como evidencia por medidor?
+1. **ABIERTA (bloquea Fase 1).** ¿Cómo viene el nivel/cuarto en el Excel de
+   DELSUR? Define el importador. No se construye hasta tener el archivo real
+   (ver sección 12 con el formato que se le pedirá a DELSUR).
+2. **DECIDIDA.** Asignación por **nivel** como unidad fina, con un atajo para
+   "asignar edificio completo a una pareja". Permite repartir niveles de un
+   mismo edificio entre varias parejas (sección 8).
+3. **DECIDIDA: sí.** Las órdenes de condominio se excluyen de la lógica de
+   residuos ("arrastradas"): es una campaña de semanas, no ruta diaria.
+   `tipoSitio:'condominio'` queda fuera de `esResiduo`/`fechaRuta`.
+4. **DECIDIDA.** `cuarto` se deja como campo **opcional** desde el modelo,
+   aunque al inicio nivel = cuarto. Evita migrar datos si luego aparece un
+   nivel con más de un cuarto.
+5. **DECIDIDA: sí, el número de medidor se lee bien** en el tablero físico.
+   El **buscador por número de medidor** dentro del edificio es el flujo
+   principal del técnico (la lista por nivel queda de apoyo).
+6. **DECIDIDA: sin foto por ahora.** Se mantiene el flujo simple; si se
+   necesita evidencia fotográfica se diseña aparte (implica almacenamiento).
 
 ## 11. Plan por fases (cambios quirúrgicos, uno a la vez)
 
@@ -185,3 +195,37 @@ Reglas:
 
 No subir cambios a producción con parejas trabajando en campo. Probar cada
 fase con calma antes de pasar a la siguiente.
+
+## 12. Formato de Excel que necesitamos de DELSUR (para desbloquear Fase 1)
+
+El importador de rutas actual (`importarRuta` en `ami.js`) ya detecta
+encabezados de forma flexible (sin distinguir mayúsculas ni tildes) y maneja
+NC nuevo/existente. Para condominios, el **escenario ideal (1)** es que el
+Excel traiga el nivel en columnas propias. Columnas objetivo:
+
+| Columna | Obligatoria | Va al campo | Notas |
+|---|---|---|---|
+| NC | sí | `nc` | identificador de la orden (AMI no usa WO) |
+| NOMBRE / CLIENTE | no | `cliente` | |
+| DIRECCION | no | `direccion` | |
+| DS | no | `ds` | |
+| MEDIDOR | sí* | `medidor` | *clave del flujo principal del técnico (buscador) |
+| LATITUD | no | `latitud` | comparten casi la misma por edificio |
+| LONGITUD | no | `longitud` | |
+| CONDOMINIO | sí | `condominio` | nombre del complejo (normalizar trim) |
+| EDIFICIO | sí | `edificio` | torre; se activa una a la vez |
+| NIVEL | sí | `nivel` | admite "PB", "N3", "Nivel 3"; orden natural |
+| CUARTO | no | `cuarto` | solo si un nivel tiene más de un cuarto |
+
+Las órdenes importadas así llevan además `tipoSitio:'condominio'` (lo escribe
+el importador, no el técnico).
+
+**Si el Excel no puede traer esas columnas**, aplican los escenarios 2 y 3 de
+la sección 4 (extraer de la dirección con previsualización de filas sin
+clasificar, o capturar Condominio/Edificio/Nivel al subir). En cualquier caso:
+previsualización obligatoria antes de guardar (total, por edificio, por nivel,
+filas sin clasificar) y no guardar filas sin clasificar sin confirmación.
+
+Lo que hay que conseguir de DELSUR antes de construir: **un archivo real de
+ejemplo** (aunque sea de un condominio) para verificar el mapeo con datos
+reales.
