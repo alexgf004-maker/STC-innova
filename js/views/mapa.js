@@ -136,12 +136,27 @@ function renderShell(container) {
             <circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/>
           </svg>
         </button>
+        <button class="mapa-btn-icon" id="btn-buscar-orden" title="Buscar orden o medidor" style="border-color:rgba(45,212,191,.4);color:var(--cm-light)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
+            <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+          </svg>
+        </button>
         ${role_ === 'tecnico' ? `
         <button class="mapa-btn-icon" id="btn-reset-norte" title="Volver al norte" style="display:none">
           <svg id="brujula-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
             <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
           </svg>
         </button>` : ''}
+      </div>
+
+      <!-- Buscador por WO, NC o serie de medidor (oculto hasta tocar la lupa) -->
+      <div id="buscar-orden-box" style="display:none;position:absolute;top:64px;left:12px;right:12px;z-index:1000;background:rgba(13,17,23,.96);border:1px solid rgba(45,212,191,.4);border-radius:12px;padding:10px">
+        <div style="display:flex;gap:8px;align-items:center">
+          <input id="input-buscar-orden" type="text" inputmode="numeric" placeholder="WO, NC o serie de medidor"
+            style="flex:1;padding:9px 12px;border-radius:9px;border:1px solid var(--border);background:var(--glass);color:#f1f5f9;font-size:13px;font-family:inherit;outline:none"/>
+          <button id="btn-cerrar-buscar-orden" style="padding:9px 12px;border-radius:9px;border:1px solid var(--border);background:var(--glass);color:#94a3b8;font-size:12px;cursor:pointer;font-family:inherit">Cerrar</button>
+        </div>
+        <div id="resultado-buscar-orden" style="margin-top:8px"></div>
       </div>
 
       ${isTecnico ? `
@@ -241,6 +256,26 @@ function renderShell(container) {
   }
 
 
+  // Buscador por WO, NC o serie de medidor (técnico y admin)
+  document.getElementById('btn-buscar-orden')?.addEventListener('click', () => {
+    const box = document.getElementById('buscar-orden-box');
+    if (!box) return;
+    const visible = box.style.display !== 'none';
+    box.style.display = visible ? 'none' : 'block';
+    if (!visible) document.getElementById('input-buscar-orden')?.focus();
+  });
+  document.getElementById('btn-cerrar-buscar-orden')?.addEventListener('click', () => {
+    const box = document.getElementById('buscar-orden-box');
+    if (box) box.style.display = 'none';
+  });
+  {
+    const inpOrd = document.getElementById('input-buscar-orden');
+    if (inpOrd) {
+      let tm = null;
+      inpOrd.oninput = () => { clearTimeout(tm); const v = inpOrd.value; tm = setTimeout(() => buscarOrden(v), 350); };
+    }
+  }
+
   // Eventos del mapa-wrapper
   document.getElementById('btn-asignar-zona')?.addEventListener('click', activarModoZona);
   const fileAzul = document.getElementById('file-marcar-azul');
@@ -290,7 +325,7 @@ function renderShell(container) {
     });
   });
 
-  window.__mapa = { verOrden, marcarHecha, marcarVisita, abrirGoogleMaps, confirmarRealizada, confirmarVisita, asignarIndividual, confirmarIndividual, confirmarZona, cancelarZona, abrirYaCambiado, abrirPedirAyuda, abrirGenerarOrden, buscarContiguos, limpiarContiguos };
+  window.__mapa = { verOrden, marcarHecha, marcarVisita, abrirGoogleMaps, confirmarRealizada, confirmarVisita, asignarIndividual, confirmarIndividual, confirmarZona, cancelarZona, abrirYaCambiado, abrirPedirAyuda, abrirGenerarOrden, buscarContiguos, limpiarContiguos, eliminarOrden };
 
   // onSnapshot ya maneja actualizaciones en tiempo real
   // Este listener es fallback para cambios desde cambios.js
@@ -729,6 +764,9 @@ function verOrden(id) {
         <button class="btn-action cm" onclick="window.__mapa.asignarIndividual('${o.id}')">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M17 3a2.828 2.828 0 114 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>
           Asignar pareja
+        </button>
+        <button class="icon-btn" title="Eliminar orden" style="color:#f87171;border-color:rgba(239,68,68,.3)" onclick="window.__mapa.eliminarOrden('${o.id}')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
         </button>` : ''}
       ${isTecnico && !o.estadoCampo ? `
         <button class="icon-btn" title="Registrar visita" onclick="window.__mapa.marcarVisita('${o.id}')">
@@ -750,6 +788,70 @@ function verOrden(id) {
 function closePanel() {
   document.getElementById('mapa-panel')?.classList.remove('open');
   selectedOrden_ = null;
+}
+
+// Buscar por WO, NC o serie de medidor y ubicar la gota en el mapa.
+// Busca sobre ordenes_ (las que están dibujadas, es decir con coordenadas).
+function buscarOrden(texto) {
+  const cont = document.getElementById('resultado-buscar-orden');
+  if (!cont) return;
+  const q = String(texto || '').trim();
+  if (!q) { cont.innerHTML = ''; return; }
+
+  const numDe = (s) => String(s ?? '').split('-')[0].trim();
+  const coincidencias = ordenes_.filter(o => {
+    const wo = String(o.wo ?? '').trim();
+    const nc = String(o.nc ?? '').trim();
+    const serie = numDe(o.serieActual || o.serie);
+    return wo === q || nc === q || serie === q || wo.startsWith(q) || nc.startsWith(q) || serie.startsWith(q);
+  }).slice(0, 25);
+
+  if (!coincidencias.length) {
+    cont.innerHTML = `<div style="padding:12px;background:var(--glass);border-radius:9px;font-size:12px;color:#94a3b8"><b style="color:#f1f5f9">${q}</b> no coincide con ninguna WO, NC ni serie en el mapa.</div>`;
+    return;
+  }
+
+  const estadoTxt = (o) => o.estadoCampo === 'aprobada' ? 'Aprobada'
+    : o.estadoCampo === 'hecha' ? 'Realizada'
+    : o.estadoCampo === 'visita' ? 'Visita'
+    : o.estadoCampo === 'mal_ubicado' ? 'Mal ubicada'
+    : o.estadoCampo === 'ya_cambiado' ? 'Reportada ya cambiada'
+    : o.urgente ? 'Urgente'
+    : 'Pendiente';
+
+  cont.innerHTML = coincidencias.map(o => `
+    <div style="padding:12px;background:var(--glass);border:1px solid var(--border);border-radius:9px;margin-bottom:8px">
+      <div style="font-size:13px;font-weight:800;color:#f1f5f9">WO ${o.wo || '—'}</div>
+      <div style="font-size:11px;color:#94a3b8;margin:2px 0 6px">${o.cliente || '—'} · ${o.pareja || 'Sin asignar'} · ${estadoTxt(o)}</div>
+      <button class="btn-ir-orden" data-id="${o.id}" style="width:100%;padding:8px;border-radius:9px;border:1px solid rgba(45,212,191,.4);background:rgba(45,212,191,.14);color:var(--cm-light);font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">Ver en el mapa</button>
+    </div>`).join('');
+
+  cont.querySelectorAll('.btn-ir-orden').forEach(b => {
+    b.onclick = () => {
+      const o = ordenes_.find(x => x.id === b.dataset.id);
+      if (o && o.latitud && o.longitud) {
+        document.getElementById('buscar-orden-box').style.display = 'none';
+        map_.setView([parseFloat(o.latitud), parseFloat(o.longitud)], 19);
+        verOrden(o.id);
+      }
+    };
+  });
+}
+
+// Eliminar una orden — solo admin/asistente, con confirmación (evita miss-clicks).
+// El onSnapshot re-renderiza ordenes_ y los pines automáticamente.
+async function eliminarOrden(id) {
+  const o = ordenes_.find(x => x.id === id);
+  const ref = `WO ${o?.wo || '—'}${o?.cliente ? ' · ' + o.cliente : ''}`;
+  if (!confirm(`¿Eliminar esta orden?\n\n${ref}\n\nSe borra de forma permanente y desaparece del mapa. Esta acción no se puede deshacer.`)) return;
+  try {
+    await db.collection('cambios_ordenes').doc(id).delete();
+    closePanel();
+    toast('Orden eliminada', 'ok');
+    window.dispatchEvent(new CustomEvent('cambios:updated'));
+  } catch (err) {
+    toast('Error al eliminar: ' + err.message, 'error');
+  }
 }
 
 // ── Acciones desde mapa ───────────────────────────

@@ -157,12 +157,11 @@ function renderShell(container) {
             <circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/>
           </svg>
         </button>
-        ${isTecnico ? `
-        <button class="mapa-btn-icon" id="btn-buscar-medidor" title="Buscar por medidor" style="border-color:rgba(139,92,246,.4);color:#a78bfa">
+        <button class="mapa-btn-icon" id="btn-buscar-medidor" title="Buscar orden o medidor" style="border-color:rgba(139,92,246,.4);color:#a78bfa">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
             <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
           </svg>
-        </button>` : ''}
+        </button>
         ${role_ === 'tecnico' ? `
         <button class="mapa-btn-icon" id="btn-reset-norte" title="Volver al norte" style="display:none">
           <svg id="brujula-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
@@ -171,16 +170,15 @@ function renderShell(container) {
         </button>` : ''}
       </div>
 
-      ${isTecnico ? `
-      <!-- Buscador por número de medidor (oculto hasta tocar la lupa) -->
+      <!-- Buscador por NC o número de medidor (oculto hasta tocar la lupa) -->
       <div id="buscar-medidor-box" style="display:none;position:absolute;top:64px;left:12px;right:12px;z-index:1000;background:rgba(13,17,23,.96);border:1px solid rgba(139,92,246,.4);border-radius:12px;padding:10px">
         <div style="display:flex;gap:8px;align-items:center">
-          <input id="input-buscar-medidor" type="text" inputmode="numeric" placeholder="Número de medidor (antes del guion)"
+          <input id="input-buscar-medidor" type="text" inputmode="numeric" placeholder="NC o número de medidor"
             style="flex:1;padding:9px 12px;border-radius:9px;border:1px solid var(--border);background:var(--glass);color:#f1f5f9;font-size:13px;font-family:inherit;outline:none"/>
           <button id="btn-cerrar-buscar-medidor" style="padding:9px 12px;border-radius:9px;border:1px solid var(--border);background:var(--glass);color:#94a3b8;font-size:12px;cursor:pointer;font-family:inherit">Cerrar</button>
         </div>
         <div id="resultado-buscar-medidor" style="margin-top:8px"></div>
-      </div>` : ''}
+      </div>
 
       ${isTecnico ? `
       <!-- Botón flotante generar orden -->
@@ -287,7 +285,7 @@ function renderShell(container) {
       toast('Obteniendo ubicación…', 'ok');
     }
   });
-  // Buscador por número de medidor (técnico)
+  // Buscador por NC o número de medidor (técnico y admin)
   document.getElementById('btn-buscar-medidor')?.addEventListener('click', () => {
     const box = document.getElementById('buscar-medidor-box');
     if (!box) return;
@@ -343,7 +341,7 @@ function renderShell(container) {
     });
   });
 
-  window.__mapa = { verOrden, marcarHecha, marcarVisita, abrirGoogleMaps, confirmarRealizada, confirmarVisita, asignarIndividual, confirmarIndividual, confirmarZona, cancelarZona, abrirYaCambiado, abrirPedirAyuda, abrirGenerarOrden, buscarContiguos, limpiarContiguos, confirmarOrden };
+  window.__mapa = { verOrden, marcarHecha, marcarVisita, abrirGoogleMaps, confirmarRealizada, confirmarVisita, asignarIndividual, confirmarIndividual, confirmarZona, cancelarZona, abrirYaCambiado, abrirPedirAyuda, abrirGenerarOrden, buscarContiguos, limpiarContiguos, confirmarOrden, eliminarOrden };
 
   // onSnapshot ya maneja actualizaciones en tiempo real
   // Este listener es fallback para cambios desde cambios.js
@@ -867,35 +865,67 @@ async function buscarPorMedidor(texto) {
   }
 
   const numDe = (med) => String(med ?? '').split('-')[0].trim();
-  const coincidencias = todasAmiCache_.filter(o => numDe(o.medidor) === q);
+  const esAdminMapa = role_ !== 'tecnico';
+  // Coincide por número de medidor (antes del guion) o por NC, exacto o por
+  // prefijo para permitir escribir de a poco.
+  const coincidencias = todasAmiCache_.filter(o => {
+    const med = numDe(o.medidor);
+    const nc  = String(o.nc ?? '').trim();
+    return med === q || nc === q || med.startsWith(q) || nc.startsWith(q);
+  }).slice(0, 25);
 
   if (!coincidencias.length) {
-    cont.innerHTML = `<div style="padding:12px;background:var(--glass);border-radius:9px;font-size:12px;color:#94a3b8">Medidor <b style="color:#f1f5f9">${q}</b> no está en tu campaña AMI (según lo cargado).</div>`;
+    cont.innerHTML = `<div style="padding:12px;background:var(--glass);border-radius:9px;font-size:12px;color:#94a3b8"><b style="color:#f1f5f9">${q}</b> no coincide con ninguna NC ni medidor cargado en AMI.</div>`;
     return;
   }
 
   const miPareja = session_.asignacionActual?.destino || null;
-  cont.innerHTML = coincidencias.map(o => {
-    const yaCambiada = padronCambiados_.has(String(o.nc ?? '').trim());
-    let estado, color, accion = '';
-    if (yaCambiada) {
-      estado = 'Ya está cambiado'; color = '#16a34a';
-    } else if (!o.pareja) {
-      estado = 'Sin asignar aún'; color = '#94a3b8';
-    } else if (o.pareja === miPareja) {
-      estado = 'Es tuyo — lo llevas'; color = '#22c55e';
-      accion = `<button class="btn-ir-medidor" data-id="${o.id}" style="margin-top:8px;width:100%;padding:8px;border-radius:9px;border:1px solid rgba(34,197,94,.4);background:rgba(34,197,94,.14);color:#22c55e;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">Ver en el mapa</button>`;
-    } else {
-      estado = `Lo lleva ${o.pareja}`; color = '#fbbf24';
-    }
-    return `
-      <div style="padding:12px;background:var(--glass);border:1px solid ${color}55;border-radius:9px">
-        <div style="font-size:13px;font-weight:800;color:#f1f5f9">NC ${o.nc || '—'}</div>
-        <div style="font-size:11px;color:#94a3b8;margin:2px 0 6px">Medidor ${o.medidor || '—'}</div>
-        <div style="font-size:12px;font-weight:700;color:${color}">${estado}</div>
-        ${accion}
-      </div>`;
-  }).join('');
+
+  // Vista admin/asistente: cualquier resultado se puede ubicar en el mapa.
+  if (esAdminMapa) {
+    cont.innerHTML = coincidencias.map(o => {
+      const yaCambiada = o._yaCambiada || padronCambiados_.has(String(o.nc ?? '').trim());
+      const est = yaCambiada ? 'Ya cambiada'
+        : o.estadoCampo === 'aprobada' ? 'Aprobada'
+        : o.estadoCampo === 'hecha' ? 'Realizada'
+        : o.estadoCampo === 'visita' ? 'Visita'
+        : o.estadoCampo === 'mal_ubicado' ? 'Mal ubicada'
+        : o.estadoCampo === 'ya_cambiado' ? 'Reportada ya cambiada'
+        : 'Pendiente';
+      const sinCoords = !o.latitud || !o.longitud;
+      return `
+        <div style="padding:12px;background:var(--glass);border:1px solid var(--border);border-radius:9px;margin-bottom:8px">
+          <div style="font-size:13px;font-weight:800;color:#f1f5f9">NC ${o.nc || '—'}</div>
+          <div style="font-size:11px;color:#94a3b8;margin:2px 0 6px">Medidor ${o.medidor || '—'} · ${o.pareja || 'Sin asignar'} · ${est}</div>
+          ${sinCoords
+            ? `<div style="font-size:11px;color:#fbbf24">Sin coordenadas — no se puede ubicar en el mapa</div>`
+            : `<button class="btn-ir-medidor" data-id="${o.id}" style="width:100%;padding:8px;border-radius:9px;border:1px solid rgba(167,139,250,.4);background:rgba(167,139,250,.14);color:#a78bfa;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">Ver en el mapa</button>`}
+        </div>`;
+    }).join('');
+  } else {
+    // Vista técnico: dice si es suyo, de otra pareja, o ya cambiado.
+    cont.innerHTML = coincidencias.map(o => {
+      const yaCambiada = padronCambiados_.has(String(o.nc ?? '').trim());
+      let estado, color, accion = '';
+      if (yaCambiada) {
+        estado = 'Ya está cambiado'; color = '#16a34a';
+      } else if (!o.pareja) {
+        estado = 'Sin asignar aún'; color = '#94a3b8';
+      } else if (o.pareja === miPareja) {
+        estado = 'Es tuyo — lo llevas'; color = '#22c55e';
+        accion = `<button class="btn-ir-medidor" data-id="${o.id}" style="margin-top:8px;width:100%;padding:8px;border-radius:9px;border:1px solid rgba(34,197,94,.4);background:rgba(34,197,94,.14);color:#22c55e;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">Ver en el mapa</button>`;
+      } else {
+        estado = `Lo lleva ${o.pareja}`; color = '#fbbf24';
+      }
+      return `
+        <div style="padding:12px;background:var(--glass);border:1px solid ${color}55;border-radius:9px;margin-bottom:8px">
+          <div style="font-size:13px;font-weight:800;color:#f1f5f9">NC ${o.nc || '—'}</div>
+          <div style="font-size:11px;color:#94a3b8;margin:2px 0 6px">Medidor ${o.medidor || '—'}</div>
+          <div style="font-size:12px;font-weight:700;color:${color}">${estado}</div>
+          ${accion}
+        </div>`;
+    }).join('');
+  }
 
   cont.querySelectorAll('.btn-ir-medidor').forEach(b => {
     b.onclick = () => {
@@ -1023,6 +1053,10 @@ function verOrden(id) {
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><polyline points="20 6 9 17 4 12"/></svg>
           Confirmar
         </button>` : ''}
+      ${!isTecnico ? `
+        <button class="icon-btn" title="Eliminar orden" style="color:#f87171;border-color:rgba(239,68,68,.3)" onclick="window.__mapa.eliminarOrden('${o.id}')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
+        </button>` : ''}
       ${isTecnico && !o.estadoCampo ? `
         <button class="icon-btn" title="Registrar visita" onclick="window.__mapa.marcarVisita('${o.id}')">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
@@ -1065,6 +1099,25 @@ async function confirmarOrden(id) {
 function closePanel() {
   document.getElementById('mapa-panel')?.classList.remove('open');
   selectedOrden_ = null;
+}
+
+// Eliminar una orden — solo admin/asistente, con confirmación (evita miss-clicks).
+async function eliminarOrden(id) {
+  const o = ordenes_.find(x => x.id === id) || (todasAmiCache_ || []).find(x => x.id === id);
+  const ref = `NC ${o?.nc || '—'}${o?.medidor ? ' · medidor ' + o.medidor : ''}`;
+  if (!confirm(`¿Eliminar esta orden?\n\n${ref}\n\nSe borra de forma permanente y desaparece del mapa. Esta acción no se puede deshacer.`)) return;
+  try {
+    await db.collection('ami_ordenes').doc(id).delete();
+    ordenes_ = ordenes_.filter(x => x.id !== id);
+    if (todasAmiCache_) todasAmiCache_ = todasAmiCache_.filter(x => x.id !== id);
+    closePanel();
+    plotMarkers();
+    updateStatChip();
+    if (typeof toast === 'function') toast('Orden eliminada', 'ok');
+    window.dispatchEvent(new CustomEvent('ami:updated'));
+  } catch (err) {
+    if (typeof toast === 'function') toast('Error al eliminar: ' + err.message, 'error');
+  }
 }
 
 // ── Acciones desde mapa ───────────────────────────
