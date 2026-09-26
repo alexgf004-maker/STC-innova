@@ -111,8 +111,30 @@ function seccionMetas() {
       </div>`;
   };
 
+  // Total del equipo hoy: suma de lo hecho y de las metas de todas las parejas.
+  const totalHechas = parejas.reduce((s, p) => s + hechasHoyPorPareja(p), 0);
+  const totalMeta   = parejas.reduce((s, p) => s + Number(metas_[p] || 0), 0);
+  const pctEquipo   = totalMeta > 0 ? Math.min(100, Math.round((totalHechas / totalMeta) * 100)) : 0;
+  const cumplidaEq  = totalMeta > 0 && totalHechas >= totalMeta;
+  const accEq       = cumplidaEq ? '#22c55e' : '#a78bfa';
+
+  const tarjetaEquipo = esAdmin_ ? `
+    <div class="ds-card" style="margin-bottom:12px;border-color:${cumplidaEq?'rgba(34,197,94,.4)':'rgba(167,139,250,.35)'}">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <div style="font-size:13px;font-weight:600;color:${accEq}">Total del equipo hoy</div>
+        <div style="font-size:11px;color:var(--text-4)">${parejas.length} pareja${parejas.length!==1?'s':''}${cumplidaEq?' · META &#10003;':''}</div>
+      </div>
+      <div style="display:flex;align-items:baseline;gap:4px;margin-bottom:10px">
+        <span class="ds-num-md" style="color:${accEq}">${totalHechas}</span>
+        <span style="font-size:11px;color:var(--text-4);font-weight:500">/ ${totalMeta || '—'} hoy · todas las parejas</span>
+      </div>
+      <div class="ds-bar"><i style="width:${pctEquipo}%;background:${accEq}"></i></div>
+      <div style="margin-top:9px;font-size:11px;color:var(--text-3)">${totalMeta > 0 ? pctEquipo + '% de la meta del equipo' : 'Sin metas definidas'}</div>
+    </div>` : '';
+
   return `
     <div class="ds-sec">${esAdmin_ ? 'Metas del día por pareja' : 'Tu meta de hoy'}</div>
+    ${tarjetaEquipo}
     ${parejas.map(tarjeta).join('')}
     ${esAdmin_ ? `<div style="font-size:11px;color:var(--text-4);margin-top:2px">Escribe la meta de cada pareja. Se guarda sola y se mantiene hasta que la cambies.</div>` : ''}`;
 }
@@ -278,7 +300,7 @@ function setTab(tab) {
         const rev = t.dataset.rev;
         revAbierto_[rev] = !revAbierto_[rev];
         const list = cont.querySelector(rev === 'yc' ? '#ami-yc-list' : '#ami-mu-list');
-        if (list) list.hidden = !revAbierto_[rev];
+        if (list) list.style.display = revAbierto_[rev] ? '' : 'none';
         const chev = t.querySelector('.ami-rev-chev');
         if (chev) chev.style.transform = revAbierto_[rev] ? 'rotate(90deg)' : '';
       };
@@ -438,7 +460,7 @@ function renderRevisiones() {
         </div>
         <span class="ami-rev-chev" style="display:flex;transition:transform .2s;${revAbierto_.yc?'transform:rotate(90deg)':''}">${chevron}</span>
       </div>
-      <div id="ami-yc-list" ${revAbierto_.yc?'':'hidden'} style="margin-top:8px" class="flex-col gap-8">${yc.map(ycCard).join('')}</div>
+      <div id="ami-yc-list" style="margin-top:8px;${revAbierto_.yc?'':'display:none'}" class="flex-col gap-8">${yc.map(ycCard).join('')}</div>
     </div>` : ''}
     ${mu.length ? `
     <div style="margin-bottom:12px">
@@ -450,7 +472,7 @@ function renderRevisiones() {
         </div>
         <span class="ami-rev-chev" style="display:flex;transition:transform .2s;${revAbierto_.mu?'transform:rotate(90deg)':''}">${chevron}</span>
       </div>
-      <div id="ami-mu-list" ${revAbierto_.mu?'':'hidden'} style="margin-top:8px" class="flex-col gap-8">${mu.map(muCard).join('')}</div>
+      <div id="ami-mu-list" style="margin-top:8px;${revAbierto_.mu?'':'display:none'}" class="flex-col gap-8">${mu.map(muCard).join('')}</div>
     </div>` : ''}`;
 }
 
@@ -465,18 +487,15 @@ function renderPanel() {
 
   return `
     ${esAdmin_ ? `
-    <div style="display:flex;gap:8px;margin-bottom:12px">
+    <div style="display:flex;gap:8px;margin-bottom:16px">
       <button id="ami-btn-importar" style="flex:1;display:flex;align-items:center;justify-content:center;gap:8px;padding:12px;border-radius:12px;border:1px solid ${ACCENT_BORDER};background:${ACCENT_GLASS};color:${ACCENT};font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
         Cargar ruta (Excel)
       </button>
-      <input type="file" id="ami-file-importar" accept=".xlsx,.xls" style="display:none"/>
-    </div>
-    <div style="display:flex;gap:8px;margin-bottom:16px">
-      <button id="ami-btn-historial" style="flex:1;display:flex;align-items:center;justify-content:center;gap:8px;padding:11px;border-radius:12px;border:1px solid rgba(22,163,74,.35);background:rgba(22,163,74,.1);color:#16a34a;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><path d="M12 8v4l3 3"/><circle cx="12" cy="12" r="9"/></svg>
-        Cargar historial (Excel)
+      <button id="ami-btn-historial" title="Cargar historial (Excel)" style="width:48px;flex-shrink:0;display:flex;align-items:center;justify-content:center;border-radius:12px;border:1px solid rgba(22,163,74,.35);background:rgba(22,163,74,.1);color:#16a34a;cursor:pointer;font-family:inherit">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="17" height="17"><path d="M12 8v4l3 3"/><circle cx="12" cy="12" r="9"/></svg>
       </button>
+      <input type="file" id="ami-file-importar" accept=".xlsx,.xls" style="display:none"/>
       <input type="file" id="ami-file-historial" accept=".xlsx,.xls" style="display:none"/>
     </div>` : ''}
 
