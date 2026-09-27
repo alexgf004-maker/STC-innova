@@ -471,6 +471,7 @@ function initMap() {
 // ── Geolocalización ───────────────────────────────
 let geoMarker_ = null;
 let geoCircle_ = null;
+let watchId_ = null;   // id del watchPosition, para limpiarlo al salir
 
 function iniciarGeolocalizacion() {
   if (!navigator.geolocation) return;
@@ -485,7 +486,8 @@ function iniciarGeolocalizacion() {
     "></div>
   `;
 
-  navigator.geolocation.watchPosition(
+  if (watchId_ != null) navigator.geolocation.clearWatch(watchId_);
+  watchId_ = navigator.geolocation.watchPosition(
     pos => {
       const { latitude: lat, longitude: lng, accuracy } = pos.coords;
 
@@ -1530,6 +1532,10 @@ window.__mapaCloseSheet = closeSheet;
 
 // Llamado por el router al navegar fuera del mapa
 export function cleanup() {
+  // Al salir del mapa: cortar el listener en vivo y el GPS (antes seguían
+  // corriendo en segundo plano y se acumulaba un watchPosition por visita).
+  if (unsubscribe_) { unsubscribe_(); unsubscribe_ = null; }
+  if (watchId_ != null && navigator.geolocation) { navigator.geolocation.clearWatch(watchId_); watchId_ = null; }
   ['sheet-visita','sheet-realizada','sheet-zona','sheet-ya-cambiado','sheet-pedir-ayuda','sheet-asignar-individual','sheet-campo-mapa','sheet-contiguos'].forEach(id => {
     document.getElementById(id)?.remove();
   });
