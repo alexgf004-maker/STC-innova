@@ -63,7 +63,8 @@ function esResiduo(o) {
 // arrastradas. Es el avance hacia la meta diaria.
 function hechasHoyPorPareja(pareja) {
   const hoy = claveDiaAMI(firebase.firestore.Timestamp.now());
-  return ordenes_.filter(o => {
+  // Incluye condominios: lo que la pareja cambia ahí también cuenta para su meta
+  return [...ordenes_, ...condominios_].filter(o => {
     if (o.pareja !== pareja) return false;
     if (o.estadoCampo !== 'hecha' && o.estadoCampo !== 'aprobada') return false;
     return claveDiaAMI(o.fechaHecha) === hoy;
@@ -288,6 +289,14 @@ function setTab(tab) {
       btn.onclick = () => file.click();
       file.onchange = (e) => importarRuta(e.target.files[0]);
     }
+    cont.querySelectorAll('.ami-condo-abrir').forEach(el => el.onclick = async () => {
+      const mod = await import('./ami_condominio.js');
+      mod.abrirVistaCondominio({
+        key: el.dataset.key, session: session_, parejas: parejasActivas_,
+        obtener: () => condominios_,
+        alCerrar: () => { if (activeTab_ === 'panel') setTab('panel'); },
+      });
+    });
     const btnC = cont.querySelector('#ami-btn-condominio');
     const fileC = cont.querySelector('#ami-file-condominio');
     if (btnC && fileC) {
@@ -914,13 +923,14 @@ function renderResumenCondominios() {
     const niveles = new Set(arr.map(o => o.nivel || '')).size;
     const sinAsignar = arr.filter(o => !o.pareja).length;
     return `
-      <div style="padding:12px 0;border-top:1px solid var(--border)">
+      <div class="ami-condo-abrir" data-key="${escapeHtml(k)}" style="padding:12px 0;border-top:1px solid var(--border);cursor:pointer">
         <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:8px">
           <div style="min-width:0">
             <div style="font-size:14px;font-weight:600">${escapeHtml(edif)}</div>
             <div style="font-size:11px;color:var(--text-4);margin-top:2px">${escapeHtml(condo)} · ${niveles} nivel${niveles !== 1 ? 'es' : ''}${sinAsignar ? ` · ${sinAsignar} sin asignar` : ''}</div>
           </div>
-          <div style="font-size:12px;color:var(--text-3);white-space:nowrap">${hechas} / ${arr.length}</div>
+          <div style="font-size:12px;color:var(--text-3);white-space:nowrap;display:flex;align-items:center;gap:6px">${hechas} / ${arr.length}
+            <svg viewBox="0 0 24 24" fill="none" stroke="var(--text-4)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><polyline points="9 18 15 12 9 6"/></svg></div>
         </div>
         <div class="ds-bar"><i class="am" style="width:${pct}%"></i></div>
       </div>`;
@@ -931,7 +941,7 @@ function renderResumenCondominios() {
         <div style="font-size:14px;font-weight:600">Condominios</div>
         <div style="font-size:12px;color:var(--text-4)">${condominios_.length} medidores</div>
       </div>
-      <div style="font-size:11px;color:var(--text-4);margin-bottom:6px">Aparte de la ruta diaria. La vista por nivel para técnicos viene en la siguiente fase.</div>
+      <div style="font-size:11px;color:var(--text-4);margin-bottom:6px">Aparte de la ruta diaria. Toca un edificio para asignar niveles a parejas y confirmar; el técnico lo ve en el mapa como una sola gota.</div>
       ${filas}
     </div>`;
 }

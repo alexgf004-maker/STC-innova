@@ -275,3 +275,33 @@ Mientras no existan las fases 2–4, las órdenes de condominio se mantienen
 fuera de la ruta diaria: no cuentan en "Avance del día" ni en las listas de
 AMI, no se pintan como pines en `ami_mapa` y no salen en su buscador. El Panel
 del admin muestra una tarjeta "Condominios" con el avance por edificio.
+
+## 14. Fases 2, 3 y 4 construidas (2026-09-27)
+
+Módulo nuevo `js/views/ami_condominio.js` (Vista Condominio), abierto desde:
+- **Mapa de AMI** (`ami_mapa`): una sola gota por edificio (ícono de edificio +
+  "Torre A · hechas/total"), verde cuando el edificio está completo. Los
+  medidores ya no se pintan sueltos.
+- **Panel de AMI (admin)**: cada edificio de la tarjeta "Condominios" abre la
+  misma vista.
+
+Técnico (ve solo lo asignado a su pareja, igual que el resto del mapa):
+- Avance del edificio, **buscador por número de medidor** (flujo principal) y
+  lista por nivel; se abre sola el primer nivel con pendientes.
+- Tocar un medidor: número grande, unidad, forma y NC; acciones "Cambiado ·
+  ya actualizado en DELSUR", "Cambiado · falta DELSUR", "No se pudo" (visita
+  con motivo) y "Ya estaba cambiado". Mismos campos que el mapa;
+  `parejaDelDia` filtrada por área. Sin "marcar nivel completo".
+- Los medidores del padrón de ya cambiados se le esconden.
+
+Admin/asistente:
+- Asignar **cada nivel** o **todo el edificio** a una pareja (lote de 400 sobre
+  `pareja` + `asignadoEn`, con confirmación). Asignar hace que la gota le
+  aparezca a esa pareja: no hizo falta la "activación de edificio" de la
+  sección 5; si más adelante se necesita, se agrega aparte.
+- Confirmar en lote los "Cambiado" de un nivel (`aprobada`), o uno por uno.
+
+Las metas del día por pareja (Panel) cuentan también lo cambiado en
+condominios. Las reglas de Firestore actuales ya permiten todo esto: el
+técnico solo escribe campos de su lista y la asignación/confirmación es de
+admin/asistente.
