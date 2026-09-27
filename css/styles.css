@@ -1560,10 +1560,46 @@ body {
 
 /* Solicitud card */
 .bod-solic-card {
-  border-radius: var(--radius); border: 1px solid;
+  border-radius: var(--radius); border: 1px solid var(--border);
   padding: 14px 16px; cursor: pointer;
 }
 .bod-solic-card:active { filter: brightness(1.08); }
+
+/* — Bodega con el sistema ds — */
+/* Selector de campaña: píldoras con el color de cada área (igual que Home) */
+.bod-camps { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; margin-bottom: 12px; }
+.bod-camps::-webkit-scrollbar { display: none; }
+.bod-camp {
+  flex: 1 0 auto; padding: 8px 14px; border-radius: 20px;
+  font-family: inherit; font-size: 12px; font-weight: 600; white-space: nowrap;
+  color: var(--text-3); background: var(--glass); border: 1px solid var(--border);
+  cursor: pointer; -webkit-tap-highlight-color: transparent; transition: color .2s, background .2s, border-color .2s;
+}
+.bod-camp.active { color: var(--c); background: var(--cb); border-color: var(--cbr); }
+/* Acción principal + iconos (mismo patrón que "Cargar ruta" en AMI) */
+.bod-btn-main {
+  flex: 1; display: flex; align-items: center; justify-content: center; gap: 8px;
+  padding: 12px; border-radius: 12px; font-family: inherit; font-size: 13px; font-weight: 600;
+  color: var(--bod-light); background: var(--bod-glass); border: 1px solid var(--bod-border); cursor: pointer;
+}
+.bod-btn-ico {
+  width: 46px; flex-shrink: 0; display: flex; align-items: center; justify-content: center;
+  border-radius: 12px; color: var(--text-2); background: var(--glass); border: 1px solid var(--border); cursor: pointer;
+}
+.bod-btn-main:active, .bod-btn-ico:active { filter: brightness(1.15); }
+/* Mini-stats que filtran */
+.bod-stat { cursor: pointer; transition: border-color .2s, background .2s; }
+.bod-stat.sel { border-color: var(--bod-border); background: var(--bod-glass); }
+/* Fila de material */
+.bod-item-row { background: var(--glass); border: 1px solid var(--border); border-radius: 16px; overflow: hidden; }
+.bod-item-row.crit { border-color: rgba(239,68,68,.35); }
+.bod-item-row.warn { border-color: rgba(245,158,11,.3); }
+.bod-item-head { display: flex; align-items: center; gap: 12px; padding: 14px 15px; cursor: pointer; }
+.bod-item-actions { display: none; gap: 6px; padding: 0 15px 14px; }
+/* Título de sección con contador */
+.bod-sec { display: flex; align-items: center; justify-content: space-between; }
+.bod-sec .ds-sec { margin: 6px 0 10px; }
+.bod-count { font-size: 11px; font-weight: 600; color: var(--text-3); background: var(--glass); border: 1px solid var(--border); border-radius: 10px; padding: 2px 9px; }
 
 /* Toggle área */
 .bod-toggle {
