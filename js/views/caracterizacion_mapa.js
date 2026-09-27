@@ -12,7 +12,7 @@
  */
 
 import { db } from '../firebase.js';
-import { toast } from '../ui.js';
+import { toast, escapeHtml } from '../ui.js';
 
 let map_ = null;
 let session_ = null;
@@ -332,7 +332,7 @@ function abrirDetalleRetiro(retiroId) {
     ${hecho ? `
       <div style="background:var(--glass);border:1px solid var(--border);border-radius:12px;padding:12px;margin-bottom:8px">
         <div style="font-size:12px;font-weight:700;color:${r.estado === 'retirado' ? '#22c55e' : '#ef4444'}">${r.estado === 'retirado' ? 'Retirado' : 'No se pudo retirar'}</div>
-        ${r.motivo ? `<div style="font-size:11px;color:#f87171;margin-top:4px">${r.motivo}</div>` : ''}
+        ${r.motivo ? `<div style="font-size:11px;color:#f87171;margin-top:4px">${escapeHtml(r.motivo)}</div>` : ''}
         ${r.hechoPor ? `<div style="font-size:10px;color:var(--text-4);margin-top:6px">Por ${r.hechoPor}${r.fechaHecho ? ' · ' + fmtFechaCorta(r.fechaHecho) : ''}</div>` : ''}
       </div>
       ${!esAdmin_ ? `<button id="crc-ret-deshacer" style="width:100%;padding:11px;border-radius:12px;border:1px solid var(--border);background:var(--glass);color:var(--text-3);font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">Volver a marcar</button>` : ''}

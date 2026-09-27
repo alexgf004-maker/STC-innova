@@ -9,7 +9,7 @@
  */
 
 import { db } from '../firebase.js';
-import { toast } from '../ui.js';
+import { toast, escapeHtml } from '../ui.js';
 import { recalcularStats } from '../stats.js';
 
 // ── Caché ─────────────────────────────────────────
@@ -584,7 +584,7 @@ function renderResumenTecnico() {
       ${visitasHoy.length ? `
       <div class="section-label anim-up d3">Visitas hoy</div>
       <div class="flex-col gap-6 anim-up d3">
-        ${visitasHoy.map(o => '<div class="orden-visita-panel" onclick="window.__cambios.verOrden(\'' + o.id + '\')" style="cursor:pointer"><div class="status-dot" style="background:#6b7280"></div><div style="flex:1;min-width:0"><div style="font-size:12px;font-weight:700">WO ' + (o.wo || '—') + '</div><div style="font-size:10px;color:var(--text-3)">' + (o.cliente || '—') + ' · ' + (o.motivoVisita || '') + '</div></div><div style="font-size:10px;font-weight:600;color:#6b7280;flex-shrink:0">Visita</div></div>').join('')}
+        ${visitasHoy.map(o => '<div class="orden-visita-panel" onclick="window.__cambios.verOrden(\'' + o.id + '\')" style="cursor:pointer"><div class="status-dot" style="background:#6b7280"></div><div style="flex:1;min-width:0"><div style="font-size:12px;font-weight:700">WO ' + (o.wo || '—') + '</div><div style="font-size:10px;color:var(--text-3)">' + (o.cliente || '—') + ' · ' + escapeHtml(o.motivoVisita || '') + '</div></div><div style="font-size:10px;font-weight:600;color:#6b7280;flex-shrink:0">Visita</div></div>').join('')}
       </div>` : ''}
 
       ${sinActualizar.length ? `
@@ -936,7 +936,7 @@ function renderOrdenVisitaPanel(o) {
       <div class="status-dot" style="background:#111827;border:1px solid #4b5563;flex-shrink:0"></div>
       <div style="flex:1;min-width:0">
         <div style="font-size:12px;font-weight:700">WO ${o.wo || '—'}</div>
-        <div style="font-size:10px;color:var(--text-3)">${o.motivoVisita || 'Sin motivo registrado'}</div>
+        <div style="font-size:10px;color:var(--text-3)">${o.motivoVisita ? escapeHtml(o.motivoVisita) : 'Sin motivo registrado'}</div>
       </div>
     </div>
   `;
@@ -1509,7 +1509,7 @@ function openYaCambiadas() {
           </div>
           <div style="font-size:10px;color:var(--text-4);text-align:right">${fechaStr}<br>${o.yaCambiadoPor || '—'}</div>
         </div>
-        ${o.yaCambiadoComentario ? `<div style="font-size:12px;color:var(--text-3);padding:8px 10px;background:rgba(255,255,255,.04);border-radius:8px">${o.yaCambiadoComentario}</div>` : ''}
+        ${o.yaCambiadoComentario ? `<div style="font-size:12px;color:var(--text-3);padding:8px 10px;background:rgba(255,255,255,.04);border-radius:8px">${escapeHtml(o.yaCambiadoComentario)}</div>` : ''}
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
           <button onclick="window.__cambios.aprobarYaCambiado('${o.id}')"
             style="height:40px;border-radius:10px;border:1px solid rgba(34,197,94,.3);background:transparent;color:#22c55e;font-size:12px;font-weight:600;font-family:'Outfit',sans-serif;cursor:pointer">

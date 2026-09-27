@@ -15,7 +15,7 @@
  */
 
 import { db } from '../firebase.js';
-import { toast } from '../ui.js';
+import { toast, escapeHtml } from '../ui.js';
 
 const PADRON_URL = '/STC-innova/caracterizacion_padron.json';
 
@@ -1300,7 +1300,7 @@ function renderListaRetiros() {
             <div class="estado-badge ${badgeClase}">${etiqueta}</div>
           </div>
         </div>
-        ${r.estado === 'no_retirado' && r.motivo ? `<div style="font-size:11px;color:#f87171;margin-top:8px">Motivo: ${r.motivo}</div>` : ''}
+        ${r.estado === 'no_retirado' && r.motivo ? `<div style="font-size:11px;color:#f87171;margin-top:8px">Motivo: ${escapeHtml(r.motivo)}</div>` : ''}
         ${meta ? `<div style="font-size:10px;color:var(--text-4);margin-top:8px">${meta}</div>` : ''}
       </div>`;
   };

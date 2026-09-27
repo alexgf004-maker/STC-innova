@@ -20,13 +20,22 @@ export function toast(msg, type = 'ok', duration = 3000) {
   if (!toastContainer) return;
   const el = document.createElement('div');
   el.className = `toast ${type}`;
-  el.innerHTML = `<div class="toast-dot"></div><span>${msg}</span>`;
+  el.innerHTML = `<div class="toast-dot"></div><span></span>`;
+  el.querySelector('span').textContent = String(msg ?? '');
   toastContainer.appendChild(el);
   setTimeout(() => {
     el.style.transition = 'opacity .3s ease';
     el.style.opacity = '0';
     setTimeout(() => el.remove(), 300);
   }, duration);
+}
+
+// Escapa texto para insertarlo en innerHTML. Usar en todo texto que venga de
+// usuarios (comentarios, observaciones, motivos, notas) o de archivos Excel.
+export function escapeHtml(v) {
+  return String(v ?? '')
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
 // ── Spinner de topbar (botón refresh) ────────────
