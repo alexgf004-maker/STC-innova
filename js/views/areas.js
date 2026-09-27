@@ -12,38 +12,39 @@
 import { navigateTo } from '../router.js';
 
 // Áreas con vista de órdenes propia. `tab` es el id del módulo en /views/.
+// Mismo orden, textos e iconos que las tarjetas de Campañas del Dashboard.
 const AREAS_DISPONIBLES = [
   {
     id: 'cambios',
     tab: 'cambios',
-    label: 'Cambio de Medidores',
-    sub: 'Órdenes de cambio y su seguimiento',
+    label: 'Cambios',
+    sub: 'Cambio de medidores',
     color: '#2dd4bf',
-    icon: '<path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"/>',
+    icon: '<circle cx="12" cy="12" r="3"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
   },
   {
     id: 'caracterizacion',
     tab: 'caracterizacion',
-    label: 'Caracterización de la Carga',
-    sub: 'Órdenes del día con titular y suplentes',
+    label: 'Caracterización',
+    sub: 'Instalación y retiro',
     color: '#ef4444',
-    icon: '<circle cx="12" cy="10" r="3"/><path d="M12 2a8 8 0 00-8 8c0 5.4 8 12 8 12s8-6.6 8-12a8 8 0 00-8-8z"/>',
-  },
-  {
-    id: 'reclamos',
-    tab: 'reclamos',
-    label: 'Reclamos SIGET',
-    sub: 'Bitácora de órdenes realizadas',
-    color: '#fbbf24',
-    icon: '<path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/>',
+    icon: '<path d="M3 3v18h18"/><path d="M18 17V9M13 17V5M8 17v-3"/>',
   },
   {
     id: 'ami',
     tab: 'ami',
     label: 'AMI',
-    sub: 'Medidores telegestionados (remotos)',
+    sub: 'Medidores remotos',
     color: '#a78bfa',
-    icon: '<path d="M4.9 16.1a10 10 0 010-8.2"/><path d="M7.8 13.8a6 6 0 010-3.6"/><path d="M19.1 7.9a10 10 0 010 8.2"/><path d="M16.2 10.2a6 6 0 010 3.6"/><circle cx="12" cy="12" r="2"/>',
+    icon: '<path d="M4.9 16.1a10 10 0 010-8.2M7.8 13.8a6 6 0 010-3.6M19.1 7.9a10 10 0 010 8.2M16.2 10.2a6 6 0 010 3.6"/><circle cx="12" cy="12" r="2"/>',
+  },
+  {
+    id: 'reclamos',
+    tab: 'reclamos',
+    label: 'Reclamos SIGET',
+    sub: 'Bitácora de órdenes',
+    color: '#fbbf24',
+    icon: '<path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>',
   },
 ];
 
@@ -56,49 +57,30 @@ export function init(container, session) {
     return;
   }
 
-  // Inyectar estilos del selector (una sola vez)
-  if (!document.getElementById('areas-css')) {
-    const st = document.createElement('style');
-    st.id = 'areas-css';
-    st.textContent = `
-      .area-card{position:relative;display:flex;align-items:center;gap:16px;padding:20px;border-radius:16px;
-        background:linear-gradient(180deg,rgba(255,255,255,.03),rgba(255,255,255,.01));
-        border:1px solid var(--border);cursor:pointer;overflow:hidden;
-        transition:transform .18s ease,border-color .18s ease,box-shadow .18s ease}
-      .area-card::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--acc);opacity:.85}
-      .area-card:hover{transform:translateY(-2px);border-color:var(--acc);box-shadow:0 8px 30px rgba(0,0,0,.35)}
-      .area-ico{width:52px;height:52px;border-radius:14px;display:flex;align-items:center;justify-content:center;flex-shrink:0;
-        background:var(--acc-bg);border:1px solid var(--acc-br)}
-      .area-arrow{color:var(--text-4);transition:transform .18s ease,color .18s ease}
-      .area-card:hover .area-arrow{transform:translateX(3px);color:var(--acc)}
-    `;
-    document.head.appendChild(st);
-  }
+  // Tarjetas iguales a los accesos del Dashboard (ds-act con icono en cuadro de color)
+  const tarjeta = a => `
+    <div class="ds-act" onclick="window.__router.navigateTo('${a.tab}')" style="text-align:left;padding:16px">
+      <div style="display:flex;align-items:center;gap:12px">
+        <div style="width:40px;height:40px;border-radius:12px;background:${a.color}22;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+          <svg viewBox="0 0 24 24" fill="none" stroke="${a.color}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="20" height="20">${a.icon}</svg>
+        </div>
+        <div style="min-width:0">
+          <div style="font-size:14px;font-weight:600;color:var(--text-1)">${a.label}</div>
+          <div style="font-size:11px;color:var(--text-3);margin-top:1px">${a.sub}</div>
+        </div>
+      </div>
+    </div>`;
 
   container.scrollTop = 0;
   container.innerHTML = `
-    <div style="padding:32px 20px;max-width:680px;margin:0 auto">
-      <div style="margin-bottom:24px">
-        <div style="font-size:22px;font-weight:800;letter-spacing:-.01em">Áreas de trabajo</div>
-        <div style="font-size:13px;color:var(--text-4);margin-top:4px">Elige el área que vas a gestionar</div>
+    <div class="ds-view anim-up">
+      <div style="margin-bottom:22px">
+        <div style="font-size:24px;font-weight:600;letter-spacing:-.02em;line-height:1.15">Áreas de trabajo</div>
+        <div style="font-size:12px;color:var(--text-4);margin-top:4px">Elige el área que vas a gestionar</div>
       </div>
-      <div style="display:grid;grid-template-columns:1fr;gap:12px">
-        ${disponibles.map(a => {
-          const hex = a.color;
-          const r = parseInt(hex.slice(1,3),16), g = parseInt(hex.slice(3,5),16), b = parseInt(hex.slice(5,7),16);
-          return `
-          <div class="area-card" style="--acc:${hex};--acc-bg:rgba(${r},${g},${b},.14);--acc-br:rgba(${r},${g},${b},.3)"
-               onclick="window.__router.navigateTo('${a.tab}')">
-            <div class="area-ico">
-              <svg viewBox="0 0 24 24" fill="none" stroke="${hex}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="26" height="26">${a.icon}</svg>
-            </div>
-            <div style="flex:1;min-width:0">
-              <div style="font-size:15px;font-weight:700">${a.label}</div>
-              <div style="font-size:12px;color:var(--text-4);margin-top:3px">${a.sub}</div>
-            </div>
-            <svg class="area-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="20" height="20"><polyline points="9 18 15 12 9 6"/></svg>
-          </div>`;
-        }).join('')}
+      <div class="ds-sec">Campañas</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        ${disponibles.map(tarjeta).join('')}
       </div>
     </div>`;
 }
