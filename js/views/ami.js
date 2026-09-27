@@ -20,7 +20,7 @@
  */
 
 import { db } from '../firebase.js';
-import { toast } from '../ui.js';
+import { toast, escapeHtml } from '../ui.js';
 
 // ── Identidad del área ────────────────────────────
 const AREA = 'AMI';
@@ -419,7 +419,7 @@ function renderRevisiones() {
         </div>
         <div style="font-size:10px;color:var(--text-4);text-align:right;flex-shrink:0">${fmtF(o.yaCambiadoEn, true)}<br>${o.yaCambiadoPor || '—'}</div>
       </div>
-      ${o.yaCambiadoComentario ? `<div style="font-size:12px;color:var(--text-3);padding:8px 10px;background:rgba(255,255,255,.04);border-radius:8px">${o.yaCambiadoComentario}</div>` : ''}
+      ${o.yaCambiadoComentario ? `<div style="font-size:12px;color:var(--text-3);padding:8px 10px;background:rgba(255,255,255,.04);border-radius:8px">${escapeHtml(o.yaCambiadoComentario)}</div>` : ''}
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
         <button class="ami-yc-aprobar" data-id="${o.id}" style="height:40px;border-radius:10px;border:1px solid rgba(34,197,94,.3);background:transparent;color:#22c55e;font-size:12px;font-weight:600;font-family:inherit;cursor:pointer">Lo hicimos nosotros</button>
         <button class="ami-yc-revertir" data-id="${o.id}" style="height:40px;border-radius:10px;border:1px solid var(--border);background:transparent;color:var(--text-3);font-size:12px;font-weight:600;font-family:inherit;cursor:pointer">Revertir</button>

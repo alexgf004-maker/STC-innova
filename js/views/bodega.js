@@ -5,7 +5,7 @@
  */
 
 import { db } from '../firebase.js';
-import { toast } from '../ui.js';
+import { toast, escapeHtml } from '../ui.js';
 
 // ── Constantes (iguales al original) ─────────────
 const PLACAS = ['CPT-154','CPT-156','AU-250','AU-200','CNR-163','P568DA','P38DA6','SG-295','SG-297','AEC-240'];
@@ -977,7 +977,7 @@ function renderHistorial() {
             </div>
             <div class="flex-col gap-3" style="margin-bottom:10px">
               ${(d.items||[]).map(m=>`<div style="display:flex;justify-content:space-between;font-size:11px"><span style="color:var(--text-3)">${tc(m.nombre||m.name||'—')}${m.requiereSerial?` <span style="color:var(--text-4)">(${(m.seriales||[]).length} series)</span>`:''}</span><span style="font-weight:600">${m.cantidad} ${safeStr(m.unit,'')}</span></div>`).join('')}
-              ${d.nota?`<div style="font-size:10px;color:var(--text-4);font-style:italic;margin-top:4px">Nota: ${safeStr(d.nota)}</div>`:''}
+              ${d.nota?`<div style="font-size:10px;color:var(--text-4);font-style:italic;margin-top:4px">Nota: ${escapeHtml(safeStr(d.nota))}</div>`:''}
             </div>
             <div style="display:flex;gap:6px">
               <button class="bod-badge" style="flex:1;text-align:center;color:#2dd4bf;border-color:rgba(45,212,191,.4);background:rgba(45,212,191,.12);cursor:pointer;padding:8px;font-weight:700" onclick="window.__bodega._verDev('${d.id}')">Revisar y aprobar</button>
@@ -1186,7 +1186,7 @@ function verDetalleDevolucion(id){
       </div>
 
       <div style="padding:16px 20px;flex:1" class="flex-col gap-12">
-        ${d.nota?`<div style="font-size:12px;color:var(--text-3);font-style:italic;background:var(--glass);border:1px solid var(--border);border-radius:10px;padding:10px">Nota del técnico: ${safeStr(d.nota)}</div>`:''}
+        ${d.nota?`<div style="font-size:12px;color:var(--text-3);font-style:italic;background:var(--glass);border:1px solid var(--border);border-radius:10px;padding:10px">Nota del técnico: ${escapeHtml(safeStr(d.nota))}</div>`:''}
         <div style="font-size:11px;color:var(--text-4)">Revisa físicamente lo que te entregó. Puedes quitar lo que no cuadre antes de aprobar.</div>
 
         ${items.length? items.map((it,idx)=>`
@@ -1269,7 +1269,7 @@ function mostrarMemoDevolucion(d){
       <div style="font-size:12px;margin-bottom:14px">
         <div style="display:flex;justify-content:space-between;margin-bottom:4px"><span style="color:#777">Técnico que devuelve:</span><span style="font-weight:700">${safeStr(d.tecnicoNombre)}</span></div>
         <div style="display:flex;justify-content:space-between;margin-bottom:4px"><span style="color:#777">Recibido por:</span><span style="font-weight:700">${safeStr(d.aprobadoPor)}</span></div>
-        ${d.nota?`<div style="margin-top:6px;color:#555;font-style:italic">Nota: ${safeStr(d.nota)}</div>`:''}
+        ${d.nota?`<div style="margin-top:6px;color:#555;font-style:italic">Nota: ${escapeHtml(safeStr(d.nota))}</div>`:''}
       </div>
       <table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:16px">
         <thead><tr style="border-bottom:1.5px solid ${AC}">

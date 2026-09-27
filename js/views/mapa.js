@@ -9,7 +9,7 @@
  */
 
 import { db } from '../firebase.js';
-import { toast } from '../ui.js';
+import { toast, escapeHtml } from '../ui.js';
 
 const PAREJA_COLORS = {
   'Pareja 1': '#2dd4bf',
@@ -737,7 +737,7 @@ function verOrden(id) {
       </div>` : ''}
       ${o.motivoVisita ? `<div style="background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.3);border-radius:10px;padding:9px 11px;grid-column:1 / -1">
         <div style="font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:#fbbf24;margin-bottom:3px">Motivo visita</div>
-        <div style="font-size:13px;font-weight:600;color:#fff">${o.motivoVisita}${o.observacionVisita ? ' — ' + o.observacionVisita : ''}</div>
+        <div style="font-size:13px;font-weight:600;color:#fff">${escapeHtml(o.motivoVisita)}${o.observacionVisita ? ' — ' + escapeHtml(o.observacionVisita) : ''}</div>
       </div>` : ''}
     </div>
 
