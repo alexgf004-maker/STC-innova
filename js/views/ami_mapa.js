@@ -10,6 +10,7 @@
 
 import { db } from '../firebase.js';
 import { toast, escapeHtml } from '../ui.js';
+import { abrirVistaCondominio, refrescarVistaCondominio, cerrarVistaCondominio, claveEdificio } from './ami_condominio.js';
 
 const PAREJA_COLORS = {
   'Pareja 1': '#2dd4bf',
@@ -73,6 +74,7 @@ let drawnItems_ = null;
 let drawControl_ = null;
 let session_, role_, pareja_;
 let ordenes_ = [];
+let condoOrdenes_ = [];             // órdenes de condominio: una gota por edificio, no pines sueltos
 let padronCambiados_ = new Set();   // NC ya cambiados (padrón permanente)
 let parejasActivas_ = [];           // parejas con técnico activo en AMI
 let selectedOrden_ = null;
@@ -362,8 +364,12 @@ function suscribirOrdenes() {
     : db.collection('ami_ordenes');
 
   unsubscribe_ = query.onSnapshot(snap => {
-    ordenes_ = snap.docs
-      .map(d => ({ id: d.id, ...d.data() }))
+    const todos = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    // Condominios: se agrupan por edificio (gota propia + Vista Condominio).
+    condoOrdenes_ = todos.filter(o => o.tipoSitio === 'condominio');
+    condoOrdenes_.forEach(o => { o._yaCambiada = padronCambiados_.has(String(o.nc ?? '').trim()); });
+    if (role_ === 'tecnico') condoOrdenes_ = condoOrdenes_.filter(o => !o._yaCambiada);
+    ordenes_ = todos
       .filter(o => {
         // Condominios: cientos de medidores en el mismo punto. No se pintan
         // como pines sueltos; tendrán su propia gota y vista (fases 2 y 4).
@@ -386,6 +392,7 @@ function suscribirOrdenes() {
     plotMarkers();
     centrarEnOrdenes();
     updateStatChip();
+    refrescarVistaCondominio();
   }, err => {
     console.error('[mapa] Error en listener:', err);
   });
@@ -592,6 +599,48 @@ function centrarEnOrdenes() {
   }
 }
 
+// ── Condominios: una gota por edificio ────────────
+// Todos los medidores de un edificio comparten casi la misma coordenada;
+// en vez de cientos de pines encimados se dibuja una sola gota con el avance.
+function plotCondominios() {
+  const grupos = new Map();
+  condoOrdenes_.forEach(o => {
+    const k = claveEdificio(o);
+    if (!grupos.has(k)) grupos.set(k, []);
+    grupos.get(k).push(o);
+  });
+  grupos.forEach((arr, key) => {
+    const conCoord = arr.find(o => {
+      const lat = parseFloat(o.latitud), lng = parseFloat(o.longitud);
+      return lat > 12 && lat < 16 && lng > -92 && lng < -87;
+    });
+    if (!conCoord) return;
+    const hechas = arr.filter(o => o.estadoCampo === 'hecha' || o.estadoCampo === 'aprobada').length;
+    const completo = hechas === arr.length;
+    const edif = String(arr[0].edificio || 'Edificio');
+    const icon = L.divIcon({
+      className: '',
+      html: `
+        <div style="position:relative;display:flex;flex-direction:column;align-items:center">
+          <div style="width:38px;height:38px;border-radius:11px;background:${completo ? '#15803d' : '#5b45b0'};border:2px solid rgba(255,255,255,.9);
+            display:flex;align-items:center;justify-content:center;box-shadow:0 3px 10px rgba(0,0,0,.5)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="19" height="19"><rect x="4" y="2" width="16" height="20" rx="2"/><path d="M9 22v-4h6v4"/><path d="M8 6h.01M12 6h.01M16 6h.01M8 10h.01M12 10h.01M16 10h.01M8 14h.01M12 14h.01M16 14h.01"/></svg>
+          </div>
+          <div style="margin-top:3px;white-space:nowrap;font-size:10px;font-weight:700;font-family:'Outfit',sans-serif;color:#fff;
+            background:rgba(10,22,40,.85);border:1px solid rgba(255,255,255,.2);border-radius:8px;padding:1px 6px">${escapeHtml(edif)} · ${hechas}/${arr.length}</div>
+        </div>`,
+      iconSize: [38, 56],
+      iconAnchor: [19, 19],
+    });
+    const marker = L.marker([parseFloat(conCoord.latitud), parseFloat(conCoord.longitud)], { icon, zIndexOffset: 1000 });
+    marker.on('click', () => abrirVistaCondominio({
+      key, session: session_, parejas: parejasActivas_, obtener: () => condoOrdenes_,
+    }));
+    marker.addTo(map_);
+    markers_.push(marker);
+  });
+}
+
 // ── Geolocalización ───────────────────────────────
 let geoMarker_ = null;
 let geoCircle_ = null;
@@ -752,6 +801,8 @@ function plotMarkers() {
     marker.addTo(map_);
     markers_.push(marker);
   });
+
+  plotCondominios();
 
   // Si el mapa pierde layers offline, re-añadir marcadores al recuperarse
   map_.once('layeradd', () => {
@@ -1780,6 +1831,7 @@ window.__mapaCloseSheet = closeSheet;
 
 // Llamado por el router al navegar fuera del mapa
 export function cleanup() {
+  cerrarVistaCondominio();
   // Al salir del mapa: cortar el listener en vivo y el GPS (antes seguían
   // corriendo en segundo plano y se acumulaba un watchPosition por visita).
   if (unsubscribe_) { unsubscribe_(); unsubscribe_ = null; }

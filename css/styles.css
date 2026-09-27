@@ -1955,3 +1955,27 @@ body {
 /* Dentro de .crc-hoja el fondo del panel es #0d1117 (sin transparencia),
    no rgba(10,22,40,.96) — igualarlo para que no se note el recuadro. */
 .crc-hoja .panel-actions-fixed { background: #0d1117; }
+
+/* — AMI Condominio: vista de un edificio a pantalla completa — */
+.cd-flow { position: fixed; inset: 0; z-index: 600; background: var(--bg-base); overflow-y: auto; -webkit-overflow-scrolling: touch; }
+.cd-wrap { max-width: 560px; margin: 0 auto; min-height: 100%; display: flex; flex-direction: column; }
+.cd-head {
+  position: sticky; top: 0; z-index: 10; display: flex; align-items: center; gap: 12px;
+  padding: 14px 16px; background: var(--bg-base); border-bottom: 1px solid var(--border);
+}
+.cd-body { flex: 1; padding: 16px 16px calc(28px + env(safe-area-inset-bottom)); display: flex; flex-direction: column; gap: 12px; }
+.cd-nivel-head { display: flex; align-items: center; gap: 12px; padding: 14px 15px; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.cd-nivel-body { padding: 0 12px 12px; display: flex; flex-direction: column; gap: 6px; }
+.cd-med {
+  display: flex; align-items: center; gap: 12px; padding: 12px 13px; border-radius: 12px; cursor: pointer;
+  background: rgba(255,255,255,.04); border: 1px solid var(--border); -webkit-tap-highlight-color: transparent;
+}
+.cd-med:active { background: var(--glass-hov); }
+.cd-med.done { opacity: .6; }
+/* Número de medidor grande y legible al sol */
+.cd-num { font-size: 20px; font-weight: 700; letter-spacing: .02em; color: #fff; font-variant-numeric: tabular-nums; line-height: 1.2; }
+.cd-sub { font-size: 12px; color: var(--text-3); margin-top: 3px; }
+.cd-sel { height: 40px; padding: 0 10px; font-size: 13px; }
+.cd-sel:focus { border-color: var(--am-light); }
+.cd-flow .gap-10 { gap: 10px; }
+.cd-flow .gap-6 { gap: 6px; }
