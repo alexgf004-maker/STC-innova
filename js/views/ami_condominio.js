@@ -285,8 +285,7 @@ function abrirAccion(o) {
       </div>
       <div id="cd-acc-cuerpo" class="flex-col gap-8">
         ${puedeMarcar ? `
-          <button class="btn-action cm" id="cd-hecha-si" style="height:52px;font-size:14px">Cambiado · ya actualizado en DELSUR</button>
-          <button class="btn-action outline" id="cd-hecha-no" style="height:48px">Cambiado · falta actualizar en DELSUR</button>
+          <button class="btn-action cm" id="cd-hecha" style="height:54px;font-size:15px">Marcar cambiado</button>
           <div style="display:flex;gap:8px">
             <button class="btn-action warn" id="cd-visita" style="height:44px;font-size:12px">No se pudo</button>
             <button class="btn-action outline" id="cd-ya" style="height:44px;font-size:12px">Ya estaba cambiado</button>
@@ -298,8 +297,7 @@ function abrirAccion(o) {
   </div>`;
 
   sh.querySelector('#cd-acc-cerrar').onclick = cerrar;
-  sh.querySelector('#cd-hecha-si')?.addEventListener('click', () => marcarHecha(o, true, sh));
-  sh.querySelector('#cd-hecha-no')?.addEventListener('click', () => marcarHecha(o, false, sh));
+  sh.querySelector('#cd-hecha')?.addEventListener('click', () => marcarHecha(o, sh));
   sh.querySelector('#cd-confirmar')?.addEventListener('click', () => { cerrar(); confirmarLote([o], null); });
   sh.querySelector('#cd-visita')?.addEventListener('click', () => formVisita(o, sh));
   sh.querySelector('#cd-ya')?.addEventListener('click', () => formYaCambiado(o, sh));
@@ -356,7 +354,7 @@ function formYaCambiado(o, sh) {
 }
 
 // ── Escrituras ────────────────────────────────────
-async function marcarHecha(o, actualizadaDelsur, sh) {
+async function marcarHecha(o, sh) {
   const s = vista_.session;
   // Pareja del día: misma pareja Y misma área (regla del CLAUDE.md)
   let parejaDelDia = [s.displayName];
@@ -375,9 +373,8 @@ async function marcarHecha(o, actualizadaDelsur, sh) {
     estadoCampo: 'hecha',
     fechaHecha: firebase.firestore.Timestamp.now(),
     hechaPor: s.displayName,
-    actualizadaDelsur,
     parejaDelDia,
-  }, actualizadaDelsur ? `Medidor ${o.medidor || ''} cambiado` : `Medidor ${o.medidor || ''} cambiado · falta DELSUR`, sh);
+  }, `Medidor ${o.medidor || ''} cambiado`, sh);
 }
 
 async function guardar(o, datos, msgOk, sh) {
