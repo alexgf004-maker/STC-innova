@@ -2781,7 +2781,8 @@ async function ejecutarImport(sheet, rows) {
         const stockAntes=safeNum(existente.stock);
         const nuevoStock=stockAntes+cant;
         await col.doc(existente.id).update({
-          stock:nuevoStock,
+          // increment: si otro admin movió stock a la vez, no se pisa su cambio
+          stock:firebase.firestore.FieldValue.increment(cant),
           name:r.name||existente.name,
           unit:r.unit||existente.unit,
           minStock:r.minStock||existente.minStock,
@@ -3121,7 +3122,7 @@ function abrirEntrada(itemId) {
 
       const nuevoStock=(item?.stock||0)+cantidad;
       const batch=db.batch();
-      batch.update(db.collection('kardex').doc('inventario').collection('items').doc(itemId),{stock:nuevoStock});
+      batch.update(db.collection('kardex').doc('inventario').collection('items').doc(itemId),{stock:firebase.firestore.FieldValue.increment(cantidad)});
       const entRef=db.collection('kardex').doc('movimientos').collection('ajustes').doc();
       const huboReintegro=reintegradas.length>0;
       batch.set(entRef,{
