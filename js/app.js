@@ -310,12 +310,16 @@ window.addEventListener('DOMContentLoaded', async () => {
   const appEl  = document.getElementById('app');
 
   let debeCambiarPin = false;
+  let sinAcceso = false;
 
   // Refrescar datos del usuario desde Firestore
   // Así asignaciones y cambios de rol se reflejan sin cerrar sesión
   try {
     const doc = await db.collection('users').doc(session.uid).get();
-    if (doc.exists) {
+    // Usuario eliminado o desactivado por el admin: pierde el acceso aquí,
+    // no solo en el próximo login.
+    if (!doc.exists || doc.data().active === false) sinAcceso = true;
+    else {
       const fresh = doc.data();
       // OJO: solo sobrescribir si el dato viene bien. Si Firestore devuelve
       // algo incompleto, NO pisamos la sesión buena con undefined.
@@ -337,6 +341,11 @@ window.addEventListener('DOMContentLoaded', async () => {
   // Sin un rol conocido la app NO arranca. Antes caía al menú de asistente
   // y un técnico terminaba viendo pantallas que no le tocaban.
   const ROLES_VALIDOS = ['admin', 'asistente', 'tecnico'];
+  if (sinAcceso) {
+    console.warn('[app] Usuario desactivado o eliminado — cerrando sesión');
+    await cerrarSesion();
+    return;
+  }
   if (!session.uid || !ROLES_VALIDOS.includes(session.role)) {
     console.error('[app] Sesión inválida (rol:', session.role, ') — cerrando sesión');
     await cerrarSesion();
