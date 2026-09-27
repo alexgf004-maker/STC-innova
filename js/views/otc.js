@@ -7,6 +7,11 @@
 import { db } from '../firebase.js';
 import { toast } from '../ui.js';
 
+// Indicadores de color (sin emojis: se corrompen al editar y cada
+// teléfono los dibuja distinto).
+const dot = c => `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${c};margin-right:6px;vertical-align:middle"></span>`;
+const DOT_ROJO = dot('#ef4444'), DOT_NARANJA = dot('#f97316'), DOT_AMARILLO = dot('#fbbf24');
+
 // ── Constantes ────────────────────────────────────
 const TECNICOS = ['NALVAR', 'RGONZA', 'JPEREZ'];
 const TECNICO_COLORS = {
@@ -356,7 +361,7 @@ function renderResumenTecnicoOtc() {
       <!-- Reconexiones activas -->
       ${reconexiones.length ? `
       <div class="otc-alert-card crit anim-up d1">
-        <div class="otc-alert-header">🔴 ${reconexiones.length} reconexión${reconexiones.length>1?'es':''} activa${reconexiones.length>1?'s':''}</div>
+        <div class="otc-alert-header">${DOT_ROJO}${reconexiones.length} reconexión${reconexiones.length>1?'es':''} activa${reconexiones.length>1?'s':''}</div>
         ${reconexiones.map(o => `
           <div class="orden-verif-card" onclick="window.__otc.verOrden('${o.id}')" style="margin-top:6px">
             <div class="orden-verif-info">
@@ -370,7 +375,7 @@ function renderResumenTecnicoOtc() {
       <!-- Vencen hoy -->
       ${vencenHoy.length ? `
       <div class="otc-alert-card crit anim-up d1">
-        <div class="otc-alert-header">🔴 ${vencenHoy.length} vence${vencenHoy.length>1?'n':''} hoy</div>
+        <div class="otc-alert-header">${DOT_ROJO}${vencenHoy.length} vence${vencenHoy.length>1?'n':''} hoy</div>
         ${vencenHoy.map(o => `
           <div class="orden-visita-panel" onclick="window.__otc.verOrden('${o.id}')" style="margin-top:6px">
             <div class="status-dot" style="background:#ef4444"></div>
@@ -384,7 +389,7 @@ function renderResumenTecnicoOtc() {
       <!-- Vencen en 1-2 días -->
       ${vencen1_2.length ? `
       <div class="otc-alert-card warn anim-up d2">
-        <div class="otc-alert-header">🟠 ${vencen1_2.length} vence${vencen1_2.length>1?'n':''} en 1-2 días</div>
+        <div class="otc-alert-header">${DOT_NARANJA}${vencen1_2.length} vence${vencen1_2.length>1?'n':''} en 1-2 días</div>
         ${vencen1_2.map(o => `
           <div class="orden-visita-panel" onclick="window.__otc.verOrden('${o.id}')" style="margin-top:6px">
             <div class="status-dot" style="background:#f97316"></div>
@@ -419,7 +424,7 @@ function renderResumenTecnicoOtc() {
 
       ${!reconexiones.length && !vencenHoy.length && !vencen1_2.length && miLista.length ? `
       <div class="card anim-up d2" style="background:rgba(34,197,94,.06);border-color:rgba(34,197,94,.2);text-align:center;padding:20px">
-        <div style="font-size:22px;margin-bottom:6px">✅</div>
+        <div style="font-size:22px;margin-bottom:6px;color:#22c55e">&#10003;</div>
         <div style="font-size:13px;font-weight:700;color:var(--ok)">Todo bajo control</div>
         <div style="font-size:11px;color:var(--text-3);margin-top:4px">No tienes órdenes urgentes</div>
       </div>` : ''}
@@ -489,7 +494,7 @@ function renderPanelTecnico() {
 
       ${sinActualizar.length ? `
       <div class="otc-alert-card warn-soft anim-up d2">
-        <div class="otc-alert-header">⚠ ${sinActualizar.length} sin actualizar en DELSUR</div>
+        <div class="otc-alert-header">${DOT_AMARILLO}${sinActualizar.length} sin actualizar en DELSUR</div>
         ${sinActualizar.map(o => renderOrdenAlerta(o)).join('')}
       </div>` : ''}
 
@@ -535,22 +540,22 @@ function renderPanelAdmin() {
         <div class="otc-tablero-item ${reconGlobal.length ? 'crit' : 'ok'}" onclick="window.__otc.verUrgencias('reconexion')">
           <div class="otc-tablero-num">${reconGlobal.length}</div>
           <div class="otc-tablero-label">Reconexiones</div>
-          ${reconGlobal.length ? `<div class="otc-tablero-sub">activas ahora</div>` : '<div class="otc-tablero-sub">✓ Al día</div>'}
+          ${reconGlobal.length ? `<div class="otc-tablero-sub">activas ahora</div>` : '<div class="otc-tablero-sub">&#10003; Al día</div>'}
         </div>
         <div class="otc-tablero-item ${hoyGlobal.length ? 'crit' : 'ok'}" onclick="window.__otc.verUrgencias('hoy')">
           <div class="otc-tablero-num">${hoyGlobal.length}</div>
           <div class="otc-tablero-label">Vencen hoy</div>
-          ${hoyGlobal.length ? `<div class="otc-tablero-sub">urgente</div>` : '<div class="otc-tablero-sub">✓ Sin vencer</div>'}
+          ${hoyGlobal.length ? `<div class="otc-tablero-sub">urgente</div>` : '<div class="otc-tablero-sub">&#10003; Sin vencer</div>'}
         </div>
         <div class="otc-tablero-item ${mananaGlobal.length ? 'warn' : 'ok'}" onclick="window.__otc.verUrgencias('manana')">
           <div class="otc-tablero-num">${mananaGlobal.length}</div>
           <div class="otc-tablero-label">Vencen mañana</div>
-          ${mananaGlobal.length ? `<div class="otc-tablero-sub">atención</div>` : '<div class="otc-tablero-sub">✓ Sin riesgo</div>'}
+          ${mananaGlobal.length ? `<div class="otc-tablero-sub">atención</div>` : '<div class="otc-tablero-sub">&#10003; Sin riesgo</div>'}
         </div>
         <div class="otc-tablero-item ${hechasSinConf.length ? 'warn' : 'ok'}" onclick="window.__otc.verUrgencias('confirmar')">
           <div class="otc-tablero-num">${hechasSinConf.length}</div>
           <div class="otc-tablero-label">Por confirmar</div>
-          ${hechasSinConf.length ? `<div class="otc-tablero-sub">pendientes</div>` : '<div class="otc-tablero-sub">✓ Al día</div>'}
+          ${hechasSinConf.length ? `<div class="otc-tablero-sub">pendientes</div>` : '<div class="otc-tablero-sub">&#10003; Al día</div>'}
         </div>
       </div>
 
@@ -601,7 +606,7 @@ function renderSemaforoTecnico(tec) {
           <div style="font-size:14px;font-weight:800;color:${c.accent}">${tec}</div>
           <div style="font-size:11px;color:var(--text-3);margin-top:2px">
             ${total} pendientes · ${hechas} realizadas
-            ${recon ? `<span style="color:#ef4444;font-weight:700"> · 🔴 ${recon} reconex.</span>` : ''}
+            ${recon ? `<span style="color:#ef4444;font-weight:700"> · ${DOT_ROJO}${recon} reconex.</span>` : ''}
             ${hoy   ? `<span style="color:#ef4444;font-weight:700"> · ${hoy} vence${hoy>1?'n':''} hoy</span>` : ''}
             ${naranja && !hoy ? `<span style="color:#f59e0b"> · ${naranja} en riesgo</span>` : ''}
           </div>
@@ -625,13 +630,13 @@ function verUrgencias(tipo) {
 
   if (tipo === 'reconexion') {
     lista  = ordenes_.filter(o => o.tipo === 'reconexion' && !o.estadoCampo && o.fechaPago);
-    titulo = '🔴 Reconexiones activas';
+    titulo = `${DOT_ROJO}Reconexiones activas`;
   } else if (tipo === 'hoy') {
     lista  = ordenes_.filter(o => !o.estadoCampo && getUrgencia(o) === 'hoy');
-    titulo = '🔴 Vencen hoy';
+    titulo = `${DOT_ROJO}Vencen hoy`;
   } else if (tipo === 'manana') {
     lista  = ordenes_.filter(o => !o.estadoCampo && getUrgencia(o) === 'naranja' && diasHabilesRestantes(calcularVencimiento(o)) === 1);
-    titulo = '🟠 Vencen mañana';
+    titulo = `${DOT_NARANJA}Vencen mañana`;
   } else if (tipo === 'confirmar') {
     lista  = ordenes_.filter(o => o.estadoCampo === 'hecha');
     titulo = 'Por confirmar';
@@ -682,9 +687,9 @@ function verTecnico(tec) {
       </div>
 
       ${!lista.length ? `<div class="dev-module"><div class="dev-title">Sin órdenes</div><p>${tec} no tiene órdenes activas.</p></div>` : ''}
-      ${reconexiones.length  ? renderGrupoOtc('🔴 Reconexiones', reconexiones, 'crit')     : ''}
+      ${reconexiones.length  ? renderGrupoOtc(`${DOT_ROJO}Reconexiones`, reconexiones, 'crit')     : ''}
       ${porVencer.length     ? renderGrupoOtc('Por vencer', porVencer, 'warn')              : ''}
-      ${sinActualizar.length ? renderGrupoOtc('⚠ Sin actualizar', sinActualizar, 'warn-soft'): ''}
+      ${sinActualizar.length ? renderGrupoOtc(`${DOT_AMARILLO}Sin actualizar`, sinActualizar, 'warn-soft'): ''}
       ${hechas.length        ? renderGrupoOtc('Realizadas — confirmar', hechas, 'hecha')    : ''}
       ${pendientes.length    ? renderGrupoOtc('Pendientes', pendientes, 'pendiente')        : ''}
       ${anomalias.length     ? renderGrupoOtc('Anomalías', anomalias, 'anomalia')           : ''}
@@ -715,7 +720,7 @@ function renderTecnicoCard(tec) {
       <div class="pareja-card-header">
         <div class="pareja-name" style="color:${c.accent}">${tec}</div>
         <div style="display:flex;gap:6px;align-items:center">
-          ${recon ? `<div style="font-size:10px;color:#ef4444;font-weight:700">🔴 ${recon} reconex.</div>` : ''}
+          ${recon ? `<div style="font-size:10px;color:#ef4444;font-weight:700">${DOT_ROJO}${recon} reconex.</div>` : ''}
           <svg viewBox="0 0 24 24" fill="none" stroke="${c.accent}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><polyline points="9 18 15 12 9 6"/></svg>
         </div>
       </div>
@@ -783,10 +788,10 @@ function renderOrdenes() {
       </div>
 
       ${!lista.length ? `<div class="dev-module"><div class="dev-title">Sin órdenes</div><p>No hay órdenes asignadas.</p></div>` : ''}
-      ${reconexiones.length  ? renderGrupoOtc('🔴 Reconexiones activas', reconexiones, 'crit') : ''}
+      ${reconexiones.length  ? renderGrupoOtc(`${DOT_ROJO}Reconexiones activas`, reconexiones, 'crit') : ''}
       ${porVencer.length     ? renderGrupoOtc('Por vencer', porVencer, 'warn') : ''}
-      ${sinActualizar.length ? renderGrupoOtc('⚠ Sin actualizar DELSUR', sinActualizar, 'warn-soft') : ''}
-      ${hechas.length        ? renderGrupoOtc('✓ Realizadas', hechas, 'hecha') : ''}
+      ${sinActualizar.length ? renderGrupoOtc(`${DOT_AMARILLO}Sin actualizar DELSUR`, sinActualizar, 'warn-soft') : ''}
+      ${hechas.length        ? renderGrupoOtc('&#10003; Realizadas', hechas, 'hecha') : ''}
       ${pendientes.length    ? renderGrupoOtc('Pendientes', pendientes, 'pendiente') : ''}
       ${anomalias.length     ? renderGrupoOtc('Anomalías', anomalias, 'anomalia') : ''}
     </div>
@@ -849,7 +854,7 @@ function renderOrdenesTecnico(content, lista) {
       <!-- Resumen de urgencias -->
       ${reconCount || hoyCount || naranjaCount || amarilloCount ? `
       <div class="urgencia-resumen anim-up d1">
-        ${reconCount   ? `<div class="urgencia-badge rojo">🔴 ${reconCount} reconexión${reconCount>1?'es':''}</div>` : ''}
+        ${reconCount   ? `<div class="urgencia-badge rojo">${DOT_ROJO}${reconCount} reconexión${reconCount>1?'es':''}</div>` : ''}
         ${hoyCount     ? `<div class="urgencia-badge rojo">${hoyCount} vence${hoyCount>1?'n':''} hoy</div>` : ''}
         ${naranjaCount ? `<div class="urgencia-badge naranja">${naranjaCount} en 1-2 días</div>` : ''}
         ${amarilloCount? `<div class="urgencia-badge amarillo">${amarilloCount} en 3 días</div>` : ''}
@@ -881,11 +886,11 @@ function renderOrdenCardTecnico(o) {
   if (countdown) {
     diasLabel = `<div style="font-size:11px;color:#ef4444;font-weight:800;margin-top:3px">⏱ ${countdown}</div>`;
   } else if (urgencia === 'hoy') {
-    diasLabel = `<div style="font-size:11px;color:#ef4444;font-weight:700;margin-top:3px">🔴 Vence hoy</div>`;
+    diasLabel = `<div style="font-size:11px;color:#ef4444;font-weight:700;margin-top:3px">${DOT_ROJO}Vence hoy</div>`;
   } else if (urgencia === 'naranja' && dias !== null) {
-    diasLabel = `<div style="font-size:11px;color:#f97316;font-weight:700;margin-top:3px">🟠 ${dias} día${dias>1?'s':''} hábil${dias>1?'es':''}</div>`;
+    diasLabel = `<div style="font-size:11px;color:#f97316;font-weight:700;margin-top:3px">${DOT_NARANJA}${dias} día${dias>1?'s':''} hábil${dias>1?'es':''}</div>`;
   } else if (urgencia === 'amarillo' && dias !== null) {
-    diasLabel = `<div style="font-size:11px;color:#fbbf24;font-weight:600;margin-top:3px">🟡 ${dias} días hábiles</div>`;
+    diasLabel = `<div style="font-size:11px;color:#fbbf24;font-weight:600;margin-top:3px">${DOT_AMARILLO}${dias} días hábiles</div>`;
   } else if (urgencia === 'normal' && dias !== null) {
     diasLabel = `<div style="font-size:11px;color:var(--text-4);margin-top:3px">${dias} días hábiles</div>`;
   }
@@ -949,7 +954,7 @@ function renderOrdenCard(o, tipo = '') {
       <div class="orden-card-right">
         ${!isTecnico ? `<div class="pareja-chip" style="color:${c.accent};border-color:${c.border};background:${c.glass}">${o.tecnicoDestino || '—'}</div>` : ''}
         ${tipo === 'hecha' && !isTecnico ? `
-          <button class="action-chip ok" onclick="event.stopPropagation();window.__otc.aprobar('${o.id}')">✓</button>
+          <button class="action-chip ok" onclick="event.stopPropagation();window.__otc.aprobar('${o.id}')">&#10003;</button>
         ` : ''}
       </div>
     </div>
@@ -979,7 +984,7 @@ function verOrden(id) {
         ${o.estadoCampo === 'hecha'    ? '<div class="estado-badge ok">Realizada</div>'   : ''}
         ${o.estadoCampo === 'aprobada' ? '<div class="estado-badge ok">Confirmada</div>'  : ''}
         ${!o.estadoCampo               ? '<div class="estado-badge muted">Pendiente</div>': ''}
-        ${o.actualizadaDelsur ? '<div class="estado-badge ok-outline">✓ DELSUR</div>' : ''}
+        ${o.actualizadaDelsur ? '<div class="estado-badge ok-outline">&#10003; DELSUR</div>' : ''}
         ${o.tecnicoDestino ? `<div class="pareja-chip" style="color:${c.accent};border-color:${c.border};background:${c.glass}">${o.tecnicoDestino}</div>` : ''}
       </div>
 
@@ -991,7 +996,7 @@ function verOrden(id) {
       </div>` : ''}
       ${dias !== null && dias <= 2 && !countdown ? `
       <div class="card" style="background:rgba(245,158,11,.08);border-color:rgba(245,158,11,.25)">
-        <div style="font-size:13px;font-weight:700;color:#fbbf24">${dias === 0 ? '⚠ Vence hoy' : `⚠ Vence en ${dias} día${dias>1?'s':''} hábil${dias>1?'es':''}`}</div>
+        <div style="font-size:13px;font-weight:700;color:#fbbf24">${dias === 0 ? `${DOT_AMARILLO}Vence hoy` : `${DOT_AMARILLO}Vence en ${dias} día${dias>1?'s':''} hábil${dias>1?'es':''}`}</div>
         ${venc ? `<div style="font-size:11px;color:var(--text-3);margin-top:4px">Fecha límite: ${formatDate(venc)}</div>` : ''}
       </div>` : ''}
 

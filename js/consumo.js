@@ -123,10 +123,10 @@ export async function abrirConsumoOrden({ orden, modulo, session, db, onSuccess 
             <div class="form-label" style="margin-bottom:10px">¿Actualizaste en DELSUR?</div>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
               <button id="btn-si" style="height:48px;border-radius:12px;border:2px solid ${actualizadoDelsur===true?'#22c55e':'var(--border)'};background:${actualizadoDelsur===true?'rgba(34,197,94,.12)':'var(--glass)'};color:${actualizadoDelsur===true?'#22c55e':'var(--text-3)'};font-size:14px;font-weight:700;font-family:'Outfit',sans-serif;cursor:pointer;transition:all .15s">
-                ✓ Sí
+                &#10003; Sí
               </button>
               <button id="btn-no" style="height:48px;border-radius:12px;border:2px solid ${actualizadoDelsur===false?'#f97316':'var(--border)'};background:${actualizadoDelsur===false?'rgba(249,115,22,.12)':'var(--glass)'};color:${actualizadoDelsur===false?'#f97316':'var(--text-3)'};font-size:14px;font-weight:700;font-family:'Outfit',sans-serif;cursor:pointer;transition:all .15s">
-                ✗ No aún
+                &#10007; No aún
               </button>
             </div>
           </div>
@@ -197,7 +197,7 @@ export async function abrirConsumoOrden({ orden, modulo, session, db, onSuccess 
         <div style="position:sticky;bottom:0;padding:12px 20px;background:#0d1117;border-top:1px solid var(--border)">
           <div id="consumo-error" class="form-error" style="margin-bottom:8px"></div>
           <button id="btn-confirmar-consumo" style="width:100%;height:52px;border-radius:14px;border:none;background:${listo?'linear-gradient(135deg,rgba(139,92,246,.8),rgba(99,58,200,.8))':'rgba(255,255,255,.06)'};color:${listo?'white':'var(--text-4)'};font-size:15px;font-weight:800;font-family:'Outfit',sans-serif;cursor:${listo?'pointer':'default'};transition:all .2s">
-            <span id="btn-confirmar-lbl">Confirmar orden realizada ✓</span>
+            <span id="btn-confirmar-lbl">Confirmar orden realizada &#10003;</span>
           </button>
         </div>
 
@@ -345,7 +345,7 @@ export async function abrirConsumoOrden({ orden, modulo, session, db, onSuccess 
       console.error('[consumo] Error:', err);
       errEl.textContent = `Error: ${err.message}`;
       errEl.style.display = 'block';
-      setLoading('btn-confirmar-lbl', 'Confirmar orden realizada ✓', false);
+      setLoading('btn-confirmar-lbl', 'Confirmar orden realizada &#10003;', false);
     }
   }
 
