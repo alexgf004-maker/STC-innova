@@ -1329,9 +1329,12 @@ async function marcarHecha(id) {
   let parejaDelDia = [session_.displayName];
   try {
     const destino = session_.asignacionActual?.destino;
-    if (destino) {
+    const area = session_.asignacionActual?.area;
+    if (destino && area) {
+      // Filtrar también por área: "Pareja 2" existe en varias áreas.
       const snap = await db.collection('users')
         .where('asignacionActual.destino', '==', destino)
+        .where('asignacionActual.area', '==', area)
         .where('active', '==', true).get();
       parejaDelDia = snap.docs.map(d => d.data().displayName);
     }
