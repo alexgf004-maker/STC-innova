@@ -365,6 +365,9 @@ function suscribirOrdenes() {
     ordenes_ = snap.docs
       .map(d => ({ id: d.id, ...d.data() }))
       .filter(o => {
+        // Condominios: cientos de medidores en el mismo punto. No se pintan
+        // como pines sueltos; tendrán su propia gota y vista (fases 2 y 4).
+        if (o.tipoSitio === 'condominio') return false;
         const lat = parseFloat(o.latitud);
         const lng = parseFloat(o.longitud);
         // Validar coordenadas dentro del rango de El Salvador/Centroamérica
@@ -859,7 +862,8 @@ async function buscarPorMedidor(texto) {
   try {
     if (!todasAmiCache_) {
       const snap = await db.collection('ami_ordenes').get();
-      todasAmiCache_ = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      // Sin condominios por ahora: no tienen pin propio al que llevar (fase 2).
+      todasAmiCache_ = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(o => o.tipoSitio !== 'condominio');
     }
   } catch (e) {
     cont.innerHTML = `<div style="padding:10px;color:#f87171;font-size:12px">Error al consultar. Intenta de nuevo.</div>`;

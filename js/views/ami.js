@@ -142,6 +142,7 @@ function seccionMetas() {
 // ── Estado del módulo ─────────────────────────────
 let container_, session_, role_, pareja_;
 let ordenes_ = [];
+let condominios_ = [];       // órdenes de condominio (tipoSitio:'condominio'), aparte de la ruta diaria
 let activeTab_ = 'panel';   // 'panel' | 'ordenes' | 'mapa'
 let esAdmin_ = false;
 let metas_ = {};            // { "Pareja 1": 25, ... } — meta diaria por pareja
@@ -181,7 +182,10 @@ async function cargarOrdenes() {
     // Cruce con el padrón: marcar ya cambiadas; al técnico se le esconden
     todas.forEach(o => { o._yaCambiada = padron.has(String(o.nc ?? '').trim()); });
     if (!esAdmin_) todas = todas.filter(o => !o._yaCambiada);
-    ordenes_ = todas;
+    // Los condominios son una campaña de semanas con su propia vista: no se
+    // mezclan con la ruta diaria (avance del día, listas, arrastradas).
+    condominios_ = todas.filter(o => o.tipoSitio === 'condominio');
+    ordenes_ = todas.filter(o => o.tipoSitio !== 'condominio');
 
     // Cargar metas diarias por pareja (persistentes: se mantienen hasta cambiarlas)
     try {
@@ -283,6 +287,12 @@ function setTab(tab) {
     if (btn && file) {
       btn.onclick = () => file.click();
       file.onchange = (e) => importarRuta(e.target.files[0]);
+    }
+    const btnC = cont.querySelector('#ami-btn-condominio');
+    const fileC = cont.querySelector('#ami-file-condominio');
+    if (btnC && fileC) {
+      btnC.onclick = () => fileC.click();
+      fileC.onchange = (e) => { const f = e.target.files[0]; fileC.value = ''; importarCondominio(f); };
     }
     const btnH = cont.querySelector('#ami-btn-historial');
     const fileH = cont.querySelector('#ami-file-historial');
@@ -495,11 +505,16 @@ function renderPanel() {
       <button id="ami-btn-historial" title="Cargar historial (Excel)" style="width:48px;flex-shrink:0;display:flex;align-items:center;justify-content:center;border-radius:12px;border:1px solid rgba(22,163,74,.35);background:rgba(22,163,74,.1);color:#16a34a;cursor:pointer;font-family:inherit">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="17" height="17"><path d="M12 8v4l3 3"/><circle cx="12" cy="12" r="9"/></svg>
       </button>
+      <button id="ami-btn-condominio" title="Cargar condominio (Excel)" style="width:48px;flex-shrink:0;display:flex;align-items:center;justify-content:center;border-radius:12px;border:1px solid ${ACCENT_BORDER};background:${ACCENT_GLASS};color:${ACCENT};cursor:pointer;font-family:inherit">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="17" height="17"><rect x="4" y="2" width="16" height="20" rx="2"/><path d="M9 22v-4h6v4"/><path d="M8 6h.01M12 6h.01M16 6h.01M8 10h.01M12 10h.01M16 10h.01M8 14h.01M12 14h.01M16 14h.01"/></svg>
+      </button>
       <input type="file" id="ami-file-importar" accept=".xlsx,.xls" style="display:none"/>
       <input type="file" id="ami-file-historial" accept=".xlsx,.xls" style="display:none"/>
+      <input type="file" id="ami-file-condominio" accept=".xlsx,.xls" style="display:none"/>
     </div>` : ''}
 
     ${renderRevisiones()}
+    ${esAdmin_ ? renderResumenCondominios() : ''}
 
     ${total === 0
       ? `<div class="dev-module">
@@ -854,6 +869,282 @@ async function importarRuta(file) {
     const inp = container_.querySelector('#ami-file-importar');
     if (inp) inp.value = '';
   }
+}
+
+// ══════════════════════════════════════════════════
+// CONDOMINIOS — Fase 1: importador (ver SPEC_AMI_Condominios.md)
+// Cada medidor sigue siendo su propia orden en ami_ordenes, con los campos
+// tipoSitio:'condominio', condominio, edificio, nivel (+ etiqueta, forma).
+// Sin fechaRuta: no entran a la lógica de arrastradas.
+// ══════════════════════════════════════════════════
+
+// Orden natural de niveles: PB/Sótano antes de 1, 2 antes de 10.
+function claveNivel(n) {
+  const t = String(n ?? '').toLowerCase();
+  if (/s[oó]tano|^s\d/.test(t)) return -10 + (parseInt(t.replace(/\D/g, ''), 10) || 0) * -1;
+  if (/^pb$|planta ?baja|^p\.?b\.?$/.test(t.trim())) return 0;
+  const num = parseInt(t.replace(/\D/g, ''), 10);
+  return isNaN(num) ? 999 : num;
+}
+const ordenarNiveles = arr => arr.slice().sort((a, b) => claveNivel(a) - claveNivel(b) || String(a).localeCompare(String(b)));
+
+// "13.69, -89.19" · "13.69 -89.19" · enlace de Google Maps con "@13.69,-89.19"
+function parseCoordenadas(txt) {
+  const nums = String(txt || '').match(/-?\d+(?:\.\d+)?/g);
+  if (!nums || nums.length < 2) return null;
+  const lat = parseFloat(nums[0]), lng = parseFloat(nums[1]);
+  // Mismo rango que valida el mapa (El Salvador / Centroamérica)
+  if (!(lat > 12 && lat < 16 && lng > -92 && lng < -87)) return null;
+  return { lat, lng };
+}
+
+// Resumen en el Panel (admin): qué condominios/edificios hay cargados y su avance
+function renderResumenCondominios() {
+  if (!condominios_.length) return '';
+  const grupos = new Map();
+  condominios_.forEach(o => {
+    const k = `${o.condominio || 'Sin nombre'}|${o.edificio || 'Sin edificio'}`;
+    if (!grupos.has(k)) grupos.set(k, []);
+    grupos.get(k).push(o);
+  });
+  const filas = [...grupos.entries()].map(([k, arr]) => {
+    const [condo, edif] = k.split('|');
+    const hechas = arr.filter(o => o.estadoCampo === 'hecha' || o.estadoCampo === 'aprobada').length;
+    const pct = arr.length ? Math.round(hechas / arr.length * 100) : 0;
+    const niveles = new Set(arr.map(o => o.nivel || '')).size;
+    const sinAsignar = arr.filter(o => !o.pareja).length;
+    return `
+      <div style="padding:12px 0;border-top:1px solid var(--border)">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:8px">
+          <div style="min-width:0">
+            <div style="font-size:14px;font-weight:600">${escapeHtml(edif)}</div>
+            <div style="font-size:11px;color:var(--text-4);margin-top:2px">${escapeHtml(condo)} · ${niveles} nivel${niveles !== 1 ? 'es' : ''}${sinAsignar ? ` · ${sinAsignar} sin asignar` : ''}</div>
+          </div>
+          <div style="font-size:12px;color:var(--text-3);white-space:nowrap">${hechas} / ${arr.length}</div>
+        </div>
+        <div class="ds-bar"><i class="am" style="width:${pct}%"></i></div>
+      </div>`;
+  }).join('');
+  return `
+    <div class="ds-card" style="margin-bottom:16px">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px">
+        <div style="font-size:14px;font-weight:600">Condominios</div>
+        <div style="font-size:12px;color:var(--text-4)">${condominios_.length} medidores</div>
+      </div>
+      <div style="font-size:11px;color:var(--text-4);margin-bottom:6px">Aparte de la ruta diaria. La vista por nivel para técnicos viene en la siguiente fase.</div>
+      ${filas}
+    </div>`;
+}
+
+async function importarCondominio(file) {
+  if (!file) return;
+  let matriz;
+  try {
+    const wb = XLSX.read(await file.arrayBuffer(), { type: 'array' });
+    matriz = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, defval: '' });
+  } catch (err) { toast('No se pudo leer el archivo: ' + err.message, 'error'); return; }
+  if (!matriz.length) { toast('El archivo está vacío', 'error'); return; }
+
+  const norm = s => String(s ?? '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[\s._/-]/g, '');
+  // Encabezados: la fila que tenga NC o Contrato (en los Excel de condominio el NC viene como "Contrato")
+  const hIdx = matriz.findIndex(r => r.some(c => ['nc', 'contrato'].includes(norm(c))));
+  if (hIdx === -1) { toast('No se encontró la columna NC / Contrato', 'error'); return; }
+  const head = matriz[hIdx].map(norm);
+  const col = (...alias) => head.findIndex(h => alias.includes(h));
+  const colIncl = (...parts) => head.findIndex(h => parts.some(p => h.includes(p)));
+  const idx = {
+    nc:        col('nc', 'contrato'),
+    nivel:     colIncl('nivel', 'piso'),
+    edificio:  colIncl('edificio', 'torre'),
+    etiqueta:  colIncl('etiqueta', 'apartamento', 'apto', 'unidad', 'local'),
+    medidor:   col('medidor', 'serie'),
+    nombre:    col('nombre', 'cliente'),
+    forma:     colIncl('forma'),
+    direccion: col('direccion', 'direccin', 'direc'),
+    ds:        col('ds'),
+    lat:       col('latitud', 'lat'),
+    lng:       col('longitud', 'long', 'lng'),
+  };
+  if (idx.nivel === -1) { toast('No se encontró la columna de Nivel / Piso', 'error'); return; }
+  const val = (r, i) => i >= 0 ? String(r[i] ?? '').trim().replace(/\s+/g, ' ') : '';
+
+  const filas = [];
+  for (const r of matriz.slice(hIdx + 1)) {
+    const nc = val(r, idx.nc);
+    if (!nc) continue;
+    filas.push({
+      nc, nivel: val(r, idx.nivel), edificio: val(r, idx.edificio), etiqueta: val(r, idx.etiqueta),
+      medidor: val(r, idx.medidor), nombre: val(r, idx.nombre), forma: val(r, idx.forma),
+      direccion: val(r, idx.direccion), ds: val(r, idx.ds), latitud: val(r, idx.lat), longitud: val(r, idx.lng),
+    });
+  }
+  if (!filas.length) { toast('No se encontraron medidores con NC', 'error'); return; }
+
+  // Lo que ya existe en AMI (por NC) para no duplicar
+  let existentesPorNC = new Map();
+  try {
+    const snap = await db.collection(COLECCION).get();
+    snap.docs.forEach(d => { const nc = String(d.data().nc ?? '').trim(); if (nc) existentesPorNC.set(nc, { id: d.id, ...d.data() }); });
+  } catch (err) { toast('No se pudieron leer las órdenes actuales: ' + err.message, 'error'); return; }
+
+  // Edificio sugerido a partir del nombre del archivo: "Torre_A_clientes.xlsx" -> "Torre A"
+  const sugerido = file.name.replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ')
+    .replace(/\b(clientes?|medidores|listado|lista)\b/gi, '').replace(/\s+/g, ' ').trim();
+  const traeEdificio = filas.some(f => f.edificio);
+
+  const sheet = document.createElement('div');
+  sheet.className = 'sheet-backdrop open';
+  document.body.appendChild(sheet);
+  sheet.addEventListener('click', e => { if (e.target === sheet) sheet.remove(); });
+
+  const estado = { condominio: '', edificio: traeEdificio ? '' : sugerido, coords: '' };
+
+  function analizar() {
+    const edifDe = f => f.edificio || estado.edificio.trim();
+    const vistos = new Set(), repetidos = new Set();
+    filas.forEach(f => { if (vistos.has(f.nc)) repetidos.add(f.nc); vistos.add(f.nc); });
+    const unicas = filas.filter((f, i) => filas.findIndex(x => x.nc === f.nc) === i);
+    const sinNivel = unicas.filter(f => !f.nivel).length;
+    const sinMedidor = unicas.filter(f => !f.medidor).length;
+    const yaExisten = unicas.filter(f => existentesPorNC.has(f.nc));
+    const existenFuera = yaExisten.filter(f => existentesPorNC.get(f.nc).tipoSitio !== 'condominio').length;
+    const porEdificio = new Map();
+    unicas.forEach(f => {
+      const e = edifDe(f) || 'Sin edificio';
+      if (!porEdificio.has(e)) porEdificio.set(e, new Map());
+      const m = porEdificio.get(e); const n = f.nivel || 'Sin nivel';
+      m.set(n, (m.get(n) || 0) + 1);
+    });
+    return { unicas, repetidos: repetidos.size, sinNivel, sinMedidor, yaExisten, existenFuera, porEdificio };
+  }
+
+  function pintar() {
+    const a = analizar();
+    const coords = parseCoordenadas(estado.coords);
+    const faltaCoordsFila = a.unicas.some(f => !parseCoordenadas(`${f.latitud},${f.longitud}`));
+    const calcListo = () => !!(estado.condominio.trim() && (traeEdificio || estado.edificio.trim())
+      && (parseCoordenadas(estado.coords) || !faltaCoordsFila) && !a.sinNivel);
+    const listo = calcListo();
+    const avisos = [
+      a.sinNivel ? `<div class="form-error" style="display:block">${a.sinNivel} medidor${a.sinNivel > 1 ? 'es' : ''} sin nivel. Corrige el Excel antes de guardar.</div>` : '',
+      a.repetidos ? `<div style="font-size:12px;color:#fbbf24">${a.repetidos} NC repetido${a.repetidos > 1 ? 's' : ''} en el archivo: se guarda una sola vez.</div>` : '',
+      a.sinMedidor ? `<div style="font-size:12px;color:#fbbf24">${a.sinMedidor} sin número de medidor (no se podrán buscar por medidor).</div>` : '',
+      a.yaExisten.length ? `<div style="font-size:12px;color:var(--text-3)">${a.yaExisten.length} ya estaban en AMI: no se duplican, solo se les agrega condominio, edificio y nivel (conservan su estado y pareja).${a.existenFuera ? ` ${a.existenFuera} de ellas estaban en la ruta diaria y pasan al condominio.` : ''}</div>` : '',
+    ].filter(Boolean).join('');
+    const resumen = [...a.porEdificio.entries()].map(([e, niveles]) => `
+      <div style="margin-top:10px">
+        <div style="font-size:13px;font-weight:600;margin-bottom:6px">${escapeHtml(e)}</div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px">
+          ${ordenarNiveles([...niveles.keys()]).map(n => `<span class="estado-badge muted" style="text-transform:none;letter-spacing:0;font-size:11px">${escapeHtml(n)} · ${niveles.get(n)}</span>`).join('')}
+        </div>
+      </div>`).join('');
+
+    sheet.innerHTML = `<div class="sheet" style="max-height:92vh">
+      <div class="sheet-handle"></div>
+      <div class="sheet-title">Cargar condominio</div>
+      <div class="sheet-body flex-col gap-12">
+        <div class="ds-card">
+          <div style="display:flex;align-items:baseline;gap:6px">
+            <span class="ds-num-md" style="color:${ACCENT}">${a.unicas.length}</span>
+            <span style="font-size:12px;color:var(--text-3)">medidores en ${escapeHtml(file.name)}</span>
+          </div>
+          ${resumen}
+        </div>
+        ${avisos ? `<div class="flex-col gap-6">${avisos}</div>` : ''}
+        <div class="form-field">
+          <div class="form-label">Nombre del condominio *</div>
+          <input class="form-input" id="cd-condo" value="${escapeHtml(estado.condominio)}" placeholder="Ej. Residencial Las Palmas" autocomplete="off"/>
+        </div>
+        ${traeEdificio ? '' : `
+        <div class="form-field">
+          <div class="form-label">Edificio / torre *</div>
+          <input class="form-input" id="cd-edif" value="${escapeHtml(estado.edificio)}" placeholder="Ej. Torre A" autocomplete="off"/>
+        </div>`}
+        <div class="form-field">
+          <div class="form-label">Ubicación del edificio ${faltaCoordsFila ? '*' : '(opcional)'}</div>
+          <input class="form-input" id="cd-coords" value="${escapeHtml(estado.coords)}" placeholder="13.6929, -89.2182" autocomplete="off" inputmode="decimal"/>
+          <div id="cd-coords-msg" style="font-size:11px;margin-top:6px;color:${estado.coords && !coords ? '#f87171' : 'var(--text-4)'}">${estado.coords && !coords ? 'No reconozco esas coordenadas. Pega latitud y longitud, por ejemplo desde Google Maps.' : coords ? `Se usará ${coords.lat.toFixed(6)}, ${coords.lng.toFixed(6)} para todos los medidores.` : 'Pega latitud y longitud (en Google Maps: mantén presionado el edificio y copia los números).'}</div>
+        </div>
+        <button class="btn-primary full" id="cd-guardar" style="border-color:${ACCENT_BORDER};background:${ACCENT_GLASS};color:${ACCENT};${listo ? '' : 'opacity:.45;'}" ${listo ? '' : 'disabled'}>
+          <span id="cd-guardar-lbl">Guardar ${a.unicas.length} medidores</span>
+        </button>
+      </div>
+    </div>`;
+
+    // Al escribir solo se actualizan el botón y el mensaje de coordenadas
+    // (repintar todo haría perder el foco o el toque en Guardar).
+    const refrescar = () => {
+      const ok = calcListo();
+      const b = sheet.querySelector('#cd-guardar');
+      if (b) { b.disabled = !ok; b.style.opacity = ok ? '' : '.45'; }
+      const c = parseCoordenadas(estado.coords);
+      const msg = sheet.querySelector('#cd-coords-msg');
+      if (msg) {
+        msg.style.color = estado.coords && !c ? '#f87171' : 'var(--text-4)';
+        msg.textContent = estado.coords && !c ? 'No reconozco esas coordenadas. Pega latitud y longitud, por ejemplo desde Google Maps.'
+          : c ? `Se usará ${c.lat.toFixed(6)}, ${c.lng.toFixed(6)} para todos los medidores.`
+          : 'Pega latitud y longitud (en Google Maps: mantén presionado el edificio y copia los números).';
+      }
+    };
+    const bind = (id, key) => {
+      const el = sheet.querySelector(id); if (!el) return;
+      el.addEventListener('input', () => { estado[key] = el.value; refrescar(); });
+    };
+    bind('#cd-condo', 'condominio'); bind('#cd-edif', 'edificio'); bind('#cd-coords', 'coords');
+    sheet.querySelector('#cd-guardar')?.addEventListener('click', () => guardar(a, parseCoordenadas(estado.coords)));
+  }
+
+  async function guardar(a, coords) {
+    const condominio = estado.condominio.trim();
+    const edificioGeneral = estado.edificio.trim();
+    if (!condominio) return;
+    const btn = sheet.querySelector('#cd-guardar'); if (btn) btn.disabled = true;
+    const lbl = sheet.querySelector('#cd-guardar-lbl'); if (lbl) lbl.textContent = 'Guardando…';
+    try {
+      const ahora = firebase.firestore.Timestamp.now();
+      const datos = f => {
+        const edificio = f.edificio || edificioGeneral;
+        const fila = parseCoordenadas(`${f.latitud},${f.longitud}`);
+        const c = coords || fila;
+        return {
+          tipoSitio: 'condominio', condominio, edificio, nivel: f.nivel,
+          etiqueta: f.etiqueta, forma: f.forma,
+          nombre: f.nombre, cliente: f.nombre, medidor: f.medidor, ds: f.ds,
+          direccion: f.direccion || [condominio, edificio, f.etiqueta].filter(Boolean).join(' · '),
+          latitud: c ? String(c.lat) : '', longitud: c ? String(c.lng) : '',
+        };
+      };
+      const nuevas = a.unicas.filter(f => !existentesPorNC.has(f.nc));
+      const existentes = a.unicas.filter(f => existentesPorNC.has(f.nc));
+      for (let i = 0; i < nuevas.length; i += 400) {
+        const batch = db.batch();
+        nuevas.slice(i, i + 400).forEach(f => {
+          batch.set(db.collection(COLECCION).doc(), {
+            nc: f.nc, ...datos(f), pareja: null, estadoCampo: null, importadaEn: ahora,
+          });
+        });
+        await batch.commit();
+      }
+      for (let i = 0; i < existentes.length; i += 400) {
+        const batch = db.batch();
+        existentes.slice(i, i + 400).forEach(f => {
+          batch.update(db.collection(COLECCION).doc(existentesPorNC.get(f.nc).id), datos(f));
+        });
+        await batch.commit();
+      }
+      sheet.remove();
+      toast(`Condominio cargado: ${nuevas.length} nuevas${existentes.length ? `, ${existentes.length} actualizadas` : ''}`, 'ok');
+      await cargarOrdenes();
+      setTab('panel');
+      window.dispatchEvent(new CustomEvent('ami:updated'));
+    } catch (err) {
+      toast('Error al guardar: ' + err.message, 'error');
+      if (btn) btn.disabled = false;
+      if (lbl) lbl.textContent = `Guardar ${a.unicas.length} medidores`;
+    }
+  }
+
+  pintar();
 }
 
 // ── Importar historial de trabajos hechos (Excel) ──
