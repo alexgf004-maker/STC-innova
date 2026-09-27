@@ -240,3 +240,38 @@ Previsualización obligatoria antes de guardar: total, por edificio y por
 nivel; no guardar filas sin EDIFICIO o NIVEL sin confirmación. Como el formato
 lo controla el usuario, basta un archivo de ejemplo pequeño hecho a mano para
 probar la Fase 1 (no hace falta esperar a DELSUR).
+
+## 13. Excel real recibido (2026-09-27) y Fase 1 construida
+
+El primer archivo real (`Torre_A_clientes.xlsx`, 58 medidores, 8 pisos) no
+trae el formato de la sección 12. El importador se adaptó a lo que sí trae:
+
+| Columna del archivo | Va al campo | Notas |
+|---|---|---|
+| Piso / Nivel | `nivel` | "Piso 1"… se guarda tal cual; orden natural al mostrar |
+| Etiqueta | `etiqueta` | unidad/apartamento (ej. T1-108); se ve en la dirección |
+| Medidor | `medidor` | 7 dígitos; clave del buscador del técnico |
+| Contrato | `nc` | **Decidido: Contrato = NC** |
+| Nombre | `nombre` / `cliente` | |
+| forma | `forma` | 12S / 2S (útil para llevar el medidor correcto) |
+
+Decisiones de este archivo:
+- Las órdenes son **nuevas**. Si un NC ya existe en AMI no se duplica: solo se
+  le agregan los campos de condominio y conserva estado y pareja.
+- **Sin coordenadas en el archivo**: al subir se **pegan latitud y longitud**
+  una vez y se aplican a todos los medidores del edificio.
+- **Edificio**: se escribe al subir (un archivo por torre). Se sugiere a partir
+  del nombre del archivo ("Torre_A_clientes" -> "Torre A"). Si algún día el
+  archivo trae columna EDIFICIO/TORRE, se usa esa.
+- El condominio se escribe al subir (como estaba decidido).
+
+Construido en Fase 1 (`ami.js` → `importarCondominio`, botón de edificio junto
+a "Cargar ruta"): previsualización con total y medidores por piso, avisos
+(sin nivel, sin medidor, NC repetidos, NC que ya existían), y guardado en
+lotes de 400. Las órdenes llevan `tipoSitio:'condominio'`, `condominio`,
+`edificio`, `nivel`, `etiqueta`, `forma` y **no** llevan `fechaRuta`.
+
+Mientras no existan las fases 2–4, las órdenes de condominio se mantienen
+fuera de la ruta diaria: no cuentan en "Avance del día" ni en las listas de
+AMI, no se pintan como pines en `ami_mapa` y no salen en su buscador. El Panel
+del admin muestra una tarjeta "Condominios" con el avance por edificio.
