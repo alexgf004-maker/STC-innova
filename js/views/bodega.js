@@ -456,14 +456,14 @@ function abrirRegistrarConsumo() {
   let tipoSel = TIPOS_TRABAJO[0];
 
   const ov = document.createElement('div');
-  ov.style.cssText='position:fixed;inset:0;z-index:500;background:#0d1117;overflow-y:auto;-webkit-overflow-scrolling:touch;';
+  ov.style.cssText='position:fixed;inset:0;z-index:500;background:var(--bg-base);overflow-y:auto;-webkit-overflow-scrolling:touch;';
   document.body.appendChild(ov);
 
   function render() {
     const entries = Object.entries(selConsumo).filter(([,v])=>v.cantidad>0);
     ov.innerHTML=`
       <div style="max-width:500px;margin:0 auto;padding:0 0 80px">
-        <div style="padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px;position:sticky;top:0;background:var(--bg);z-index:10">
+        <div style="padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px;position:sticky;top:0;background:var(--bg-base);z-index:10">
           <button class="icon-btn" id="btn-cerrar-consumo">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><polyline points="15 18 9 12 15 6"/></svg>
           </button>
@@ -1168,12 +1168,12 @@ function verDetalleDevolucion(id){
   const items=JSON.parse(JSON.stringify(d.items||[]));
 
   const ov=document.createElement('div');
-  ov.style.cssText='position:fixed;inset:0;z-index:850;background:#0d1117;overflow-y:auto;-webkit-overflow-scrolling:touch;';
+  ov.style.cssText='position:fixed;inset:0;z-index:850;background:var(--bg-base);overflow-y:auto;-webkit-overflow-scrolling:touch;';
 
   function pintar(){
     ov.innerHTML=`
     <div style="max-width:520px;margin:0 auto;min-height:100vh;display:flex;flex-direction:column">
-      <div style="padding:14px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px;position:sticky;top:0;background:#0d1117;z-index:10">
+      <div style="padding:14px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px;position:sticky;top:0;background:var(--bg-base);z-index:10">
         <button class="icon-btn" id="dd-back"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><polyline points="15 18 9 12 15 6"/></svg></button>
         <div style="flex:1">
           <div class="section-title">Revisar devolución</div>
@@ -1186,7 +1186,7 @@ function verDetalleDevolucion(id){
         <div style="font-size:11px;color:var(--text-4)">Revisa físicamente lo que te entregó. Puedes quitar lo que no cuadre antes de aprobar.</div>
 
         ${items.length? items.map((it,idx)=>`
-          <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:14px">
+          <div style="background:var(--glass);border:1px solid var(--border);border-radius:12px;padding:14px">
             <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:${it.requiereSerial?'10px':'0'}">
               <div style="flex:1">
                 <div style="font-size:13px;font-weight:700">${tc(it.nombre||it.name||'—')}</div>
@@ -1210,7 +1210,7 @@ function verDetalleDevolucion(id){
         : `<div style="text-align:center;padding:24px;color:var(--text-4);font-size:12px">No queda material en esta devolución.</div>`}
       </div>
 
-      <div style="padding:14px 20px;border-top:1px solid var(--border);background:#0d1117;position:sticky;bottom:0;display:flex;gap:8px">
+      <div style="padding:14px 20px;border-top:1px solid var(--border);background:var(--bg-base);position:sticky;bottom:0;display:flex;gap:8px">
         <button class="btn-primary" id="dd-rechazar" style="flex:1;background:rgba(239,68,68,.15);border:1px solid rgba(239,68,68,.4);color:#f87171">Rechazar</button>
         <button class="btn-primary bod" id="dd-aprobar" style="flex:2"><span id="dd-aprobar-lbl">Aprobar y sumar</span></button>
       </div>
@@ -1686,7 +1686,7 @@ function abrirDespacho(solicitud=null) {
 
   let step=solicitud?2:1, busq='';
   const ov=document.createElement('div');
-  ov.style.cssText='position:fixed;inset:0;z-index:500;background:#0d1117;overflow-y:auto;-webkit-overflow-scrolling:touch;';
+  ov.className='bod-flow';
   document.body.appendChild(ov);
 
   // Carga seriales disponibles de un item (para validación en vivo). Cachea.
@@ -1703,52 +1703,65 @@ function abrirDespacho(solicitud=null) {
     return serialesCache_[itemId];
   }
 
+  // Cabecera fija de cada paso (fondo sólido: el contenido pasa por debajo)
+  const cabecera=(idBack,titulo,sub)=>`
+    <div class="bod-flow-head">
+      <button class="icon-btn" id="${idBack}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><polyline points="15 18 9 12 15 6"/></svg></button>
+      <div style="flex:1;min-width:0"><div class="t">${titulo}</div><div class="s">${sub}</div></div>
+    </div>`;
+  const totalPasos=()=>sel.some(s=>s.requiereSerial)?3:2;
+
   function renderStep1(){
-    ov.innerHTML=`<div style="padding:20px;max-width:500px;margin:0 auto">
-      <div style="display:flex;align-items:center;gap:12px;margin-bottom:24px">
-        <button id="btn-cerrar-despacho" class="icon-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><polyline points="15 18 9 12 15 6"/></svg></button>
-        <div class="section-title">Nueva salida — Datos</div>
+    ov.innerHTML=`<div class="bod-flow-wrap">
+      ${cabecera('btn-cerrar-despacho','Nueva salida',`Paso 1 de ${totalPasos()} · Datos de la entrega`)}
+      <div class="bod-flow-body">
+        <div class="ds-card flex-col gap-12">
+          <div class="ds-sec" style="margin:0">Quién recibe</div>
+          <div class="form-field">
+            <div class="form-label">Técnico que recibe *</div>
+            <div style="position:relative">
+              <input class="form-input" id="hdr-resp" value="${hdr.responsable}" placeholder="Escribe para buscar…" autocomplete="off"/>
+              <div id="hdr-resp-lista" class="bod-ac-lista"></div>
+            </div>
+          </div>
+          ${esCampanaNueva?`
+          <div class="form-field">
+            <div class="form-label">Usuario responsable</div>
+            <input class="form-input" id="hdr-usuario" value="${hdr.usuarioResp||''}" placeholder="Usuario asignado (opcional)" autocomplete="off"/>
+          </div>
+          <div class="form-field">
+            <div class="form-label">Pareja / acompañante</div>
+            <div style="position:relative">
+              <input class="form-input" id="hdr-pareja" value="${hdr.pareja}" placeholder="Escribe para buscar…" autocomplete="off"/>
+              <div id="hdr-pareja-lista" class="bod-ac-lista"></div>
+            </div>
+          </div>`:''}
+        </div>
+        <div class="ds-card flex-col gap-12">
+          <div class="ds-sec" style="margin:0">Vehículo y fechas</div>
+          <div class="form-field">
+            <div class="form-label">Empresa contratista *</div>
+            <div class="select-row" id="hdr-cont">
+              ${CONTRATISTAS.map(c=>`<div class="select-chip ${hdr.contratista===c?'active':''}" data-val="${c}">${c}</div>`).join('')}
+            </div>
+          </div>
+          <div class="form-field">
+            <div class="form-label">Placa del vehículo</div>
+            <div class="select-row flex-wrap" id="hdr-placa">
+              ${PLACAS.map(p=>`<div class="select-chip ${hdr.placa===p?'active':''}" data-val="${p}">${p}</div>`).join('')}
+              <div class="select-chip ${hdr.placa==='__otro__'?'active':''}" data-val="__otro__">Otra</div>
+            </div>
+            <input class="form-input" id="hdr-placa-otro" style="margin-top:8px;display:${hdr.placa==='__otro__'?'':'none'}" placeholder="Ingresa la placa" value="${hdr.placaOtro}"/>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+            <div class="form-field"><div class="form-label">Fecha solicitud</div><input class="form-input" id="hdr-fsol" type="date" value="${hdr.fechaSol}"/></div>
+            <div class="form-field"><div class="form-label">Fecha entrega</div><input class="form-input" id="hdr-fent" type="date" value="${hdr.fechaEnt}"/></div>
+          </div>
+        </div>
       </div>
-      <div class="flex-col gap-12">
-        <div class="form-field">
-          <div class="form-label">Técnico que recibe *</div>
-          <div style="position:relative">
-            <input class="form-input" id="hdr-resp" value="${hdr.responsable}" placeholder="Escribe para buscar…" autocomplete="off"/>
-            <div id="hdr-resp-lista" style="display:none;position:absolute;top:100%;left:0;right:0;z-index:20;margin-top:4px;background:var(--bg-2,#1a2332);border:1px solid var(--border);border-radius:12px;max-height:200px;overflow-y:auto;box-shadow:0 8px 24px rgba(0,0,0,.4)"></div>
-          </div>
-        </div>
-        ${esCampanaNueva?`
-        <div class="form-field">
-          <div class="form-label">Usuario responsable</div>
-          <input class="form-input" id="hdr-usuario" value="${hdr.usuarioResp||''}" placeholder="Usuario asignado (opcional)" autocomplete="off"/>
-        </div>
-        <div class="form-field">
-          <div class="form-label">Pareja / acompañante</div>
-          <div style="position:relative">
-            <input class="form-input" id="hdr-pareja" value="${hdr.pareja}" placeholder="Escribe para buscar…" autocomplete="off"/>
-            <div id="hdr-pareja-lista" style="display:none;position:absolute;top:100%;left:0;right:0;z-index:20;margin-top:4px;background:var(--bg-2,#1a2332);border:1px solid var(--border);border-radius:12px;max-height:200px;overflow-y:auto;box-shadow:0 8px 24px rgba(0,0,0,.4)"></div>
-          </div>
-        </div>`:''}
-        <div class="form-field">
-          <div class="form-label">Empresa contratista *</div>
-          <div class="select-row" id="hdr-cont">
-            ${CONTRATISTAS.map(c=>`<div class="select-chip ${hdr.contratista===c?'active':''}" data-val="${c}">${c}</div>`).join('')}
-          </div>
-        </div>
-        <div class="form-field">
-          <div class="form-label">Placa del vehículo</div>
-          <div class="select-row flex-wrap" id="hdr-placa">
-            ${PLACAS.map(p=>`<div class="select-chip ${hdr.placa===p?'active':''}" data-val="${p}">${p}</div>`).join('')}
-            <div class="select-chip ${hdr.placa==='__otro__'?'active':''}" data-val="__otro__">Otra</div>
-          </div>
-          <input class="form-input" id="hdr-placa-otro" style="margin-top:8px;display:${hdr.placa==='__otro__'?'':'none'}" placeholder="Ingresa la placa" value="${hdr.placaOtro}"/>
-        </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-          <div class="form-field"><div class="form-label">Fecha solicitud</div><input class="form-input" id="hdr-fsol" type="date" value="${hdr.fechaSol}"/></div>
-          <div class="form-field"><div class="form-label">Fecha entrega</div><input class="form-input" id="hdr-fent" type="date" value="${hdr.fechaEnt}"/></div>
-        </div>
-        <div id="s1-err" class="form-error"></div>
-        <button class="btn-primary full bod" id="btn-s1">Continuar → Materiales</button>
+      <div class="bod-flow-foot">
+        <div id="s1-err" class="form-error" style="margin-bottom:8px"></div>
+        <button class="bod-btn-main bod-btn-full" id="btn-s1">Continuar a materiales</button>
       </div>
     </div>`;
 
@@ -1764,7 +1777,7 @@ function abrirDespacho(solicitud=null) {
         const q = safeStr(filtro,'').toLowerCase().trim();
         const matches = tecnicos_.filter(t => safeStr(t.displayName).toLowerCase().includes(q));
         if (!matches.length) { lista.style.display='none'; return; }
-        lista.innerHTML = matches.map(t=>`<div class="ac-opt" data-nombre="${safeStr(t.displayName)}" style="padding:11px 14px;font-size:13px;cursor:pointer;border-bottom:1px solid var(--border)">${safeStr(t.displayName)}</div>`).join('');
+        lista.innerHTML = matches.map(t=>`<div class="ac-opt" data-nombre="${safeStr(t.displayName)}">${safeStr(t.displayName)}</div>`).join('');
         lista.style.display='block';
         lista.querySelectorAll('.ac-opt').forEach(opt=>{
           opt.addEventListener('click',()=>{ input.value=opt.dataset.nombre; lista.style.display='none'; });
@@ -1802,48 +1815,38 @@ function abrirDespacho(solicitud=null) {
   function renderStep2(){
     const itemsArea=allItems_.filter(i=>i.area===(solicitud?.area||areaFiltro_));
     const hayserial=sel.some(s=>s.requiereSerial);
-    ov.innerHTML=`
-    <div style="max-width:520px;margin:0 auto;display:flex;flex-direction:column;min-height:100vh">
-      <div style="padding:14px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px;position:sticky;top:0;background:var(--bg);z-index:10">
-        <button class="icon-btn" id="back1"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><polyline points="15 18 9 12 15 6"/></svg></button>
-        <div style="flex:1">
-          <div class="section-title">Materiales</div>
-          <div style="font-size:11px;color:var(--text-4)">Paso 2 de ${hayserial?'3':'2'} · toca para agregar</div>
-        </div>
-      </div>
-
-      ${sel.length?`
-      <div style="padding:12px 20px;background:var(--bod-glass);border-bottom:1px solid var(--border)">
-        <div class="section-label" style="margin-bottom:10px">Seleccionados (${sel.length})</div>
-        <div class="flex-col gap-6">
-          ${sel.map((s,idx)=>`
-            <div style="display:flex;align-items:center;gap:10px;background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:8px 10px">
-              <div style="flex:1;min-width:0">
-                <div style="font-size:12px;font-weight:700">${tc(s.name)}</div>
-                ${s.requiereSerial?`<div style="font-size:9px;color:var(--bod-light);font-weight:600;text-transform:uppercase;margin-top:1px">Requiere serial</div>`:''}
-              </div>
-              <div style="display:flex;align-items:center;gap:6px">
-                <button class="icon-btn" style="width:30px;height:30px;font-size:16px;font-weight:700" onclick="window.__d_dec(${idx})">−</button>
-                <div style="min-width:42px;text-align:center;font-size:15px;font-weight:800;color:var(--bod-light)">${s.cantidad}</div>
-                <button class="icon-btn" style="width:30px;height:30px;font-size:16px;font-weight:700;color:var(--bod-light);border-color:var(--bod-border);background:var(--bod-glass)" onclick="window.__d_inc(${idx})">+</button>
-              </div>
-              <button class="icon-btn" style="width:30px;height:30px" onclick="window.__d_del(${idx})"><svg viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="13" height="13"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
-            </div>`).join('')}
-        </div>
-      </div>`:''}
-
-      <div style="padding:14px 20px 0;flex:1">
-        <div class="buscar-wrap" style="margin-bottom:12px">
+    ov.innerHTML=`<div class="bod-flow-wrap">
+      ${cabecera('back1','Materiales',`Paso 2 de ${totalPasos()} · Toca un material para agregarlo`)}
+      <div class="bod-flow-body">
+        ${sel.length?`
+        <div class="ds-card" style="border-color:var(--bod-border)">
+          <div class="bod-sec" style="margin-bottom:10px"><div class="ds-sec" style="margin:0">Seleccionados</div><span class="bod-count">${sel.length}</span></div>
+          <div class="flex-col gap-6">
+            ${sel.map((s,idx)=>`
+              <div class="bod-sel-row">
+                <div style="flex:1;min-width:0">
+                  <div style="font-size:13px;font-weight:600;line-height:1.3">${tc(s.name)}</div>
+                  ${s.requiereSerial?`<div style="font-size:11px;color:var(--bod-light);margin-top:2px">Requiere serial</div>`:''}
+                </div>
+                <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
+                  <button class="bod-qty" onclick="window.__d_dec(${idx})">−</button>
+                  <div style="min-width:36px;text-align:center;font-size:16px;font-weight:600;color:var(--bod-light)">${s.cantidad}</div>
+                  <button class="bod-qty on" onclick="window.__d_inc(${idx})">+</button>
+                  <button class="bod-qty del" onclick="window.__d_del(${idx})" title="Quitar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="13" height="13"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+                </div>
+              </div>`).join('')}
+          </div>
+        </div>`:''}
+        <div class="buscar-wrap" style="margin-bottom:0">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14" style="color:var(--text-4);flex-shrink:0"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-          <input class="buscar-input" id="bus-mat" placeholder="Buscar material…" value="${busq}" autocomplete="off"/>
+          <input class="buscar-input" id="bus-mat" placeholder="Buscar material, SAP o AX…" value="${busq}" autocomplete="off"/>
         </div>
-        <div id="lista-mat" class="flex-col gap-6"></div>
+        <div id="lista-mat" class="flex-col gap-8"></div>
       </div>
-
-      <div style="padding:14px 20px;border-top:1px solid var(--border);background:var(--bg);position:sticky;bottom:0">
+      <div class="bod-flow-foot">
         <div id="s2-err" class="form-error" style="margin-bottom:8px"></div>
-        <button class="btn-primary full bod" id="btn-des" ${!sel.length?'disabled style="opacity:.5"':''}>
-          <span id="btn-des-lbl">${!sel.length?'Agrega materiales':hayserial?`Continuar → Seriales`:esCampanaNueva?`Enviar para aceptación`:`Registrar salida · ${sel.length} item${sel.length>1?'s':''}`}</span>
+        <button class="bod-btn-main bod-btn-full" id="btn-des" ${!sel.length?'disabled':''}>
+          <span id="btn-des-lbl">${!sel.length?'Agrega al menos un material':hayserial?`Continuar a seriales`:esCampanaNueva?`Enviar para aceptación · ${sel.length} material${sel.length>1?'es':''}`:`Registrar salida · ${sel.length} material${sel.length>1?'es':''}`}</span>
         </button>
       </div>
     </div>`;
@@ -1864,25 +1867,33 @@ function abrirDespacho(solicitud=null) {
     function renderLista(){
       const el=ov.querySelector('#lista-mat');
       if(!el) return;
-      const q=busq.toLowerCase();
+      const q=busq.toLowerCase().trim();
       const selIds=new Set(sel.map(s=>s.itemId));
-      const lista=q?itemsArea.filter(i=>i.name.toLowerCase().includes(q)||i.sapCode.includes(q)):itemsArea;
-      if(!lista.length){el.innerHTML=`<div style="text-align:center;color:var(--text-4);font-size:12px;padding:24px">Sin materiales</div>`;return;}
+      const disponible=i=>safeNum(i.stock)-reservadoPendiente(i.id);
+      // Los que se pueden despachar primero; los sin disponible al final
+      const lista=(q?itemsArea.filter(i=>i.name.toLowerCase().includes(q)||(i.sapCode||'').includes(q)||(i.axCode||'').includes(q)):itemsArea)
+        .slice().sort((a,b)=>(disponible(a)>0?0:1)-(disponible(b)>0?0:1));
+      if(!lista.length){el.innerHTML=`<div class="dev-module"><div class="dev-title">Sin resultados</div><p>Prueba con otro nombre o código.</p></div>`;return;}
       el.innerHTML=lista.map(item=>{
         const ag=selIds.has(item.id);
-        const dis=ag||item.stock<=0;
-        return `<div class="bod-solicitar-row" style="background:${ag?'rgba(34,197,94,.06)':'var(--glass)'};border-color:${ag?'rgba(34,197,94,.25)':'var(--border)'};cursor:${dis?'default':'pointer'};opacity:${item.stock<=0?'.5':'1'}" data-item="${item.id}">
+        const disp=disponible(item);
+        const reservado=safeNum(item.stock)-disp;
+        const sinDisp=disp<=0;
+        return `<div class="bod-mat-row ${ag?'sel':''} ${sinDisp&&!ag?'off':''}" data-item="${item.id}">
           <div style="flex:1;min-width:0">
-            <div style="font-size:13px;font-weight:600">${tc(item.name)}${item.requiereSerial?`<span style="font-size:9px;color:var(--bod-light);font-weight:700;text-transform:uppercase;margin-left:6px">Serial</span>`:''}</div>
-            <div style="font-size:10px;color:var(--text-4)">${item.sapCode?`SAP: ${item.sapCode} · `:''}Stock: ${item.stock} ${item.unit}</div>
+            <div style="font-size:14px;font-weight:600;line-height:1.3">${tc(item.name)}</div>
+            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:5px">
+              ${item.requiereSerial?'<span class="estado-badge muted">Serial</span>':''}
+              <span style="font-size:12px;color:${sinDisp?'var(--text-4)':'var(--text-3)'}">${Math.max(0,disp)} ${safeStr(item.unit,'')} disponibles${reservado>0?` · ${reservado} reservados`:''}</span>
+            </div>
           </div>
-          ${ag?`<span style="font-size:16px;font-weight:700;color:var(--ok)">&#10003;</span>`:item.stock<=0?`<span style="font-size:11px;color:var(--text-4)">Agotado</span>`:`<span style="font-size:20px;font-weight:800;color:var(--text-4);line-height:1">+</span>`}
+          ${ag?`<span class="bod-add ok">&#10003;</span>`:sinDisp?`<span class="estado-badge crit">${item.stock>0?'Reservado':'Agotado'}</span>`:`<span class="bod-add">+</span>`}
         </div>`;
       }).join('');
       el.querySelectorAll('[data-item]').forEach(row=>{
         row.addEventListener('click',()=>{
           const item=itemsArea.find(i=>i.id===row.dataset.item);
-          if(!item||item.stock<=0||sel.some(s=>s.itemId===item.id)) return;
+          if(!item||safeNum(item.stock)-reservadoPendiente(item.id)<=0||sel.some(s=>s.itemId===item.id)) return;
           mostrarModalCantidad(item,cant=>{
             sel.push({itemId:item.id,name:item.name,unit:item.unit,stock:item.stock,sapCode:item.sapCode,axCode:item.axCode,cantidad:cant,requiereSerial:item.requiereSerial,modoSerial:'individual',seriales:[],serialInicio:'',serialFin:''});
             if(item.requiereSerial) cargarSerialesItem(item.id); // precargar para validación
@@ -1923,19 +1934,12 @@ function abrirDespacho(solicitud=null) {
 
   function renderStep3(){
     const conSerial=sel.filter(s=>s.requiereSerial);
-    ov.innerHTML=`
-    <div style="max-width:520px;margin:0 auto;display:flex;flex-direction:column;min-height:100vh">
-      <div style="padding:14px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px;position:sticky;top:0;background:var(--bg);z-index:10">
-        <button class="icon-btn" id="back2"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><polyline points="15 18 9 12 15 6"/></svg></button>
-        <div style="flex:1">
-          <div class="section-title">Seriales</div>
-          <div style="font-size:11px;color:var(--text-4)">Paso 3 de 3</div>
-        </div>
-      </div>
+    ov.innerHTML=`<div class="bod-flow-wrap">
+      ${cabecera('back2','Seriales','Paso 3 de 3 · Marca las series que entregas')}
 
-      <div style="padding:16px 20px;flex:1" class="flex-col gap-16">
+      <div class="bod-flow-body">
         ${conSerial.map(s=>{const idx=sel.indexOf(s);return `
-          <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:14px;padding:14px">
+          <div class="ds-card">
 
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
               <div style="font-size:14px;font-weight:700">${tc(s.name)}</div>
@@ -1973,9 +1977,9 @@ function abrirDespacho(solicitud=null) {
           </div>`;}).join('')}
       </div>
 
-      <div style="padding:14px 20px;border-top:1px solid var(--border);background:var(--bg);position:sticky;bottom:0">
+      <div class="bod-flow-foot">
         <div id="s3-err" class="form-error" style="margin-bottom:8px"></div>
-        <button class="btn-primary full bod" id="btn-des3"><span id="btn-des-lbl">${esCampanaNueva?'Enviar para aceptación':`Registrar salida · ${sel.length} item${sel.length>1?'s':''}`}</span></button>
+        <button class="bod-btn-main bod-btn-full" id="btn-des3"><span id="btn-des-lbl">${esCampanaNueva?'Enviar para aceptación':`Registrar salida · ${sel.length} item${sel.length>1?'s':''}`}</span></button>
       </div>
     </div>`;
 
