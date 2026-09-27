@@ -288,9 +288,9 @@ Módulo nuevo `js/views/ami_condominio.js` (Vista Condominio), abierto desde:
 Técnico (ve solo lo asignado a su pareja, igual que el resto del mapa):
 - Avance del edificio, **buscador por número de medidor** (flujo principal) y
   lista por nivel; se abre sola el primer nivel con pendientes.
-- Tocar un medidor: número grande, unidad, forma y NC; acciones "Cambiado ·
-  ya actualizado en DELSUR", "Cambiado · falta DELSUR", "No se pudo" (visita
-  con motivo) y "Ya estaba cambiado". Mismos campos que el mapa;
+- Tocar un medidor: número grande, unidad, forma y NC; acciones "Marcar
+  cambiado", "No se pudo" (visita con motivo) y "Ya estaba cambiado". En AMI
+  ya no se pregunta si se actualizó en DELSUR (2026-09-27, en todo AMI). Mismos campos que el mapa;
   `parejaDelDia` filtrada por área. Sin "marcar nivel completo".
 - Los medidores del padrón de ya cambiados se le esconden.
 
