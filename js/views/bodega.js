@@ -87,6 +87,7 @@ let serialesCache_ = {};     // itemId -> [seriales disponibles] para validació
 let allItems_    = [];
 let salidas_     = [];
 let despachosPendientes_ = [];  // despachos esperando aceptación del técnico
+let invFiltro_ = 'todos';       // inventario: todos | agotados | bajos
 
 // Cantidad ya comprometida en despachos enviados que el técnico todavía no
 // acepta. En AMI/Caracterización/Reclamos el stock se descuenta recién al
@@ -126,24 +127,17 @@ function sigueActiva(id) {
 
 // ── Colores por campaña ───────────────────────────
 const CAMPANA_COLORS = {
-  'CAMBIOS':         { color:'#2dd4bf', bg:'rgba(45,212,191,.12)', border:'rgba(45,212,191,.4)', label:'CAMBIOS' },
-  'AMI':             { color:'#fbbf24', bg:'rgba(251,191,36,.12)', border:'rgba(251,191,36,.4)', label:'AMI' },
-  'Caracterizacion': { color:'#a78bfa', bg:'rgba(167,139,250,.12)', border:'rgba(167,139,250,.4)', label:'Caracterización' },
-  'ReclamosSIGET':   { color:'#f472b6', bg:'rgba(244,114,182,.12)', border:'rgba(244,114,182,.4)', label:'Reclamos SIGET' },
+  'CAMBIOS':         { color:'#2dd4bf', bg:'rgba(45,212,191,.12)', border:'rgba(45,212,191,.4)',  label:'CAMBIOS',         short:'Cambios' },
+  'AMI':             { color:'#a78bfa', bg:'rgba(139,92,246,.14)', border:'rgba(139,92,246,.4)',  label:'AMI',             short:'AMI' },
+  'Caracterizacion': { color:'#ef4444', bg:'rgba(239,68,68,.10)',  border:'rgba(239,68,68,.38)',  label:'Caracterización', short:'Caracterización' },
+  'ReclamosSIGET':   { color:'#fbbf24', bg:'rgba(251,191,36,.10)', border:'rgba(251,191,36,.38)', label:'Reclamos SIGET',  short:'Reclamos' },
 };
 
 function campanaToggleHTML() {
-  return `<div class="bod-campana-toggle" style="display:flex;gap:6px;margin-bottom:12px">
-    ${Object.entries(CAMPANA_COLORS).map(([key, c]) => {
-      const activo = areaFiltro_ === key;
-      return `<div onclick="window.__bodega.setCampana('${key}')" style="
-        flex:1;text-align:center;padding:10px 8px;border-radius:12px;cursor:pointer;
-        font-size:12px;font-weight:700;transition:all .2s;
-        color:${activo ? c.color : 'var(--text-4)'};
-        background:${activo ? c.bg : 'rgba(255,255,255,.03)'};
-        border:1px solid ${activo ? c.border : 'rgba(255,255,255,.06)'};
-      ">${c.label}</div>`;
-    }).join('')}
+  return `<div class="bod-camps">
+    ${Object.entries(CAMPANA_COLORS).map(([key, c]) => `<button class="bod-camp ${areaFiltro_===key?'active':''}"
+      style="--c:${c.color};--cb:${c.bg};--cbr:${c.border}"
+      onclick="window.__bodega.setCampana('${key}')">${c.short||c.label}</button>`).join('')}
   </div>`;
 }
 
@@ -157,7 +151,11 @@ function renderShell() {
     : [{id:'inventario',label:'Inventario'},{id:'historial',label:'Historial'},{id:'solicitudes',label:'Solicitudes'}];
 
   container_.innerHTML = `
-    ${!isTecnico ? `<div id="bod-campana-wrap" style="padding-top:4px">${campanaToggleHTML()}</div>` : ''}
+    <div style="margin-bottom:14px">
+      <div style="font-size:24px;font-weight:600;letter-spacing:-.02em;line-height:1.15">Bodega</div>
+      <div style="font-size:12px;color:var(--text-4);margin-top:4px">${isTecnico ? 'Tu material y tus pedidos' : 'Inventario, despachos y solicitudes'}</div>
+    </div>
+    ${!isTecnico ? `<div id="bod-campana-wrap">${campanaToggleHTML()}</div>` : ''}
     <div class="cambios-tabs">
       ${tabs.map(t=>{
         // Globo rojo en la pestaña Solicitudes con las pendientes de esta campaña
@@ -822,50 +820,55 @@ function renderMisSolicitudes() {
 function renderInventario() {
   const content  = document.getElementById('bod-content');
   const items    = getItems(areaFiltro_);
-  const agotados = items.filter(i=>i.stock<=0).length;
-  const bajos    = items.filter(i=>i.stock>0&&i.stock<=i.minStock).length;
+  const esAgotado = i => i.stock<=0;
+  const esBajo    = i => i.stock>0&&i.stock<=i.minStock;
+  const agotados = items.filter(esAgotado).length;
+  const bajos    = items.filter(esBajo).length;
+
+  // Mini-stat que además filtra la lista (tocar de nuevo = ver todos)
+  const stat=(id,n,lbl,color)=>`<div class="ds-m bod-stat ${invFiltro_===id?'sel':''}" data-f="${id}">
+      <div class="ds-num-md" style="color:${color}">${n}</div>
+      <div class="ds-lbl-sm" style="margin-top:7px">${lbl}</div>
+    </div>`;
 
   content.innerHTML=`
     <div class="flex-col gap-12">
-      <div class="panel-header anim-up">
-        <div><div class="section-title">Inventario</div><div class="section-sub">${items.length} items · ${agotados} agotados · ${bajos} bajo mínimo</div></div>
-        <div style="display:flex;gap:8px">
-          <button class="icon-btn bod" onclick="window.__bodega.exportarInventario()" title="Descargar existencias">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-          </button>
-          <button class="icon-btn bod" onclick="window.__bodega.abrirImportar()" title="Importar Excel">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-          </button>
-          <button class="icon-btn bod" onclick="window.__bodega.abrirDespacho()" title="Nueva salida">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-          </button>
-          <button class="icon-btn bod" onclick="window.__bodega.abrirNuevoItem()" title="Nuevo item">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-          </button>
-        </div>
+      <div class="anim-up" style="display:flex;gap:8px">
+        <button class="bod-btn-main" onclick="window.__bodega.abrirDespacho()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><path d="M5 12h14M12 5l7 7-7 7"/></svg> Nueva salida</button>
+        <button class="bod-btn-ico" onclick="window.__bodega.abrirImportar()" title="Importar Excel"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg></button>
+        <button class="bod-btn-ico" onclick="window.__bodega.exportarInventario()" title="Descargar existencias"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></button>
+        <button class="bod-btn-ico" onclick="window.__bodega.abrirNuevoItem()" title="Nuevo material"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
       </div>
-      ${agotados?`<div class="otc-alert-card crit anim-up d2"><div class="otc-alert-header">${agotados} item${agotados>1?'s':''} agotado${agotados>1?'s':''}</div></div>`:''}
-      ${bajos?`<div class="otc-alert-card warn anim-up d2"><div class="otc-alert-header">${bajos} item${bajos>1?'s':''} bajo stock mínimo</div></div>`:''}
-      <div class="buscar-wrap anim-up d2">
+      <div class="ds-mini anim-up d1">
+        ${stat('todos',items.length,'Materiales','var(--text)')}
+        ${stat('agotados',agotados,'Agotados',agotados?'#ef4444':'var(--text-3)')}
+        ${stat('bajos',bajos,'Bajo mínimo',bajos?'#fbbf24':'var(--text-3)')}
+      </div>
+      <div class="buscar-wrap anim-up d2" style="margin-bottom:0">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14" style="color:var(--text-4);flex-shrink:0"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-        <input class="buscar-input" id="bod-inv-buscar" placeholder="Buscar material…" autocomplete="off"/>
+        <input class="buscar-input" id="bod-inv-buscar" placeholder="Buscar material, SAP o AX…" autocomplete="off"/>
       </div>
-      <div class="flex-col gap-6 anim-up d2" id="bod-inv-lista">
-        ${!items.length?`<div class="dev-module"><div class="dev-title">Sin items</div></div>`
-          :items.sort((a,b)=>a.stock-b.stock).map(item=>renderItemCard(item)).join('')}
-      </div>
+      <div class="flex-col gap-8 anim-up d2" id="bod-inv-lista"></div>
     </div>`;
 
-  // Buscador
   const buscar=document.getElementById('bod-inv-buscar');
   const lista=document.getElementById('bod-inv-lista');
-  function pintar(q){
-    const term=(q||'').toLowerCase().trim();
-    const arr=items.filter(i=>!term||i.name.toLowerCase().includes(term)||(i.sapCode||'').includes(term)||(i.axCode||'').includes(term)).sort((a,b)=>a.stock-b.stock);
-    lista.innerHTML=arr.length?arr.map(item=>renderItemCard(item)).join(''):`<div style="text-align:center;color:var(--text-4);font-size:12px;padding:24px">Sin resultados</div>`;
+  function pintar(){
+    const term=(buscar?.value||'').toLowerCase().trim();
+    const arr=items
+      .filter(i=>invFiltro_==='agotados'?esAgotado(i):invFiltro_==='bajos'?esBajo(i):true)
+      .filter(i=>!term||i.name.toLowerCase().includes(term)||(i.sapCode||'').includes(term)||(i.axCode||'').includes(term))
+      .sort((a,b)=>a.stock-b.stock);
+    lista.innerHTML=arr.length?arr.map(item=>renderItemCard(item)).join('')
+      :`<div class="dev-module"><div class="dev-title">${items.length?'Sin resultados':'Sin materiales'}</div><p>${items.length?'Prueba con otro nombre o código.':'Agrega materiales con + o importa un Excel.'}</p></div>`;
     enlazarFilas();
   }
-  buscar?.addEventListener('input',e=>pintar(e.target.value));
+  buscar?.addEventListener('input',pintar);
+  content.querySelectorAll('.bod-stat').forEach(el=>el.addEventListener('click',()=>{
+    invFiltro_ = (invFiltro_===el.dataset.f||el.dataset.f==='todos') ? 'todos' : el.dataset.f;
+    content.querySelectorAll('.bod-stat').forEach(x=>x.classList.toggle('sel',x.dataset.f===invFiltro_));
+    pintar();
+  }));
 
   // Expandir/colapsar acciones al tocar
   function enlazarFilas(){
@@ -875,14 +878,13 @@ function renderInventario() {
       const chev=row.querySelector('.bod-item-chevron');
       head.addEventListener('click',()=>{
         const abierto=acts.style.display==='flex';
-        // cerrar otros
         lista.querySelectorAll('.bod-item-actions').forEach(a=>a.style.display='none');
         lista.querySelectorAll('.bod-item-chevron').forEach(c=>c.style.transform='');
         if(!abierto){acts.style.display='flex';chev.style.transform='rotate(90deg)';}
       });
     });
   }
-  enlazarFilas();
+  pintar();
 }
 
 function setCampana(area) {
@@ -929,31 +931,30 @@ function cambiarCampanaTecnico() {
 function renderItemCard(item) {
   const bajo=item.stock>0&&item.stock<=item.minStock;
   const agotado=item.stock<=0;   // negativo = descuadre, se marca igual que agotado
-  const color=agotado?'#ef4444':bajo?'#fbbf24':'#22c55e';
-  const bg=agotado?'rgba(239,68,68,.05)':bajo?'rgba(245,158,11,.05)':'var(--glass)';
-  const border=agotado?'rgba(239,68,68,.22)':bajo?'rgba(245,158,11,.22)':'var(--border)';
-  return `<div class="bod-item-row" data-item="${item.id}" style="background:${bg};border:1px solid ${border};border-radius:12px;overflow:hidden">
-    <div class="bod-item-head" style="display:flex;align-items:center;gap:10px;padding:11px 13px;cursor:pointer">
+  const color=agotado?'#ef4444':bajo?'#fbbf24':'var(--text)';
+  const codigos=[item.sapCode?`SAP ${item.sapCode}`:'',item.axCode?`AX ${item.axCode}`:'',`Mín ${item.minStock}`].filter(Boolean).join(' · ');
+  return `<div class="bod-item-row ${agotado?'crit':bajo?'warn':''}" data-item="${item.id}">
+    <div class="bod-item-head">
       <div style="flex:1;min-width:0">
-        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
-          <span style="font-size:13px;font-weight:700">${tc(item.name)}</span>
-          ${agotado?'<span class="bod-badge crit" style="font-size:8px">Agotado</span>':bajo?'<span class="bod-badge warn" style="font-size:8px">Bajo</span>':''}
-          ${item.requiereSerial?`<span class="bod-badge" style="font-size:8px;color:var(--bod-light);border-color:var(--bod-border);background:var(--bod-glass)">Serial</span>`:''}
+        <div style="font-size:14px;font-weight:600;line-height:1.3">${tc(item.name)}</div>
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:6px">
+          ${agotado?`<span class="estado-badge crit">${item.stock<0?'Descuadre':'Agotado'}</span>`:bajo?'<span class="estado-badge warn">Bajo</span>':''}
+          ${item.requiereSerial?'<span class="estado-badge muted">Serial</span>':''}
+          <span style="font-size:11px;color:var(--text-4)">${codigos}</span>
         </div>
-        <div style="font-size:9.5px;color:var(--text-4);margin-top:2px">${item.sapCode?`SAP ${item.sapCode}`:''}${item.axCode?` · AX ${item.axCode}`:''} · Mín ${item.minStock}</div>
       </div>
-      <div style="text-align:right;flex-shrink:0;line-height:1">
-        <div style="font-size:19px;font-weight:800;color:${color}">${item.stock}</div>
-        <div style="font-size:9px;color:var(--text-4)">${safeStr(item.unit,'')}</div>
+      <div style="text-align:right;flex-shrink:0">
+        <div class="ds-num-md" style="color:${color}">${item.stock}</div>
+        <div style="font-size:11px;color:var(--text-4);margin-top:4px">${safeStr(item.unit,'')}</div>
       </div>
       <svg class="bod-item-chevron" viewBox="0 0 24 24" fill="none" stroke="var(--text-4)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="15" height="15" style="flex-shrink:0;transition:transform .2s"><polyline points="9 18 15 12 9 6"/></svg>
     </div>
-    <div class="bod-item-actions" style="display:none;gap:6px;padding:0 13px 11px">
-      <button class="btn-action" style="flex:1;height:38px;font-size:12px;color:var(--bod-light);border:1px solid var(--bod-border);background:var(--bod-glass)" onclick="event.stopPropagation();window.__bodega.abrirEntrada('${item.id}')">
+    <div class="bod-item-actions">
+      <button class="btn-action" style="flex:1;height:40px;font-size:12px;color:var(--bod-light);border:1px solid var(--bod-border);background:var(--bod-glass)" onclick="event.stopPropagation();window.__bodega.abrirEntrada('${item.id}')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="13" height="13"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Entrada
       </button>
-      <button class="btn-action outline" style="flex:1;height:38px;font-size:12px" onclick="event.stopPropagation();window.__bodega.abrirNuevoItem('${item.id}')">Editar</button>
-      ${item.requiereSerial?`<button class="btn-action outline" style="flex:1;height:38px;font-size:12px" onclick="event.stopPropagation();window.__bodega.verSeriales('${item.id}')">Series</button>`:''}
+      <button class="btn-action outline" style="flex:1;height:40px;font-size:12px" onclick="event.stopPropagation();window.__bodega.abrirNuevoItem('${item.id}')">Editar</button>
+      ${item.requiereSerial?`<button class="btn-action outline" style="flex:1;height:40px;font-size:12px" onclick="event.stopPropagation();window.__bodega.verSeriales('${item.id}')">Series</button>`:''}
     </div>
   </div>`;
 }
@@ -967,88 +968,75 @@ function renderHistorial() {
   const pendientes = despachosPendientes_.filter(p => (p.area||'') === areaFiltro_);
   const devoluciones = devolucionesPendientes_.filter(d => (d.area||'') === areaFiltro_);
 
+  const sec = (titulo, n) => `<div class="bod-sec"><div class="ds-sec">${titulo}</div><span class="bod-count">${n}</span></div>`;
+  const lineas = (items, max) => `
+    <div class="flex-col gap-4">
+      ${(items||[]).slice(0,max).map(m=>`<div style="display:flex;justify-content:space-between;gap:10px;font-size:12px"><span style="color:var(--text-2)">${tc(m.nombre||m.name||'—')}${m.requiereSerial&&m.seriales?.length?` <span style="color:var(--text-4)">(${m.seriales.length} series)</span>`:''}</span><span style="font-weight:600;white-space:nowrap">${m.cantidad} ${safeStr(m.unit,'')}</span></div>`).join('')}
+      ${(items||[]).length>max?`<div style="font-size:11px;color:var(--text-4)">+${(items||[]).length-max} más</div>`:''}
+    </div>`;
+
   const devHTML = devoluciones.length ? `
-    <div class="anim-up d1" style="margin-bottom:4px">
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
-        <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:#2dd4bf">Devoluciones por revisar</div>
-        <div style="flex:1;height:1px;background:rgba(45,212,191,.2)"></div>
-        <div style="font-size:11px;color:var(--text-4)">${devoluciones.length}</div>
-      </div>
+    <div class="anim-up d1">
+      ${sec('Devoluciones por revisar', devoluciones.length)}
       <div class="flex-col gap-8">
         ${devoluciones.map(d=>`
-          <div class="bod-solic-card" style="background:rgba(45,212,191,.05);border-color:rgba(45,212,191,.25)">
-            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:8px">
-              <div>
-                <div style="font-size:13px;font-weight:700">${safeStr(d.tecnicoNombre)}</div>
-                <div style="font-size:10px;color:var(--text-4)">${fmtDate(d.fecha)} · Devuelve material</div>
-              </div>
+          <div class="ds-card" style="border-color:rgba(45,212,191,.35)">
+            <div style="margin-bottom:10px">
+              <div style="font-size:14px;font-weight:600">${safeStr(d.tecnicoNombre)}</div>
+              <div style="font-size:11px;color:var(--text-4);margin-top:2px">${fmtDate(d.fecha)} · Devuelve material</div>
             </div>
-            <div class="flex-col gap-3" style="margin-bottom:10px">
-              ${(d.items||[]).map(m=>`<div style="display:flex;justify-content:space-between;font-size:11px"><span style="color:var(--text-3)">${tc(m.nombre||m.name||'—')}${m.requiereSerial?` <span style="color:var(--text-4)">(${(m.seriales||[]).length} series)</span>`:''}</span><span style="font-weight:600">${m.cantidad} ${safeStr(m.unit,'')}</span></div>`).join('')}
-              ${d.nota?`<div style="font-size:10px;color:var(--text-4);font-style:italic;margin-top:4px">Nota: ${escapeHtml(safeStr(d.nota))}</div>`:''}
-            </div>
-            <div style="display:flex;gap:6px">
-              <button class="bod-badge" style="flex:1;text-align:center;color:#2dd4bf;border-color:rgba(45,212,191,.4);background:rgba(45,212,191,.12);cursor:pointer;padding:8px;font-weight:700" onclick="window.__bodega._verDev('${d.id}')">Revisar y aprobar</button>
-            </div>
+            ${lineas(d.items, 99)}
+            ${d.nota?`<div style="font-size:11px;color:var(--text-4);font-style:italic;margin-top:8px">Nota: ${escapeHtml(safeStr(d.nota))}</div>`:''}
+            <button class="btn-action cm" style="width:100%;height:40px;font-size:12px;margin-top:12px" onclick="window.__bodega._verDev('${d.id}')">Revisar y aprobar</button>
           </div>`).join('')}
       </div>
     </div>` : '';
 
   const pendHTML = pendientes.length ? `
-    <div class="anim-up d1" style="margin-bottom:4px">
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
-        <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:#fbbf24">Pendientes de aceptación</div>
-        <div style="flex:1;height:1px;background:rgba(251,191,36,.2)"></div>
-        <div style="font-size:11px;color:var(--text-4)">${pendientes.length}</div>
-      </div>
+    <div class="anim-up d1">
+      ${sec('Pendientes de aceptación', pendientes.length)}
       <div class="flex-col gap-8">
         ${pendientes.map(p=>`
-          <div class="bod-solic-card" style="background:rgba(251,191,36,.05);border-color:rgba(251,191,36,.25)">
-            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:8px">
-              <div>
-                <div style="font-size:13px;font-weight:700">${safeStr(p.usuarioResponsable)}</div>
-                <div style="font-size:10px;color:var(--text-4)">${fmtDate(p.fecha)} · Esperando aceptación del técnico</div>
+          <div class="ds-card" style="border-color:rgba(251,191,36,.3)">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:10px">
+              <div style="min-width:0">
+                <div style="font-size:14px;font-weight:600">${safeStr(p.usuarioResponsable)}</div>
+                <div style="font-size:11px;color:var(--text-4);margin-top:2px">${fmtDate(p.fecha)} · Esperando al técnico</div>
               </div>
-              <button class="bod-badge" style="color:#ef4444;border-color:rgba(239,68,68,.3);background:rgba(239,68,68,.08);cursor:pointer" onclick="window.__bodega._cancelarPend('${p.id}')">Cancelar</button>
+              <button class="btn-action danger" style="height:30px;padding:0 12px;font-size:11px;flex-shrink:0;width:auto;flex:0 0 auto" onclick="window.__bodega._cancelarPend('${p.id}')">Cancelar</button>
             </div>
-            <div class="flex-col gap-3">
-              ${(p.items||[]).slice(0,3).map(m=>`<div style="display:flex;justify-content:space-between;font-size:11px"><span style="color:var(--text-3)">${tc(m.nombre||m.name||'—')}</span><span style="font-weight:600">${m.cantidad} ${safeStr(m.unit,'')}</span></div>`).join('')}
-              ${(p.items||[]).length>3?`<div style="font-size:10px;color:var(--text-4)">+${(p.items||[]).length-3} más</div>`:''}
-            </div>
+            ${lineas(p.items, 3)}
           </div>`).join('')}
       </div>
     </div>` : '';
 
   content.innerHTML=`
     <div class="flex-col gap-12">
-      <div class="panel-header anim-up">
-        <div><div class="section-title">Historial</div><div class="section-sub">${sorted.length} salidas registradas</div></div>
-        <button class="icon-btn bod" onclick="window.__bodega.abrirDespacho()" title="Nueva salida">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-        </button>
+      <div class="anim-up" style="display:flex;gap:8px">
+        <button class="bod-btn-main" onclick="window.__bodega.abrirDespacho()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><path d="M5 12h14M12 5l7 7-7 7"/></svg> Nueva salida</button>
       </div>
       ${devHTML}
       ${pendHTML}
-      ${!sorted.length?`<div class="dev-module anim-up d1"><div class="dev-title">Sin salidas</div></div>`:`
-      <div class="flex-col gap-8 anim-up d1">
-        ${sorted.map(s=>`
-          <div class="bod-solic-card">
-            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:8px">
-              <div>
-                <div style="font-size:13px;font-weight:700">${safeStr(s.tecnicoNombre||s.usuarioResponsable)}</div>
-                <div style="font-size:10px;color:var(--text-4)">${fmtDate(s.fecha)} · ${safeStr(s.empresaContratista,'—')} · ${safeStr(s.placaVehiculo,'—')}</div>
+      <div class="anim-up d1">
+        ${sec('Salidas registradas', sorted.length)}
+        ${!sorted.length?`<div class="dev-module"><div class="dev-title">Sin salidas</div><p>Las salidas de esta campaña aparecerán aquí.</p></div>`:`
+        <div class="flex-col gap-8">
+          ${sorted.map(s=>`
+            <div class="ds-card">
+              <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:10px">
+                <div style="min-width:0">
+                  <div style="font-size:14px;font-weight:600">${safeStr(s.tecnicoNombre||s.usuarioResponsable)}</div>
+                  <div style="font-size:11px;color:var(--text-4);margin-top:2px">${fmtDate(s.fecha)} · ${safeStr(s.placaVehiculo,'—')}</div>
+                </div>
+                <div style="display:flex;gap:6px;flex-shrink:0">
+                  <button class="btn-action outline" style="height:30px;padding:0 12px;font-size:11px;width:auto;flex:0 0 auto" onclick="window.__bodega._verMemo('${s.id}')">Memo</button>
+                  <button class="btn-action outline" style="height:30px;padding:0 12px;font-size:11px;width:auto;flex:0 0 auto" onclick="window.__bodega._devolucion('${s.id}')">Devolución</button>
+                </div>
               </div>
-              <div style="display:flex;gap:6px">
-                <button class="bod-badge" style="color:var(--bod-light);border-color:var(--bod-border);background:var(--bod-glass);cursor:pointer" onclick="window.__bodega._verMemo('${s.id}')">Memo</button>
-                <button class="bod-badge" style="color:#22c55e;border-color:rgba(34,197,94,.3);background:rgba(34,197,94,.08);cursor:pointer" onclick="window.__bodega._devolucion('${s.id}')">Dev.</button>
-              </div>
-            </div>
-            <div class="flex-col gap-3">
-              ${(s.items||[]).slice(0,3).map(m=>`<div style="display:flex;justify-content:space-between;font-size:11px"><span style="color:var(--text-3)">${tc(m.nombre||m.name||'—')}</span><span style="font-weight:600">${m.cantidad} ${safeStr(m.unit,'')}</span></div>`).join('')}
-              ${(s.items||[]).length>3?`<div style="font-size:10px;color:var(--text-4)">+${(s.items||[]).length-3} más</div>`:''}
-            </div>
-          </div>`).join('')}
-      </div>`}
+              ${lineas(s.items, 3)}
+            </div>`).join('')}
+        </div>`}
+      </div>
     </div>`;
 
   window.__bodega._verMemo=(id)=>{const s=salidas_.find(x=>x.id===id);if(s)showMemo(s);};
@@ -1373,37 +1361,37 @@ function renderSolicitudes() {
   const solicCampana = solicitudes_.filter(s => (s.area || 'CAMBIOS') === areaFiltro_);
   const pendientes = solicCampana.filter(s=>s.estado==='pendiente');
   const resto      = solicCampana.filter(s=>s.estado!=='pendiente');
-  const BADGE={pendiente:{color:'#fbbf24',bg:'rgba(245,158,11,.06)',border:'rgba(245,158,11,.2)',label:'Pendiente'},aprobado:{color:'#22c55e',bg:'rgba(34,197,94,.06)',border:'rgba(34,197,94,.2)',label:'Aprobada'},rechazado:{color:'#ef4444',bg:'rgba(239,68,68,.06)',border:'rgba(239,68,68,.2)',label:'Rechazada'}};
+  const BADGE={pendiente:{cls:'warn',border:'rgba(251,191,36,.3)',label:'Pendiente'},aprobado:{cls:'ok',border:'var(--border)',label:'Aprobada'},rechazado:{cls:'crit',border:'var(--border)',label:'Rechazada'}};
+  const sec = (titulo, n) => `<div class="bod-sec"><div class="ds-sec">${titulo}</div><span class="bod-count">${n}</span></div>`;
 
   function cardSolicitud(s, actions) {
     const b=BADGE[s.estado]||BADGE.pendiente;
-    return `<div class="bod-solic-card" style="background:${b.bg};border-color:${b.border}">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:8px">
-        <div>
-          <div style="font-size:13px;font-weight:700">${safeStr(s.usuarioNombre)}</div>
-          <div style="font-size:10px;color:var(--text-4)">${fmtDate(s.fecha)} · ${safeStr(s.area)}</div>
+    return `<div class="ds-card" style="border-color:${b.border}">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:10px">
+        <div style="min-width:0">
+          <div style="font-size:14px;font-weight:600">${safeStr(s.usuarioNombre)}</div>
+          <div style="font-size:11px;color:var(--text-4);margin-top:2px">${fmtDate(s.fecha)}</div>
         </div>
-        <div class="bod-badge" style="color:${b.color};border-color:${b.color}33;background:${b.color}11">${b.label}</div>
+        <span class="estado-badge ${b.cls}" style="flex-shrink:0">${b.label}</span>
       </div>
-      <div class="flex-col gap-4" style="margin-bottom:${actions?'12px':'0'}">
-        ${(s.materiales||[]).map(m=>`<div style="display:flex;justify-content:space-between;font-size:12px"><span style="color:var(--text-2)">${tc(m.nombre||m.name||'—')}</span><span style="font-weight:700">${m.cantidad} ${safeStr(m.unit||m.unidad,'')}</span></div>`).join('')}
+      <div class="flex-col gap-4">
+        ${(s.materiales||[]).map(m=>`<div style="display:flex;justify-content:space-between;gap:10px;font-size:12px"><span style="color:var(--text-2)">${tc(m.nombre||m.name||'—')}</span><span style="font-weight:600;white-space:nowrap">${m.cantidad} ${safeStr(m.unit||m.unidad,'')}</span></div>`).join('')}
       </div>
-      ${actions?`<div style="display:flex;gap:8px">
-        <button class="btn-action cm" style="flex:1;height:40px;font-size:12px;border-color:var(--bod-border);background:var(--bod-glass);color:var(--bod-light)" onclick="window.__bodega.aprobarSolicitud('${s.id}')">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="13" height="13"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg> Aprobar
+      ${actions?`<div style="display:flex;gap:8px;margin-top:12px">
+        <button class="btn-action" style="flex:1;height:40px;font-size:12px;border:1px solid var(--bod-border);background:var(--bod-glass);color:var(--bod-light)" onclick="window.__bodega.aprobarSolicitud('${s.id}')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="13" height="13"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg> Aprobar y despachar
         </button>
         <button class="btn-action danger" style="flex:1;height:40px;font-size:12px" onclick="window.__bodega.rechazarSolicitud('${s.id}')">Rechazar</button>
       </div>`:''}
-      ${s.aprobadoPor?`<div style="font-size:10px;color:var(--text-4);margin-top:6px">${b.label} por ${s.aprobadoPor}</div>`:''}
+      ${s.aprobadoPor?`<div style="font-size:11px;color:var(--text-4);margin-top:8px">${b.label} por ${escapeHtml(s.aprobadoPor)}</div>`:''}
     </div>`;
   }
 
   content.innerHTML=`
     <div class="flex-col gap-12">
-      <div class="panel-header anim-up"><div><div class="section-title">Solicitudes</div><div class="section-sub">${pendientes.length} pendientes · ${resto.length} respondidas</div></div></div>
-      ${pendientes.length?`<div class="section-label anim-up d1">Pendientes</div><div class="flex-col gap-8 anim-up d1">${pendientes.map(s=>cardSolicitud(s,true)).join('')}</div>`:''}
-      ${resto.length?`<div class="section-label anim-up d2">Respondidas</div><div class="flex-col gap-8 anim-up d2">${resto.map(s=>cardSolicitud(s,false)).join('')}</div>`:''}
-      ${!solicCampana.length?`<div class="dev-module anim-up d1"><div class="dev-title">Sin solicitudes</div></div>`:''}
+      ${pendientes.length?`<div class="anim-up d1">${sec('Pendientes',pendientes.length)}<div class="flex-col gap-8">${pendientes.map(s=>cardSolicitud(s,true)).join('')}</div></div>`:''}
+      ${resto.length?`<div class="anim-up d2">${sec('Respondidas',resto.length)}<div class="flex-col gap-8">${resto.map(s=>cardSolicitud(s,false)).join('')}</div></div>`:''}
+      ${!solicCampana.length?`<div class="dev-module anim-up d1"><div class="dev-title">Sin solicitudes</div><p>Cuando un técnico pida material para esta campaña, aparecerá aquí.</p></div>`:''}
     </div>`;
 }
 
