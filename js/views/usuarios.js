@@ -324,9 +324,10 @@ async function crearUsuario() {
     const pinHash  = await hashPin(salt, pin);
 
     // Crear en Firebase Auth con app secundaria para no perder sesión
-    const secondaryApp = firebase.app.length > 1
-      ? firebase.app('secondary')
-      : firebase.initializeApp(firebase.app().options, 'secondary');
+    // Reusar la app 'secondary' si ya existe (crear un 2do usuario sin
+    // recargar fallaba con "app/duplicate-app").
+    const secondaryApp = firebase.apps.find(a => a.name === 'secondary')
+      || firebase.initializeApp(firebase.app().options, 'secondary');
 
     const secondaryAuth = secondaryApp.auth();
     const tempPass = Math.random().toString(36).slice(2) + 'Aa1!'; // temp
