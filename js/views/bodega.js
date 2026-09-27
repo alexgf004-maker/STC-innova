@@ -87,6 +87,14 @@ let serialesCache_ = {};     // itemId -> [seriales disponibles] para validació
 let allItems_    = [];
 let salidas_     = [];
 let despachosPendientes_ = [];  // despachos esperando aceptación del técnico
+
+// Cantidad ya comprometida en despachos enviados que el técnico todavía no
+// acepta. En AMI/Caracterización/Reclamos el stock se descuenta recién al
+// aceptar, así que sin restar esto se podía despachar dos veces lo mismo.
+function reservadoPendiente(itemId){
+  return despachosPendientes_.reduce((t,p)=>t+(p.items||[])
+    .filter(m=>m.itemId===itemId).reduce((a,m)=>a+safeNum(m.cantidad),0),0);
+}
 let devolucionesPendientes_ = [];  // devoluciones de técnicos esperando aprobación
 let solicitudes_ = [];
 let consumos_    = [];
@@ -730,15 +738,15 @@ function renderFormSolicitar() {
     const lista=q?misItems.filter(i=>i.name.toLowerCase().includes(q)):misItems;
     el.innerHTML=lista.map(item=>{
       const agregado=selIds.has(item.id);
-      return `<div class="bod-solicitar-row" style="background:${agregado?'rgba(34,197,94,.06)':'var(--glass)'};border-color:${agregado?'rgba(34,197,94,.2)':'var(--border)'};cursor:${agregado||item.stock===0?'default':'pointer'}" data-item="${item.id}">
+      return `<div class="bod-solicitar-row" style="background:${agregado?'rgba(34,197,94,.06)':'var(--glass)'};border-color:${agregado?'rgba(34,197,94,.2)':'var(--border)'};cursor:${agregado||item.stock<=0?'default':'pointer'}" data-item="${item.id}">
         <div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:600">${tc(item.name)}</div><div style="font-size:10px;color:var(--text-4)">${item.sapCode?`SAP: ${item.sapCode} · `:''}Stock: ${item.stock} ${item.unit}</div></div>
-        ${agregado?`<span style="font-size:11px;font-weight:700;color:var(--ok)">&#10003;</span>`:item.stock===0?`<span style="font-size:11px;color:var(--text-4)">Agotado</span>`:`<span style="font-size:11px;font-weight:700;color:var(--bod-light)">${item.stock} ${item.unit}</span>`}
+        ${agregado?`<span style="font-size:11px;font-weight:700;color:var(--ok)">&#10003;</span>`:item.stock<=0?`<span style="font-size:11px;color:var(--text-4)">Agotado</span>`:`<span style="font-size:11px;font-weight:700;color:var(--bod-light)">${item.stock} ${item.unit}</span>`}
       </div>`;
     }).join('');
     el.querySelectorAll('[data-item]').forEach(row=>{
       row.addEventListener('click',()=>{
         const item=misItems.find(i=>i.id===row.dataset.item);
-        if(!item||item.stock===0||sel.some(s=>s.itemId===item.id)) return;
+        if(!item||item.stock<=0||sel.some(s=>s.itemId===item.id)) return;
         mostrarModalCantidad(item,(cant)=>{sel.push({itemId:item.id,name:item.name,unit:item.unit,stock:item.stock,cantidad:cant});render();});
       });
     });
@@ -814,7 +822,7 @@ function renderMisSolicitudes() {
 function renderInventario() {
   const content  = document.getElementById('bod-content');
   const items    = getItems(areaFiltro_);
-  const agotados = items.filter(i=>i.stock===0).length;
+  const agotados = items.filter(i=>i.stock<=0).length;
   const bajos    = items.filter(i=>i.stock>0&&i.stock<=i.minStock).length;
 
   content.innerHTML=`
@@ -920,7 +928,7 @@ function cambiarCampanaTecnico() {
 
 function renderItemCard(item) {
   const bajo=item.stock>0&&item.stock<=item.minStock;
-  const agotado=item.stock===0;
+  const agotado=item.stock<=0;   // negativo = descuadre, se marca igual que agotado
   const color=agotado?'#ef4444':bajo?'#fbbf24':'#22c55e';
   const bg=agotado?'rgba(239,68,68,.05)':bajo?'rgba(245,158,11,.05)':'var(--glass)';
   const border=agotado?'rgba(239,68,68,.22)':bajo?'rgba(245,158,11,.22)':'var(--border)';
@@ -1874,19 +1882,19 @@ function abrirDespacho(solicitud=null) {
       if(!lista.length){el.innerHTML=`<div style="text-align:center;color:var(--text-4);font-size:12px;padding:24px">Sin materiales</div>`;return;}
       el.innerHTML=lista.map(item=>{
         const ag=selIds.has(item.id);
-        const dis=ag||item.stock===0;
-        return `<div class="bod-solicitar-row" style="background:${ag?'rgba(34,197,94,.06)':'var(--glass)'};border-color:${ag?'rgba(34,197,94,.25)':'var(--border)'};cursor:${dis?'default':'pointer'};opacity:${item.stock===0?'.5':'1'}" data-item="${item.id}">
+        const dis=ag||item.stock<=0;
+        return `<div class="bod-solicitar-row" style="background:${ag?'rgba(34,197,94,.06)':'var(--glass)'};border-color:${ag?'rgba(34,197,94,.25)':'var(--border)'};cursor:${dis?'default':'pointer'};opacity:${item.stock<=0?'.5':'1'}" data-item="${item.id}">
           <div style="flex:1;min-width:0">
             <div style="font-size:13px;font-weight:600">${tc(item.name)}${item.requiereSerial?`<span style="font-size:9px;color:var(--bod-light);font-weight:700;text-transform:uppercase;margin-left:6px">Serial</span>`:''}</div>
             <div style="font-size:10px;color:var(--text-4)">${item.sapCode?`SAP: ${item.sapCode} · `:''}Stock: ${item.stock} ${item.unit}</div>
           </div>
-          ${ag?`<span style="font-size:16px;font-weight:700;color:var(--ok)">&#10003;</span>`:item.stock===0?`<span style="font-size:11px;color:var(--text-4)">Agotado</span>`:`<span style="font-size:20px;font-weight:800;color:var(--text-4);line-height:1">+</span>`}
+          ${ag?`<span style="font-size:16px;font-weight:700;color:var(--ok)">&#10003;</span>`:item.stock<=0?`<span style="font-size:11px;color:var(--text-4)">Agotado</span>`:`<span style="font-size:20px;font-weight:800;color:var(--text-4);line-height:1">+</span>`}
         </div>`;
       }).join('');
       el.querySelectorAll('[data-item]').forEach(row=>{
         row.addEventListener('click',()=>{
           const item=itemsArea.find(i=>i.id===row.dataset.item);
-          if(!item||item.stock===0||sel.some(s=>s.itemId===item.id)) return;
+          if(!item||item.stock<=0||sel.some(s=>s.itemId===item.id)) return;
           mostrarModalCantidad(item,cant=>{
             sel.push({itemId:item.id,name:item.name,unit:item.unit,stock:item.stock,sapCode:item.sapCode,axCode:item.axCode,cantidad:cant,requiereSerial:item.requiereSerial,modoSerial:'individual',seriales:[],serialInicio:'',serialFin:''});
             if(item.requiereSerial) cargarSerialesItem(item.id); // precargar para validación
@@ -2146,6 +2154,25 @@ function abrirDespacho(solicitud=null) {
       }
     }
 
+    // ── Validación de stock: lo que hay menos lo reservado en despachos pendientes ──
+    // Se relee de Firestore para contar lo que otra persona haya despachado.
+    try{
+      const pendSnap=await db.collection('despachos_pendientes').get();
+      despachosPendientes_=pendSnap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(b.fecha?.seconds||0)-(a.fecha?.seconds||0));
+      const itemsCol=db.collection('kardex').doc('inventario').collection('items');
+      const docs=await Promise.all([...new Set(sel.map(x=>x.itemId))].map(id=>itemsCol.doc(id).get()));
+      for(const d of docs){ const loc=allItems_.find(i=>i.id===d.id); if(loc&&d.exists) loc.stock=safeNum(d.data().stock); }
+    }catch(e){ console.warn('[bodega] No se pudo refrescar stock antes de despachar:',e); }
+    for(const s of sel){
+      const item=allItems_.find(i=>i.id===s.itemId);
+      const reservado=reservadoPendiente(s.itemId);
+      const disp=safeNum(item?.stock)-reservado;
+      if(safeNum(s.cantidad)>disp){
+        if(errEl){errEl.textContent=`${tc(s.name)}: quieres entregar ${s.cantidad} pero solo hay ${Math.max(0,disp)} disponible(s)${reservado?` (${reservado} ya reservados en despachos pendientes)`:''}.`;errEl.style.display='block';}
+        return;
+      }
+    }
+
     const btn=ov.querySelector('#btn-des3')||ov.querySelector('#btn-des');
     if(errEl) errEl.style.display='none';
     if(btn) btn.disabled=true;
@@ -2174,7 +2201,8 @@ function abrirDespacho(solicitud=null) {
           items:sel.map(s=>({itemId:s.itemId,sapCode:s.sapCode,axCode:s.axCode,nombre:s.name,unit:s.unit,cantidad:s.cantidad,requiereSerial:s.requiereSerial,modoSerial:s.requiereSerial?s.modoSerial:null,seriales:s.requiereSerial&&s.modoSerial==='individual'?s.seriales:[],serialInicio:s.requiereSerial&&s.modoSerial==='rango'?s.serialInicio:'',serialFin:s.requiereSerial&&s.modoSerial==='rango'?s.serialFin:''})),
           fecha:firebase.firestore.FieldValue.serverTimestamp(),
         };
-        await db.collection('despachos_pendientes').add(pendData);
+        const pendRef=await db.collection('despachos_pendientes').add(pendData);
+        despachosPendientes_.unshift({id:pendRef.id,...pendData});
         ov.remove();
         toast('Enviado al técnico para aceptación','ok');
       }catch(err){
@@ -3159,16 +3187,19 @@ function abrirEntrada(itemId) {
 
 // ── Helpers ───────────────────────────────────────
 function mostrarModalCantidad(item, onAdd) {
+  // Disponible = stock menos lo reservado en despachos pendientes de aceptar
+  const reservado=reservadoPendiente(item.id);
+  const disp=Math.max(0,safeNum(item.stock)-reservado);
   const m=document.createElement('div');
   m.style.cssText='position:fixed;inset:0;background:rgba(3,7,18,.75);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);display:flex;align-items:flex-end;justify-content:center;z-index:600;';
   m.innerHTML=`<div style="background:#161f2e;width:100%;max-width:520px;border-radius:24px 24px 0 0;padding:8px 22px max(34px,22px);border-top:1px solid rgba(255,255,255,.08);box-shadow:0 -8px 40px rgba(0,0,0,.5)">
     <div style="width:40px;height:4px;background:rgba(255,255,255,.18);border-radius:2px;margin:0 auto 20px"></div>
     <div style="font-size:17px;font-weight:800;margin-bottom:4px">${tc(item.name)}</div>
-    <div style="font-size:12px;color:var(--text-4);margin-bottom:24px">${item.stock} ${item.unit} disponibles en bodega</div>
+    <div style="font-size:12px;color:var(--text-4);margin-bottom:24px">${disp} ${item.unit} disponibles en bodega${reservado?` (${reservado} reservados en despachos pendientes)`:''}</div>
     <div style="display:flex;align-items:center;justify-content:space-between;gap:18px;margin-bottom:24px">
       <button id="mc-dec" style="width:60px;height:60px;border-radius:16px;border:1px solid var(--border);background:var(--glass);color:var(--text);font-size:28px;font-weight:700;cursor:pointer;flex-shrink:0">−</button>
       <div style="flex:1;text-align:center">
-        <input id="mc-cant" type="number" min="1" max="${item.stock}" value="1" style="width:100%;text-align:center;font-size:44px;font-weight:900;color:var(--bod-light);background:transparent;border:none;outline:none;font-family:'Outfit',sans-serif"/>
+        <input id="mc-cant" type="number" min="1" max="${disp}" value="1" style="width:100%;text-align:center;font-size:44px;font-weight:900;color:var(--bod-light);background:transparent;border:none;outline:none;font-family:'Outfit',sans-serif"/>
         <div style="font-size:12px;color:var(--text-4);margin-top:-4px">${item.unit}</div>
       </div>
       <button id="mc-inc" style="width:60px;height:60px;border-radius:16px;border:1px solid var(--bod-border);background:var(--bod-glass);color:var(--bod-light);font-size:28px;font-weight:700;cursor:pointer;flex-shrink:0">+</button>
@@ -3185,12 +3216,12 @@ function mostrarModalCantidad(item, onAdd) {
   m.addEventListener('click',e=>{if(e.target===m)m.remove();});
   m.querySelector('#mc-cancel').onclick=()=>m.remove();
   m.querySelector('#mc-dec').onclick=()=>{const v=safeNum(cantEl.value);if(v>1)cantEl.value=v-1;};
-  m.querySelector('#mc-inc').onclick=()=>{const v=safeNum(cantEl.value);if(v<item.stock)cantEl.value=v+1;};
+  m.querySelector('#mc-inc').onclick=()=>{const v=safeNum(cantEl.value);if(v<disp)cantEl.value=v+1;};
   m.querySelector('#mc-add').addEventListener('click',()=>{
     const cant=safeNum(cantEl.value);
     const errEl=m.querySelector('#mc-err');
     if(cant<=0){errEl.textContent='Cantidad inválida.';errEl.style.display='block';return;}
-    if(cant>item.stock){errEl.textContent=`Solo hay ${item.stock} ${item.unit} en bodega.`;errEl.style.display='block';return;}
+    if(cant>disp){errEl.textContent=`Solo hay ${disp} ${item.unit} disponibles.`;errEl.style.display='block';return;}
     m.remove();onAdd(cant);
   });
 }

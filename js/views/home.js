@@ -179,6 +179,20 @@ async function aceptarDespachoPendiente(id){
   document.querySelectorAll('#despachos-pend-tec button').forEach(b=>b.disabled=true);
 
   try{
+    // Si ya se aceptó (doble toque, otro teléfono con la misma cuenta), no
+    // volver a descontar stock. Solo se bloquea si la lectura confirma que
+    // ya no existe; si la lectura falla, se sigue como antes.
+    let yaNoExiste = false;
+    try { yaNoExiste = !(await db.collection('despachos_pendientes').doc(id).get()).exists; } catch {}
+    if (yaNoExiste) {
+      __pendientesTec = __pendientesTec.filter(x=>x.id!==id);
+      document.querySelector(`#despachos-pend-tec button[onclick*="${id}"]`)?.closest('div[style*="border-radius:16px"]')?.remove();
+      if(!__pendientesTec.length) document.getElementById('despachos-pend-tec')?.remove();
+      document.querySelectorAll('#despachos-pend-tec button').forEach(b=>b.disabled=false);
+      alert('Este despacho ya fue aceptado.');
+      return;
+    }
+
     const session = JSON.parse(localStorage.getItem('innova_session') || '{}');
     const now = firebase.firestore.FieldValue.serverTimestamp();
 
