@@ -92,6 +92,9 @@ let invFiltro_ = 'todos';       // inventario: todos | agotados | bajos
 // Cantidad ya comprometida en despachos enviados que el técnico todavía no
 // acepta. En AMI/Caracterización/Reclamos el stock se descuenta recién al
 // aceptar, así que sin restar esto se podía despachar dos veces lo mismo.
+// Título de sección con contador (mismo patrón en todas las pestañas)
+const secConContador = (titulo, n) => `<div class="bod-sec"><div class="ds-sec">${titulo}</div>${n!=null?`<span class="bod-count">${n}</span>`:''}</div>`;
+
 function reservadoPendiente(itemId){
   return despachosPendientes_.reduce((t,p)=>t+(p.items||[])
     .filter(m=>m.itemId===itemId).reduce((a,m)=>a+safeNum(m.cantidad),0),0);
@@ -356,45 +359,40 @@ function renderRecibido() {
     .sort((a,b)=>(b.s.fecha?.seconds||0)-(a.s.fecha?.seconds||0));
 
   content.innerHTML=`
-    <div class="flex-col gap-12">
-      <div class="panel-header anim-up">
-        <div>
-          <div class="section-title">Material recibido</div>
-          <div class="section-sub">${misEntradas.length} entrega${misEntradas.length===1?'':'s'} · historial de lo entregado</div>
-        </div>
-      </div>
-      ${!misEntradas.length?`<div class="dev-module anim-up d1"><div class="dev-title">Sin entregas</div><p>Aquí aparecerá el material que bodega les despache, a ti o a tu pareja.</p></div>`:`
-      <div class="flex-col gap-8 anim-up d1">
+    <div class="anim-up">
+      ${secConContador('Material recibido', misEntradas.length)}
+      ${!misEntradas.length?`<div class="dev-module"><div class="dev-title">Sin entregas</div><p>Aquí aparecerá el material que bodega les despache, a ti o a tu pareja.</p></div>`:`
+      <div class="flex-col gap-8">
         ${misEntradas.map(({s,firmo})=>{
           const camp = s.area || 'CAMBIOS';
           const cc = CAMPANA_COLORS[camp] || CAMPANA_COLORS['CAMBIOS'];
           const totalItems = (s.items||[]).reduce((a,i)=>a+safeNum(i.cantidad),0);
           const quienFirmo = safeStr(s.usuarioResponsable||s.tecnicoNombre,'—');
           const laPareja   = safeStr(s.parejaAcompanante,'');
-          return `<div class="bod-solic-card"${!firmo?' style="border-color:rgba(255,255,255,.14)"':''}>
-            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:8px">
+          return `<div class="ds-card">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
               <div style="min-width:0">
-                <div style="font-size:12px;font-weight:700">${fmtDate(s.fecha)}</div>
-                <div style="font-size:10px;color:var(--text-4)">${totalItems} items · entregó ${safeStr(s.registradoPorNombre||s.entregadoPor,'—')}</div>
+                <div style="font-size:14px;font-weight:600">${fmtDate(s.fecha)}</div>
+                <div style="font-size:11px;color:var(--text-4);margin-top:2px">${totalItems} unidades · entregó ${safeStr(s.registradoPorNombre||s.entregadoPor,'—')}</div>
               </div>
-              <div class="bod-badge" style="color:${cc.color};border-color:${cc.color}33;background:${cc.color}11;flex-shrink:0">${cc.label}</div>
+              <span class="estado-badge" style="flex-shrink:0;color:${cc.color};border-color:${cc.border};background:${cc.bg}">${cc.short||cc.label}</span>
             </div>
-            <div style="font-size:10px;color:${firmo?'var(--ok)':'var(--text-4)'};font-weight:600;margin-bottom:8px">
+            <div style="font-size:12px;color:${firmo?'var(--ok)':'var(--text-3)'};font-weight:500;margin:10px 0 6px">
               ${firmo
                 ? `Lo recibiste tú${laPareja?` · con ${laPareja}`:''}`
-                : `Recibido por ${quienFirmo} (tu pareja)`}
+                : `Lo recibió ${quienFirmo} (tu pareja)`}
             </div>
-            <div class="flex-col gap-3">
+            <div class="flex-col">
               ${(s.items||[]).map(m=>{
                 const seriales = m.modoSerial==='rango' && m.serialInicio
-                  ? `<div style="font-size:10px;color:var(--text-4);margin-top:2px;font-family:monospace">Serie ${m.serialInicio} a ${m.serialFin}</div>`
+                  ? `<div style="font-size:11px;color:var(--text-4);margin-top:3px;font-family:monospace">Serie ${m.serialInicio} a ${m.serialFin}</div>`
                   : (m.seriales&&m.seriales.length)
-                    ? `<div style="font-size:10px;color:var(--text-4);margin-top:2px;font-family:monospace">${m.seriales.slice(0,4).join(', ')}${m.seriales.length>4?` +${m.seriales.length-4}`:''}</div>`
+                    ? `<div style="font-size:11px;color:var(--text-4);margin-top:3px;font-family:monospace">${m.seriales.slice(0,4).join(', ')}${m.seriales.length>4?` +${m.seriales.length-4}`:''}</div>`
                     : '';
-                return `<div style="padding:6px 0;border-top:1px solid var(--border)">
-                  <div style="display:flex;justify-content:space-between;font-size:12px">
+                return `<div style="padding:8px 0;border-top:1px solid var(--border)">
+                  <div style="display:flex;justify-content:space-between;gap:10px;font-size:13px">
                     <span style="color:var(--text-2)">${tc(m.nombre||m.name||'—')}</span>
-                    <span style="font-weight:700">${m.cantidad} ${safeStr(m.unit,'')}</span>
+                    <span style="font-weight:600;white-space:nowrap">${m.cantidad} ${safeStr(m.unit,'')}</span>
                   </div>${seriales}
                 </div>`;
               }).join('')}
@@ -604,18 +602,14 @@ function renderFormSolicitar() {
   if (pickerCampana_ || !campanaEfectiva) {
     content.innerHTML = `
       <div class="flex-col gap-12">
-        <div class="panel-header anim-up"><div class="section-title">Solicitar material</div></div>
-        <div class="anim-up d1" style="padding:8px 0">
-          <div class="section-label" style="margin-bottom:12px">¿Para qué campaña necesitas material?</div>
+        <div class="anim-up">
+          ${secConContador('¿Para qué campaña necesitas material?')}
           <div class="flex-col gap-8">
             ${Object.entries(CAMPANA_COLORS).map(([key, c]) => `
-              <div onclick="window.__bodega.elegirCampanaTecnico('${key}')" style="
-                padding:18px 16px;border-radius:14px;cursor:pointer;
-                background:${c.bg};border:1px solid ${c.border};
-                display:flex;align-items:center;justify-content:space-between;
-              ">
-                <span style="font-size:15px;font-weight:700;color:${c.color}">${c.label}</span>
-                <svg viewBox="0 0 24 24" fill="none" stroke="${c.color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><polyline points="9 18 15 12 9 6"/></svg>
+              <div class="bod-mat-row" onclick="window.__bodega.elegirCampanaTecnico('${key}')">
+                <span style="width:10px;height:10px;border-radius:50%;background:${c.color};flex-shrink:0"></span>
+                <span style="flex:1;font-size:15px;font-weight:600">${key==='CAMBIOS'?c.short:c.label}</span>
+                <svg viewBox="0 0 24 24" fill="none" stroke="var(--text-4)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><polyline points="9 18 15 12 9 6"/></svg>
               </div>`).join('')}
           </div>
         </div>
@@ -631,19 +625,19 @@ function renderFormSolicitar() {
     const cc = CAMPANA_COLORS[campanaEfectiva] || CAMPANA_COLORS['CAMBIOS'];
     content.innerHTML=`
       <div class="flex-col gap-12">
-        <div class="panel-header anim-up">
-          <div class="section-title">Solicitar material</div>
-          <div onclick="window.__bodega.cambiarCampanaTecnico()" style="cursor:pointer;font-size:11px;font-weight:700;padding:5px 12px;border-radius:20px;color:${cc.color};background:${cc.bg};border:1px solid ${cc.border}">${cc.label} &#9662;</div>
+        <div class="anim-up" style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+          <div class="ds-sec" style="margin:6px 0 0">Solicitar material</div>
+          <button class="bod-camp active" style="flex:0 0 auto;--c:${cc.color};--cb:${cc.bg};--cbr:${cc.border}" onclick="window.__bodega.cambiarCampanaTecnico()">${cc.short||cc.label} &#9662;</button>
         </div>
 
         ${esCampanaNueva?`
-        <div class="anim-up d1" style="background:var(--glass);border:1px solid var(--border);border-radius:14px;padding:14px">
-          <div class="section-label" style="margin-bottom:10px">Datos de la salida</div>
+        <div class="ds-card flex-col gap-12 anim-up d1">
+          <div class="ds-sec" style="margin:0">Datos de la salida</div>
           <div class="form-field">
             <div class="form-label">Pareja / acompañante *</div>
             <div style="position:relative">
               <input class="form-input" id="sol-pareja" value="${pareja}" placeholder="Escribe para buscar…" autocomplete="off"/>
-              <div id="sol-pareja-lista" style="display:none;position:absolute;top:100%;left:0;right:0;z-index:20;margin-top:4px;background:var(--bg-2,#1a2332);border:1px solid var(--border);border-radius:12px;max-height:180px;overflow-y:auto;box-shadow:0 8px 24px rgba(0,0,0,.4)"></div>
+              <div id="sol-pareja-lista" class="bod-ac-lista"></div>
             </div>
           </div>
           <div class="form-field" style="margin-bottom:0">
@@ -657,17 +651,17 @@ function renderFormSolicitar() {
         </div>`:''}
 
         ${sel.length?`
-        <div class="anim-up d1">
-          <div class="section-label" style="margin-bottom:8px">Tu pedido · ${sel.length} material${sel.length>1?'es':''}</div>
+        <div class="ds-card anim-up d1" style="border-color:var(--bod-border)">
+          <div class="bod-sec" style="margin-bottom:10px"><div class="ds-sec" style="margin:0">Tu pedido</div><span class="bod-count">${sel.length}</span></div>
           <div class="flex-col gap-6">
             ${sel.map((s,idx)=>`
-              <div class="bod-solicitar-row" style="background:rgba(139,92,246,.06);border-color:var(--bod-border)">
-                <div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:600">${tc(s.name)}</div><div style="font-size:10px;color:var(--text-4)">${s.stock} ${s.unit} disponibles</div></div>
-                <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
-                  <button class="icon-btn" style="width:30px;height:30px;font-size:16px" id="sol-dec-${idx}">−</button>
-                  <div style="font-size:16px;font-weight:800;min-width:24px;text-align:center;color:var(--bod-light)">${s.cantidad}</div>
-                  <button class="icon-btn" style="width:30px;height:30px;font-size:16px;color:var(--bod-light);border-color:var(--bod-border);background:var(--bod-glass)" id="sol-inc-${idx}" ${s.cantidad>=s.stock?'disabled':''}>+</button>
-                  <button class="icon-btn" style="width:30px;height:30px" id="sol-del-${idx}"><svg viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="12" height="12"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+              <div class="bod-sel-row">
+                <div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:600;line-height:1.3">${tc(s.name)}</div><div style="font-size:11px;color:var(--text-4);margin-top:2px">${s.stock} ${s.unit} disponibles</div></div>
+                <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
+                  <button class="bod-qty" id="sol-dec-${idx}">−</button>
+                  <div style="min-width:32px;text-align:center;font-size:16px;font-weight:600;color:var(--bod-light)">${s.cantidad}</div>
+                  <button class="bod-qty on" id="sol-inc-${idx}" ${s.cantidad>=s.stock?'disabled':''}>+</button>
+                  <button class="bod-qty del" id="sol-del-${idx}" title="Quitar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="13" height="13"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
                 </div>
               </div>`).join('')}
           </div>
@@ -677,11 +671,11 @@ function renderFormSolicitar() {
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14" style="color:var(--text-4);flex-shrink:0"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
             <input class="buscar-input" id="sol-buscar" placeholder="Buscar material…" value="${busq}" autocomplete="off"/>
           </div>
-          <div id="sol-lista" class="flex-col gap-6"></div>
+          <div id="sol-lista" class="flex-col gap-8"></div>
         </div>
         <div id="sol-error" class="form-error"></div>
-        <button class="btn-primary full bod anim-up d2" id="sol-submit" ${!sel.length?'disabled style="opacity:.5"':''}>
-          <span id="sol-btn-lbl">${sel.length>0?`Enviar solicitud · ${sel.length} material${sel.length>1?'es':''}`:'Selecciona materiales'}</span>
+        <button class="bod-btn-main bod-btn-full anim-up d2" id="sol-submit" ${!sel.length?'disabled':''}>
+          <span id="sol-btn-lbl">${sel.length>0?`Enviar solicitud · ${sel.length} material${sel.length>1?'es':''}`:'Toca un material para agregarlo'}</span>
         </button>
       </div>
     `;
@@ -702,7 +696,7 @@ function renderFormSolicitar() {
         const q = safeStr(filtro,'').toLowerCase().trim();
         const matches = tecnicos_.filter(t => safeStr(t.displayName).toLowerCase().includes(q) && safeStr(t.displayName)!==session_.displayName);
         if(!matches.length){ pLista.style.display='none'; return; }
-        pLista.innerHTML = matches.map(t=>`<div class="ac-opt" data-nombre="${safeStr(t.displayName)}" style="padding:11px 14px;font-size:13px;cursor:pointer;border-bottom:1px solid var(--border)">${safeStr(t.displayName)}</div>`).join('');
+        pLista.innerHTML = matches.map(t=>`<div class="ac-opt" data-nombre="${safeStr(t.displayName)}">${safeStr(t.displayName)}</div>`).join('');
         pLista.style.display='block';
         pLista.querySelectorAll('.ac-opt').forEach(opt=>{
           opt.addEventListener('click',()=>{ pInput.value=opt.dataset.nombre; pareja=opt.dataset.nombre; pLista.style.display='none'; });
@@ -734,13 +728,18 @@ function renderFormSolicitar() {
     const selIds=new Set(sel.map(s=>s.itemId));
     const q=busq.toLowerCase();
     const lista=q?misItems.filter(i=>i.name.toLowerCase().includes(q)):misItems;
-    el.innerHTML=lista.map(item=>{
+    const orden=lista.slice().sort((a,b)=>(a.stock>0?0:1)-(b.stock>0?0:1));
+    el.innerHTML=orden.length?orden.map(item=>{
       const agregado=selIds.has(item.id);
-      return `<div class="bod-solicitar-row" style="background:${agregado?'rgba(34,197,94,.06)':'var(--glass)'};border-color:${agregado?'rgba(34,197,94,.2)':'var(--border)'};cursor:${agregado||item.stock<=0?'default':'pointer'}" data-item="${item.id}">
-        <div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:600">${tc(item.name)}</div><div style="font-size:10px;color:var(--text-4)">${item.sapCode?`SAP: ${item.sapCode} · `:''}Stock: ${item.stock} ${item.unit}</div></div>
-        ${agregado?`<span style="font-size:11px;font-weight:700;color:var(--ok)">&#10003;</span>`:item.stock<=0?`<span style="font-size:11px;color:var(--text-4)">Agotado</span>`:`<span style="font-size:11px;font-weight:700;color:var(--bod-light)">${item.stock} ${item.unit}</span>`}
+      const sinStock=item.stock<=0;
+      return `<div class="bod-mat-row ${agregado?'sel':''} ${sinStock&&!agregado?'off':''}" data-item="${item.id}">
+        <div style="flex:1;min-width:0">
+          <div style="font-size:14px;font-weight:600;line-height:1.3">${tc(item.name)}</div>
+          <div style="font-size:12px;color:${sinStock?'var(--text-4)':'var(--text-3)'};margin-top:4px">${Math.max(0,item.stock)} ${safeStr(item.unit,'')} en bodega</div>
+        </div>
+        ${agregado?`<span class="bod-add ok">&#10003;</span>`:sinStock?`<span class="estado-badge crit">Agotado</span>`:`<span class="bod-add">+</span>`}
       </div>`;
-    }).join('');
+    }).join(''):`<div class="dev-module"><div class="dev-title">Sin resultados</div><p>Prueba con otro nombre.</p></div>`;
     el.querySelectorAll('[data-item]').forEach(row=>{
       row.addEventListener('click',()=>{
         const item=misItems.find(i=>i.id===row.dataset.item);
@@ -790,23 +789,28 @@ function renderFormSolicitar() {
 function renderMisSolicitudes() {
   const content  = document.getElementById('bod-content');
   const misSolic = solicitudes_.filter(s=>s.usuarioUid===uid_);
-  const BADGE={pendiente:{color:'#fbbf24',bg:'rgba(245,158,11,.08)',label:'Pendiente'},aprobado:{color:'#22c55e',bg:'rgba(34,197,94,.08)',label:'Aprobado'},rechazado:{color:'#ef4444',bg:'rgba(239,68,68,.08)',label:'Rechazado'}};
+  const BADGE={pendiente:{cls:'warn',border:'rgba(251,191,36,.3)',label:'Pendiente'},aprobado:{cls:'ok',border:'var(--border)',label:'Aprobado'},rechazado:{cls:'crit',border:'var(--border)',label:'Rechazado'}};
 
   content.innerHTML=`
-    <div class="flex-col gap-12">
-      <div class="panel-header anim-up"><div class="section-title">Mis solicitudes</div></div>
-      ${!misSolic.length?`<div class="dev-module anim-up d1"><div class="dev-title">Sin solicitudes</div><p>Aún no has solicitado material.</p></div>`:`
-      <div class="flex-col gap-8 anim-up d1">
+    <div class="anim-up">
+      ${secConContador('Mis pedidos', misSolic.length)}
+      ${!misSolic.length?`<div class="dev-module"><div class="dev-title">Sin pedidos</div><p>Aún no has solicitado material.</p></div>`:`
+      <div class="flex-col gap-8">
         ${misSolic.map(s=>{
           const b=BADGE[s.estado]||BADGE.pendiente;
-          return `<div class="bod-solic-card" style="border-color:${b.color}33">
-            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:8px">
-              <div style="font-size:10px;color:var(--text-4)">${fmtDate(s.fecha)}</div>
-              <div class="bod-badge" style="color:${b.color};border-color:${b.color}44;background:${b.bg}">${b.label}</div>
+          const cc=CAMPANA_COLORS[s.area];
+          return `<div class="ds-card" style="border-color:${b.border}">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:10px">
+              <div style="min-width:0">
+                <div style="font-size:14px;font-weight:600">${fmtDate(s.fecha)}</div>
+                ${cc?`<div style="font-size:11px;color:var(--text-4);margin-top:2px">${cc.label}</div>`:''}
+              </div>
+              <span class="estado-badge ${b.cls}" style="flex-shrink:0">${b.label}</span>
             </div>
             <div class="flex-col gap-4">
-              ${(s.materiales||[]).map(m=>`<div style="display:flex;justify-content:space-between;font-size:12px"><span style="color:var(--text-2)">${tc(m.nombre||m.name||'—')}</span><span style="font-weight:700">${m.cantidad} ${safeStr(m.unit||m.unidad,'')}</span></div>`).join('')}
+              ${(s.materiales||[]).map(m=>`<div style="display:flex;justify-content:space-between;gap:10px;font-size:13px"><span style="color:var(--text-2)">${tc(m.nombre||m.name||'—')}</span><span style="font-weight:600;white-space:nowrap">${m.cantidad} ${safeStr(m.unit||m.unidad,'')}</span></div>`).join('')}
             </div>
+            ${s.estado==='rechazado'&&s.notas?`<div style="font-size:12px;color:var(--text-3);margin-top:10px">Motivo: ${escapeHtml(s.notas)}</div>`:''}
           </div>`;
         }).join('')}
       </div>`}
@@ -1254,7 +1258,7 @@ function mostrarMemoDevolucion(d){
   const fmt = dt => { try{ return dt.toLocaleDateString('es-SV',{day:'2-digit',month:'long',year:'numeric',hour:'2-digit',minute:'2-digit'}); }catch{ return '—'; } };
 
   const ov=document.createElement('div');
-  ov.className='sheet-backdrop open';
+  ov.className='sheet-backdrop open bod-scope';
   ov.innerHTML=`<div class="sheet" style="max-height:90vh;overflow-y:auto"><div class="sheet-handle"></div>
     <div id="memo-dev-print" style="background:#fff;color:#1a1a1a;padding:28px 24px;border-radius:10px;font-family:'Outfit',sans-serif">
       <div style="text-align:center;border-bottom:2px solid ${AC};padding-bottom:14px;margin-bottom:16px">
@@ -1402,7 +1406,7 @@ async function aprobarSolicitud(id) {
 
 async function rechazarSolicitud(id) {
   const sheet=document.createElement('div');
-  sheet.className='sheet-backdrop open';
+  sheet.className='sheet-backdrop open bod-scope';
   sheet.innerHTML=`<div class="sheet"><div class="sheet-handle"></div><div class="sheet-title">Rechazar solicitud</div><div class="sheet-body">
     <div class="form-label" style="margin-bottom:8px">Motivo (opcional)</div>
     <input class="form-input" id="rej-mot" type="text" placeholder="Motivo…" style="margin-bottom:16px"/>
@@ -1427,7 +1431,7 @@ async function rechazarSolicitud(id) {
 async function verSeriales(itemId) {
   const item=allItems_.find(i=>i.id===itemId);
   const sheet=document.createElement('div');
-  sheet.className='sheet-backdrop open';
+  sheet.className='sheet-backdrop open bod-scope';
   sheet.innerHTML=`<div class="sheet"><div class="sheet-handle"></div>
     <div class="sheet-title">Seriales · ${tc(item?.name||'—')}</div>
     <div class="sheet-body">
@@ -1511,7 +1515,7 @@ function abrirDevolucion(salida) {
   });
 
   const sheet=document.createElement('div');
-  sheet.className='sheet-backdrop open';
+  sheet.className='sheet-backdrop open bod-scope';
   sheet.innerHTML=`<div class="sheet"><div class="sheet-handle"></div>
     <div class="sheet-title">Devolución — ${safeStr(salida.usuarioResponsable)}</div>
     <div class="sheet-body">
@@ -2379,7 +2383,7 @@ function showMemoCampana(salida) {
   };
 
   const sheet=document.createElement('div');
-  sheet.className='sheet-backdrop open';
+  sheet.className='sheet-backdrop open bod-scope';
   sheet.innerHTML=`<div class="sheet" style="max-height:92vh;overflow-y:auto">
     <div class="sheet-handle"></div>
     <div class="sheet-body" style="padding-top:4px">
@@ -2536,7 +2540,7 @@ function showMemo(salida) {
   };
 
   const sheet=document.createElement('div');
-  sheet.className='sheet-backdrop open';
+  sheet.className='sheet-backdrop open bod-scope';
   sheet.innerHTML=`<div class="sheet" style="max-height:90vh;overflow-y:auto">
     <div class="sheet-handle"></div>
     <div class="sheet-title">Memo de despacho</div>
@@ -2680,7 +2684,7 @@ function exportarInventario() {
 
 function abrirImportar() {
   const sheet=document.createElement('div');
-  sheet.className='sheet-backdrop open';
+  sheet.className='sheet-backdrop open bod-scope';
   sheet.innerHTML=`<div class="sheet"><div class="sheet-handle"></div>
     <div class="sheet-title">Importar items (Excel)</div>
     <div class="sheet-body">
@@ -2847,7 +2851,7 @@ async function ejecutarImport(sheet, rows) {
 function abrirNuevoItem(itemId=null) {
   const item=itemId?allItems_.find(i=>i.id===itemId):null;
   const sheet=document.createElement('div');
-  sheet.className='sheet-backdrop open';
+  sheet.className='sheet-backdrop open bod-scope';
   sheet.innerHTML=`<div class="sheet"><div class="sheet-handle"></div>
     <div class="sheet-title">${item?'Editar item':'Nuevo item'}</div>
     <div class="sheet-body">
@@ -2982,7 +2986,7 @@ function abrirEntrada(itemId) {
   const item=allItems_.find(i=>i.id===itemId);
   const esSerial = !!item?.requiereSerial;
   const sheet=document.createElement('div');
-  sheet.className='sheet-backdrop open';
+  sheet.className='sheet-backdrop open bod-scope';
   sheet.innerHTML=`<div class="sheet"><div class="sheet-handle"></div>
     <div class="sheet-title">Registrar entrada</div>
     <div class="sheet-body">
@@ -3184,14 +3188,15 @@ function mostrarModalCantidad(item, onAdd) {
   const disp=Math.max(0,safeNum(item.stock)-reservado);
   const m=document.createElement('div');
   m.style.cssText='position:fixed;inset:0;background:rgba(3,7,18,.75);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);display:flex;align-items:flex-end;justify-content:center;z-index:600;';
-  m.innerHTML=`<div style="background:#161f2e;width:100%;max-width:520px;border-radius:24px 24px 0 0;padding:8px 22px max(34px,22px);border-top:1px solid rgba(255,255,255,.08);box-shadow:0 -8px 40px rgba(0,0,0,.5)">
+  m.className='bod-scope';
+  m.innerHTML=`<div style="background:#0d1f35;width:100%;max-width:520px;border-radius:24px 24px 0 0;padding:8px 22px max(34px,22px);border-top:1px solid rgba(255,255,255,.08);box-shadow:0 -8px 40px rgba(0,0,0,.5)">
     <div style="width:40px;height:4px;background:rgba(255,255,255,.18);border-radius:2px;margin:0 auto 20px"></div>
-    <div style="font-size:17px;font-weight:800;margin-bottom:4px">${tc(item.name)}</div>
+    <div style="font-size:18px;font-weight:700;margin-bottom:4px">${tc(item.name)}</div>
     <div style="font-size:12px;color:var(--text-4);margin-bottom:24px">${disp} ${item.unit} disponibles en bodega${reservado?` (${reservado} reservados en despachos pendientes)`:''}</div>
     <div style="display:flex;align-items:center;justify-content:space-between;gap:18px;margin-bottom:24px">
       <button id="mc-dec" style="width:60px;height:60px;border-radius:16px;border:1px solid var(--border);background:var(--glass);color:var(--text);font-size:28px;font-weight:700;cursor:pointer;flex-shrink:0">−</button>
       <div style="flex:1;text-align:center">
-        <input id="mc-cant" type="number" min="1" max="${disp}" value="1" style="width:100%;text-align:center;font-size:44px;font-weight:900;color:var(--bod-light);background:transparent;border:none;outline:none;font-family:'Outfit',sans-serif"/>
+        <input id="mc-cant" class="bod-num" type="number" inputmode="numeric" min="1" max="${disp}" value="1" style="width:100%;text-align:center;font-size:44px;font-weight:500;color:var(--bod-light);background:transparent;border:none;outline:none;font-family:'Outfit',sans-serif"/>
         <div style="font-size:12px;color:var(--text-4);margin-top:-4px">${item.unit}</div>
       </div>
       <button id="mc-inc" style="width:60px;height:60px;border-radius:16px;border:1px solid var(--bod-border);background:var(--bod-glass);color:var(--bod-light);font-size:28px;font-weight:700;cursor:pointer;flex-shrink:0">+</button>
@@ -3199,7 +3204,7 @@ function mostrarModalCantidad(item, onAdd) {
     <div id="mc-err" class="form-error" style="margin-bottom:10px"></div>
     <div style="display:flex;gap:10px">
       <button id="mc-cancel" style="flex:1;height:50px;border-radius:14px;border:1px solid var(--border);background:transparent;color:var(--text-3);font-size:14px;font-weight:600;cursor:pointer;font-family:'Outfit',sans-serif">Cancelar</button>
-      <button class="btn-primary bod" id="mc-add" style="flex:2;height:50px">Agregar</button>
+      <button class="bod-btn-main" id="mc-add" style="flex:2;height:50px;font-size:14px">Agregar</button>
     </div>
   </div>`;
   document.body.appendChild(m);

@@ -1616,8 +1616,15 @@ body {
   padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
   background: var(--bg-base); border-top: 1px solid var(--border);
 }
-.bod-flow .select-chip.active { background: var(--bod-glass); border-color: var(--bod-border); color: var(--bod-light); }
-.bod-flow .form-input:focus { border-color: var(--bod-light); }
+/* En bodega (vista, pantallas completas y hojas) el acento es el violeta de bodega */
+.bod-flow .select-chip.active, .bod-scope .select-chip.active, #bod-content .select-chip.active {
+  background: var(--bod-glass); border-color: var(--bod-border); color: var(--bod-light);
+}
+.bod-flow .form-input:focus, .bod-scope .form-input:focus, #bod-content .form-input:focus { border-color: var(--bod-light); }
+.bod-qty:disabled { opacity: .35; cursor: default; }
+/* Número grande del modal de cantidad sin flechas del navegador */
+.bod-num { -moz-appearance: textfield; appearance: textfield; }
+.bod-num::-webkit-outer-spin-button, .bod-num::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 .bod-btn-full { width: 100%; height: 50px; font-size: 14px; }
 .bod-btn-main:disabled { opacity: .45; cursor: default; filter: none; }
 .bod-ac-lista {
