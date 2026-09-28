@@ -294,7 +294,12 @@ function setTab(tab) {
       mod.abrirVistaCondominio({
         key: el.dataset.key, session: session_, parejas: parejasActivas_,
         obtener: () => condominios_,
-        alCerrar: () => { if (activeTab_ === 'panel') setTab('panel'); },
+        // Si se eliminó la carga, recargar órdenes; si no, basta repintar
+        // (asignar y confirmar ya actualizan los objetos en memoria).
+        alCerrar: async ({ eliminado } = {}) => {
+          if (eliminado) await cargarOrdenes();
+          if (activeTab_ === 'panel') setTab('panel');
+        },
       });
     });
     cont.querySelector('#ami-btn-exportar')?.addEventListener('click', abrirExportarDia);
