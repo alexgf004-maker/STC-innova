@@ -68,9 +68,10 @@ export function cerrarVistaCondominio() {
   document.getElementById('cd-accion')?.remove();
   if (!vista_) return;
   const cb = vista_.alCerrar;
+  const eliminado = !!vista_.eliminado;
   vista_.ov.remove();
   vista_ = null;
-  if (typeof cb === 'function') cb();
+  if (typeof cb === 'function') cb({ eliminado });
 }
 
 function ordenesDelEdificio() {
@@ -183,6 +184,11 @@ function pintar() {
       <div id="cd-res" class="flex-col gap-6"></div>
       <div id="cd-niveles" class="flex-col gap-10">
         ${!total ? `<div class="dev-module"><div class="dev-title">Sin medidores</div><p>${v.esAdmin ? 'Este edificio ya no tiene órdenes cargadas.' : 'No tienes medidores asignados en este edificio.'}</p></div>` : niveles.map(tarjetaNivel).join('')}
+        ${v.esAdmin && total ? `
+        <button class="btn-action danger" id="cd-eliminar" style="height:46px;margin-top:10px">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg>
+          Eliminar esta carga (${total} medidores)
+        </button>` : ''}
       </div>
     </div>
   </div>`;
@@ -204,6 +210,7 @@ function pintar() {
     confirmarLote(porNivel.get(n).filter(o => o.estadoCampo === 'hecha'), n);
   });
   enlazarFilas(v.ov.querySelector('#cd-niveles'));
+  v.ov.querySelector('#cd-eliminar')?.addEventListener('click', () => eliminarEdificio(ordenes, edif));
 
   const inp = v.ov.querySelector('#cd-buscar');
   inp.oninput = () => { v.busq = inp.value; pintarResultados(); };
@@ -414,6 +421,53 @@ async function asignar(ordenes, pareja, destinoTxt) {
   } catch (err) {
     toast('Error al asignar: ' + err.message, 'error');
     pintar();
+  }
+}
+
+// Eliminar una carga de edificio (admin), por si se subió por error o repetida.
+// - Lo creado por el importador de condominios se BORRA.
+// - Lo que ya estaba en la ruta diaria antes de importar (tiene fechaRuta) NO
+//   se borra: se le quitan los campos de condominio y vuelve a la ruta.
+// Para evitar toques por error hay que escribir el nombre del edificio.
+async function eliminarEdificio(ordenes, edif) {
+  const lista = ordenes || [];
+  if (!lista.length) return;
+  const deRuta = lista.filter(o => o.fechaRuta);
+  const borrar = lista.filter(o => !o.fechaRuta);
+  const conTrabajo = borrar.filter(o => o.estadoCampo).length;
+  const msg = [
+    `Vas a eliminar la carga del edificio "${edif}".`,
+    '',
+    `Se borran ${borrar.length} medidor${borrar.length !== 1 ? 'es' : ''} de forma permanente.`,
+    conTrabajo ? `ATENCIÓN: ${conTrabajo} de ellos ya tienen trabajo registrado (cambiado, visita, etc.) y también se borran.` : '',
+    deRuta.length ? `${deRuta.length} que ya estaban en la ruta diaria no se borran: vuelven a la ruta.` : '',
+    '',
+    `Para confirmar, escribe el nombre del edificio: ${edif}`,
+  ].filter((l, i, a) => l || a[i - 1]).join('\n');
+  const escrito = prompt(msg, '');
+  if (escrito === null) return;
+  if (escrito.trim().toLowerCase() !== String(edif).trim().toLowerCase()) {
+    toast('El nombre no coincide. No se eliminó nada.', 'error');
+    return;
+  }
+  try {
+    const del = firebase.firestore.FieldValue.delete();
+    const quitar = { tipoSitio: del, condominio: del, edificio: del, nivel: del, etiqueta: del, forma: del };
+    const ops = [
+      ...borrar.map(o => b => b.delete(db.collection(COL).doc(o.id))),
+      ...deRuta.map(o => b => b.update(db.collection(COL).doc(o.id), quitar)),
+    ];
+    for (let i = 0; i < ops.length; i += 400) {
+      const batch = db.batch();
+      ops.slice(i, i + 400).forEach(op => op(batch));
+      await batch.commit();
+    }
+    toast(`Carga de ${edif} eliminada${deRuta.length ? ` · ${deRuta.length} volvieron a la ruta` : ''}`, 'ok');
+    window.dispatchEvent(new CustomEvent('ami:updated'));
+    if (vista_) vista_.eliminado = true;
+    cerrarVistaCondominio();
+  } catch (err) {
+    toast('Error al eliminar: ' + err.message, 'error');
   }
 }
 
