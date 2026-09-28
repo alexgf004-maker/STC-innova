@@ -297,6 +297,7 @@ function setTab(tab) {
         alCerrar: () => { if (activeTab_ === 'panel') setTab('panel'); },
       });
     });
+    cont.querySelector('#ami-btn-exportar')?.addEventListener('click', abrirExportarDia);
     const btnC = cont.querySelector('#ami-btn-condominio');
     const fileC = cont.querySelector('#ami-file-condominio');
     if (btnC && fileC) {
@@ -516,6 +517,9 @@ function renderPanel() {
       </button>
       <button id="ami-btn-condominio" title="Cargar condominio (Excel)" style="width:48px;flex-shrink:0;display:flex;align-items:center;justify-content:center;border-radius:12px;border:1px solid ${ACCENT_BORDER};background:${ACCENT_GLASS};color:${ACCENT};cursor:pointer;font-family:inherit">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="17" height="17"><rect x="4" y="2" width="16" height="20" rx="2"/><path d="M9 22v-4h6v4"/><path d="M8 6h.01M12 6h.01M16 6h.01M8 10h.01M12 10h.01M16 10h.01M8 14h.01M12 14h.01M16 14h.01"/></svg>
+      </button>
+      <button id="ami-btn-exportar" title="Extraer Excel del día" style="width:48px;flex-shrink:0;display:flex;align-items:center;justify-content:center;border-radius:12px;border:1px solid var(--border);background:var(--glass);color:var(--text-2);cursor:pointer;font-family:inherit">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="17" height="17"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
       </button>
       <input type="file" id="ami-file-importar" accept=".xlsx,.xls" style="display:none"/>
       <input type="file" id="ami-file-historial" accept=".xlsx,.xls" style="display:none"/>
@@ -1155,6 +1159,167 @@ async function importarCondominio(file) {
   }
 
   pintar();
+}
+
+// ══════════════════════════════════════════════════
+// EXTRACCIÓN POR DÍA (Excel) — admin/asistente
+// Usa las órdenes que el Panel ya tiene en memoria (ruta + condominios), así
+// que no hace lecturas extra a Firestore. Tres hojas:
+//   Trabajo del día: lo que pasó ese día (realizada, visita, ya cambiado,
+//                    mal ubicado) con toda la información de la gota.
+//   Ruta del día:    las órdenes cargadas para ese día y su estado actual.
+//   Resumen:         conteo por pareja.
+// ══════════════════════════════════════════════════
+const ESTADO_TXT = { hecha: 'Realizada', aprobada: 'Confirmada', visita: 'Visita', ya_cambiado: 'Ya cambiado', mal_ubicado: 'Mal ubicado' };
+const aFecha = ts => ts?.toDate ? ts.toDate() : (ts instanceof Date ? ts : (ts ? new Date(ts) : null));
+const txtFechaHora = ts => {
+  const d = aFecha(ts); if (!d || isNaN(d)) return '';
+  const p = n => String(n).padStart(2, '0');
+  return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`;
+};
+const txtHora = ts => { const t = txtFechaHora(ts); return t ? t.slice(11) : ''; };
+
+// Eventos de una orden en un día (una orden puede tener visita y luego realizada)
+function eventosDelDia(o, dia) {
+  const ev = [];
+  if (claveDiaAMI(o.fechaVisita) === dia)  ev.push({ tipo: 'Visita', ts: o.fechaVisita });
+  if (claveDiaAMI(o.fechaHecha) === dia && (o.estadoCampo === 'hecha' || o.estadoCampo === 'aprobada'))
+    ev.push({ tipo: 'Realizada', ts: o.fechaHecha });
+  if (claveDiaAMI(o.yaCambiadoEn) === dia) ev.push({ tipo: 'Ya cambiado', ts: o.yaCambiadoEn });
+  if (claveDiaAMI(o.malUbicadoEn) === dia) ev.push({ tipo: 'Mal ubicado', ts: o.malUbicadoEn });
+  return ev;
+}
+
+function datosDelDia(dia) {
+  const todas = [...ordenes_, ...condominios_];
+  const trabajo = [];
+  todas.forEach(o => { const ev = eventosDelDia(o, dia); if (ev.length) trabajo.push({ o, ev }); });
+  trabajo.sort((a, b) => (aFecha(a.ev[0].ts) || 0) - (aFecha(b.ev[0].ts) || 0));
+  const ruta = todas.filter(o => claveDiaAMI(o.fechaRuta) === dia);
+  return { trabajo, ruta };
+}
+
+function abrirExportarDia() {
+  const hoy = claveDiaAMI(new Date());
+  const sh = document.createElement('div');
+  sh.className = 'sheet-backdrop open';
+  document.body.appendChild(sh);
+  sh.addEventListener('click', e => { if (e.target === sh) sh.remove(); });
+  sh.innerHTML = `<div class="sheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-title">Extraer Excel del día</div>
+    <div class="sheet-body flex-col gap-12">
+      <div class="form-field">
+        <div class="form-label">Día</div>
+        <input class="form-input" id="exp-dia" type="date" value="${hoy}" max="${hoy}"/>
+      </div>
+      <div class="ds-card" id="exp-resumen"></div>
+      <button class="btn-primary full" id="exp-descargar" style="border-color:${ACCENT_BORDER};background:${ACCENT_GLASS};color:${ACCENT}">Descargar Excel</button>
+    </div>
+  </div>`;
+  const inp = sh.querySelector('#exp-dia');
+  const btn = sh.querySelector('#exp-descargar');
+  const pintarResumen = () => {
+    const { trabajo, ruta } = datosDelDia(inp.value);
+    const cuenta = t => trabajo.filter(x => x.ev.some(e => e.tipo === t)).length;
+    const fila = (lbl, n, color) => `<div style="display:flex;justify-content:space-between;font-size:13px;padding:5px 0"><span style="color:var(--text-3)">${lbl}</span><span style="font-weight:600;${color ? 'color:' + color : ''}">${n}</span></div>`;
+    sh.querySelector('#exp-resumen').innerHTML =
+      fila('Realizadas', cuenta('Realizada'), '#22c55e') + fila('Visitas', cuenta('Visita'), '#fbbf24') +
+      fila('Ya cambiado', cuenta('Ya cambiado')) + fila('Mal ubicado', cuenta('Mal ubicado')) +
+      `<div style="height:1px;background:var(--border);margin:6px 0"></div>` +
+      fila('Órdenes en la ruta de ese día', ruta.length);
+    const vacio = !trabajo.length && !ruta.length;
+    btn.disabled = vacio; btn.style.opacity = vacio ? '.45' : '';
+    btn.textContent = vacio ? 'No hay datos ese día' : 'Descargar Excel';
+  };
+  inp.addEventListener('input', pintarResumen);
+  btn.addEventListener('click', () => { if (exportarDia(inp.value)) sh.remove(); });
+  pintarResumen();
+}
+
+function exportarDia(dia) {
+  if (typeof XLSX === 'undefined') { toast('No se pudo cargar el generador de Excel. Revisa la conexión.', 'error'); return false; }
+  const { trabajo, ruta } = datosDelDia(dia);
+  if (!trabajo.length && !ruta.length) { toast('No hay datos para ese día', 'error'); return false; }
+  const pareja = o => o.pareja || '';
+  const cuadrilla = o => Array.isArray(o.parejaDelDia) ? o.parejaDelDia.join(', ') : (o.parejaDelDia || '');
+  const reportadoPor = o => [o.yaCambiadoPor, o.malUbicadoPor].filter(Boolean).join(', ');
+
+  const filasTrabajo = trabajo.map(({ o, ev }) => ({
+    'Evento': ev.map(e => e.tipo).join(' + '),
+    'Hora': ev.map(e => txtHora(e.ts)).join(' / '),
+    'NC': o.nc || '',
+    'Medidor': o.medidor || '',
+    'Cliente': o.cliente || o.nombre || '',
+    'Dirección': o.direccion || '',
+    'DS': o.ds || '',
+    'Pareja asignada': pareja(o),
+    'Realizada por': o.hechaPor || '',
+    'Cuadrilla del día': cuadrilla(o),
+    'Estado actual': ESTADO_TXT[o.estadoCampo] || 'Pendiente',
+    'Motivo visita': o.motivoVisita || '',
+    'Observación visita': o.observacionVisita || '',
+    'Visitada por': o.visitadoPor || '',
+    'Comentario ya cambiado': o.yaCambiadoComentario || '',
+    'Reportado por': reportadoPor(o),
+    'Confirmada por': o.aprobadoPor || '',
+    'Fecha confirmación': txtFechaHora(o.fechaAprobacion),
+    'Observación': o.observacion || '',
+    'Latitud': o.latitud || '',
+    'Longitud': o.longitud || '',
+    'Condominio': o.condominio || '',
+    'Edificio': o.edificio || '',
+    'Nivel': o.nivel || '',
+    'Unidad': o.etiqueta || '',
+    'Forma': o.forma || '',
+    'Fecha ruta': txtFechaHora(o.fechaRuta).slice(0, 10),
+    'Generada en campo': o.generadaEnCampo ? 'Sí' : '',
+  }));
+
+  const filasRuta = ruta.map(o => ({
+    'NC': o.nc || '',
+    'Medidor': o.medidor || '',
+    'Cliente': o.cliente || o.nombre || '',
+    'Dirección': o.direccion || '',
+    'DS': o.ds || '',
+    'Pareja asignada': pareja(o),
+    'Estado actual': ESTADO_TXT[o.estadoCampo] || 'Pendiente',
+    'Realizada': txtFechaHora(o.fechaHecha),
+    'Realizada por': o.hechaPor || '',
+    'Motivo visita': o.motivoVisita || '',
+    'Latitud': o.latitud || '',
+    'Longitud': o.longitud || '',
+  }));
+
+  // Resumen por pareja (según la pareja asignada a la orden)
+  const porPareja = new Map();
+  trabajo.forEach(({ o, ev }) => {
+    const k = pareja(o) || 'Sin pareja';
+    if (!porPareja.has(k)) porPareja.set(k, { 'Pareja': k, 'Realizadas': 0, 'Visitas': 0, 'Ya cambiado': 0, 'Mal ubicado': 0 });
+    const r = porPareja.get(k);
+    ev.forEach(e => { const col = e.tipo === 'Realizada' ? 'Realizadas' : e.tipo === 'Visita' ? 'Visitas' : e.tipo; r[col]++; });
+  });
+  const numP = x => parseInt(String(x).replace(/\D/g, ''), 10) || 999;
+  const filasResumen = [...porPareja.values()].sort((a, b) => numP(a.Pareja) - numP(b.Pareja));
+  if (filasResumen.length) {
+    const tot = { 'Pareja': 'Total', 'Realizadas': 0, 'Visitas': 0, 'Ya cambiado': 0, 'Mal ubicado': 0 };
+    filasResumen.forEach(r => ['Realizadas', 'Visitas', 'Ya cambiado', 'Mal ubicado'].forEach(c => tot[c] += r[c]));
+    filasResumen.push(tot);
+  }
+
+  const hoja = (filas, anchos, vacio) => {
+    const ws = filas.length ? XLSX.utils.json_to_sheet(filas) : XLSX.utils.aoa_to_sheet([[vacio]]);
+    if (filas.length) ws['!cols'] = Object.keys(filas[0]).map(k => ({ wch: anchos[k] || Math.max(10, k.length + 2) }));
+    return ws;
+  };
+  const anchos = { 'Evento': 14, 'Hora': 9, 'NC': 12, 'Medidor': 14, 'Cliente': 30, 'Dirección': 40, 'Pareja asignada': 14, 'Realizada por': 22, 'Cuadrilla del día': 30, 'Estado actual': 13, 'Motivo visita': 22, 'Observación visita': 30, 'Comentario ya cambiado': 30, 'Observación': 30, 'Latitud': 12, 'Longitud': 12, 'Realizada': 17 };
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, hoja(filasTrabajo, anchos, 'Sin trabajo registrado ese día'), 'Trabajo del día');
+  XLSX.utils.book_append_sheet(wb, hoja(filasRuta, anchos, 'No hubo ruta cargada para ese día'), 'Ruta del día');
+  XLSX.utils.book_append_sheet(wb, hoja(filasResumen, { 'Pareja': 14 }, 'Sin trabajo registrado ese día'), 'Resumen');
+  XLSX.writeFile(wb, `AMI_${dia}.xlsx`);
+  toast(`Excel del ${dia.split('-').reverse().join('/')} descargado`, 'ok');
+  return true;
 }
 
 // ── Importar historial de trabajos hechos (Excel) ──
