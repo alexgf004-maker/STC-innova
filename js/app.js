@@ -208,27 +208,79 @@ function pintarEstadoMantenimiento() {
   }
 }
 
+// Pantalla para técnicos y asistentes mientras el admin tiene la app en
+// mantenimiento. Revisa sola cada 30 s y entra en cuanto se apaga.
 function mostrarPantallaMantenimiento(msg) {
+  const SEG = 30;
+  const nombre = String(session?.displayName || '').trim().split(/\s+/)[0] || '';
   const ov = document.createElement('div');
-  ov.style.cssText = 'position:fixed;inset:0;z-index:1000;background:#0a1628;display:flex;align-items:center;justify-content:center;padding:28px;text-align:center';
+  ov.className = 'mnt-pantalla';
   ov.innerHTML = `
-    <div style="max-width:340px">
-      <div style="width:60px;height:60px;margin:0 auto 18px;border-radius:17px;background:rgba(251,191,36,.12);border:1px solid rgba(251,191,36,.35);display:flex;align-items:center;justify-content:center">
-        <svg viewBox="0 0 24 24" fill="none" stroke="#fbbf24" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="28" height="28">
-          <path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"/>
-        </svg>
+    <div class="mnt-marca">
+      <div class="topbar-logo" style="width:30px;height:30px;border-radius:9px">
+        <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
       </div>
-      <div style="font-size:20px;font-weight:800;margin-bottom:10px">Estamos actualizando</div>
-      <div style="font-size:13px;color:var(--text-3);line-height:1.6;margin-bottom:24px">
-        ${msg || 'El sistema está en mantenimiento por unos minutos. Vuelve a intentar más tarde.'}
+      <span>INNOVA STC</span>
+    </div>
+
+    <div class="mnt-centro">
+      <div class="mnt-ilus">
+        <span class="mnt-onda"></span><span class="mnt-onda d2"></span>
+        <div class="mnt-icono">
+          <svg class="mnt-engrane" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="34" height="34">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 11-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 110-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 114 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 110 4h-.09a1.65 1.65 0 00-1.51 1z"/>
+          </svg>
+        </div>
       </div>
-      <button id="mnt-reintentar" style="width:100%;height:46px;border-radius:12px;border:1px solid rgba(45,212,191,.35);background:rgba(45,212,191,.1);color:#2dd4bf;font-size:13px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif;margin-bottom:8px">Reintentar</button>
-      <button id="mnt-salir" style="width:100%;height:42px;border-radius:12px;border:none;background:transparent;color:var(--text-4);font-size:12px;font-weight:600;cursor:pointer;font-family:'Outfit',sans-serif">Cerrar sesión</button>
+
+      <div class="mnt-titulo">${nombre ? 'Un momento, <span id="mnt-nombre"></span>' : 'Un momento'}</div>
+      <div class="mnt-sub">Estamos haciendo mejoras en la app</div>
+      <div class="mnt-msg" id="mnt-msg"></div>
+
+      <div class="ds-card mnt-estado">
+        <div style="display:flex;align-items:center;gap:10px">
+          <span class="mnt-punto"></span>
+          <div style="flex:1;min-width:0;text-align:left">
+            <div style="font-size:13px;font-weight:600">Te dejamos entrar en cuanto terminemos</div>
+            <div style="font-size:12px;color:var(--text-3);margin-top:2px" id="mnt-cuenta">Revisando…</div>
+          </div>
+        </div>
+        <div class="ds-bar" style="margin-top:12px;height:4px"><i id="mnt-barra" style="width:0%;background:#fbbf24;transition:width 1s linear"></i></div>
+      </div>
+    </div>
+
+    <div class="mnt-pie">
+      <button class="mnt-btn" id="mnt-reintentar">Revisar ahora</button>
+      <button class="mnt-btn-link" id="mnt-salir">Cerrar sesión</button>
+      <div class="mnt-nota">Tu trabajo guardado no se pierde. Si es urgente, avisa a tu coordinadora.</div>
     </div>`;
   document.body.appendChild(ov);
+  if (nombre) ov.querySelector('#mnt-nombre').textContent = nombre;
+  ov.querySelector('#mnt-msg').textContent = msg || 'Serán solo unos minutos.';
 
-  document.getElementById('mnt-reintentar').addEventListener('click', () => location.reload());
-  document.getElementById('mnt-salir').addEventListener('click', async () => {
+  // Cuenta regresiva + revisión automática del estado
+  let falta = SEG, revisando = false;
+  const cuenta = ov.querySelector('#mnt-cuenta');
+  const barra = ov.querySelector('#mnt-barra');
+  const pintar = () => {
+    cuenta.textContent = revisando ? 'Revisando…' : `Volvemos a revisar en ${falta} s`;
+    barra.style.width = `${((SEG - falta) / SEG) * 100}%`;
+  };
+  const revisar = async () => {
+    if (revisando) return;
+    revisando = true; pintar();
+    const m = await estaEnMantenimiento();
+    if (!m.activo) { cuenta.textContent = 'Listo, entrando…'; location.reload(); return; }
+    if (m.msg) ov.querySelector('#mnt-msg').textContent = m.msg;
+    revisando = false; falta = SEG; pintar();
+  };
+  const timer = setInterval(() => { if (revisando) return; falta--; if (falta <= 0) revisar(); else pintar(); }, 1000);
+  pintar();
+
+  ov.querySelector('#mnt-reintentar').addEventListener('click', revisar);
+  ov.querySelector('#mnt-salir').addEventListener('click', async () => {
+    clearInterval(timer);
     try { await auth.signOut(); } catch {}
     localStorage.removeItem(SESSION_KEY);
     window.location.replace(LOGIN_PATH);
