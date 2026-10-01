@@ -375,46 +375,60 @@ body {
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 16px 16px max(80px, calc(64px + env(safe-area-inset-bottom)));
+  padding: 16px 16px calc(96px + env(safe-area-inset-bottom));
   overscroll-behavior-y: contain;
   -webkit-overflow-scrolling: touch;
 }
 .content-area::-webkit-scrollbar { display: none; }
 
-/* Navbar */
+/* Navbar — cápsula flotante (mismo lenguaje que las tarjetas ds) */
 .navbar {
   position: absolute; bottom: 0; left: 0; right: 0;
-  padding: 8px 8px max(8px, env(safe-area-inset-bottom));
-  background: rgba(7,12,18,.85);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border-top: 1px solid var(--border);
-  display: flex; gap: 4px;
-  z-index: 10;
+  padding: 0 10px max(10px, env(safe-area-inset-bottom));
+  z-index: 10; pointer-events: none;   /* solo la cápsula recibe toques */
 }
+.nav-pill {
+  pointer-events: auto;
+  display: flex; gap: 2px; padding: 6px;
+  border-radius: 22px;
+  background: rgba(13,22,38,.92);
+  backdrop-filter: blur(20px) saturate(140%);
+  -webkit-backdrop-filter: blur(20px) saturate(140%);
+  border: 1px solid rgba(255,255,255,.09);
+  box-shadow: 0 14px 34px -12px rgba(0,0,0,.75), inset 0 1px 0 rgba(255,255,255,.04);
+}
+/* Color de acento por área (--nav-acc) y su tinte (--nav-tint) */
+.nav-item          { --nav-acc: var(--cm-light);  --nav-tint: rgba(45,212,191,.16); }
+.nav-item.otc      { --nav-acc: var(--otc-light); --nav-tint: rgba(96,165,250,.16); }
+.nav-item.cr       { --nav-acc: var(--cr-light);  --nav-tint: rgba(239,68,68,.16); }
+.nav-item.am       { --nav-acc: var(--am-light);  --nav-tint: rgba(139,92,246,.18); }
+.nav-item.rc       { --nav-acc: var(--rc-light);  --nav-tint: rgba(251,191,36,.16); }
+.nav-item.bod      { --nav-acc: var(--bod-light); --nav-tint: rgba(139,92,246,.16); }
 .nav-item {
-  flex: 1; height: 58px;
-  border-radius: 14px;
+  flex: 1; min-width: 0; height: 56px;
+  border-radius: 16px;
   display: flex; flex-direction: column;
   align-items: center; justify-content: center; gap: 4px;
-  cursor: pointer; color: var(--text-4);
-  transition: color .2s, background .2s, transform .1s;
+  cursor: pointer; color: var(--text-3);
+  transition: color .2s, transform .1s;
   position: relative;
+  -webkit-tap-highlight-color: transparent;
 }
-.nav-item:active { transform: scale(.93); }
-.nav-item svg { width: 21px; height: 21px; stroke-width: 1.8; transition: transform .2s; }
-.nav-item span { font-size: 9px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
-.nav-item.active svg { transform: translateY(-1px); }
-/* Indicador superior del ítem activo — toque premium */
-.nav-item.active::before {
-  content: ''; position: absolute; top: 6px; left: 50%; transform: translateX(-50%);
-  width: 18px; height: 3px; border-radius: 2px; background: currentColor;
+.nav-item:active { transform: scale(.94); }
+.nav-ico {
+  position: relative;
+  display: flex; align-items: center; justify-content: center;
+  width: 52px; height: 30px; border-radius: 15px;
+  transition: background .25s;
 }
-.nav-item.active       { color: var(--cm-light);  background: rgba(45,212,191,.08); }
-.nav-item.active.otc   { color: var(--otc-light); background: rgba(96,165,250,.08); }
-.nav-item.active.cr    { color: var(--cr-light);  background: rgba(239,68,68,.08); }
-.nav-item.active.am    { color: var(--am-light);  background: rgba(139,92,246,.08); }
-.nav-item.active.rc    { color: var(--rc-light);  background: rgba(251,191,36,.08); }
+.nav-item svg { width: 20px; height: 20px; stroke-width: 1.9; }
+.nav-lbl {
+  font-size: 10.5px; font-weight: 500; letter-spacing: .01em;
+  max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.nav-item.active { color: var(--nav-acc); }
+.nav-item.active .nav-ico { background: var(--nav-tint); }
+.nav-item.active .nav-lbl { font-weight: 600; }
 .nav-item .nav-badge {
   position: absolute; top: 8px; right: calc(50% - 14px);
   min-width: 16px; height: 16px; border-radius: 8px;
@@ -1692,6 +1706,8 @@ body {
 
   /* Sidebar izquierdo */
   .navbar {
+    pointer-events: auto;
+    background: rgba(7,12,18,.85);
     position: static !important;
     width: 200px;
     min-width: 200px;
@@ -1728,19 +1744,23 @@ body {
     width: 100% !important;
   }
 
-  .nav-item span {
+  .nav-pill {
+    display: flex; flex-direction: column; gap: 4px; width: 100%;
+    padding: 0; border: none; border-radius: 0; background: none; box-shadow: none;
+    backdrop-filter: none; -webkit-backdrop-filter: none;
+  }
+  .nav-ico { width: auto; height: auto; background: none !important; }
+  .nav-item.active { background: var(--nav-tint); }
+  .nav-lbl {
     font-size: 13px !important;
     font-weight: 600 !important;
     letter-spacing: 0 !important;
-    text-transform: none !important;
   }
 
   .nav-item svg { width: 18px !important; height: 18px !important; }
 
-  .nav-item .nav-badge {
-    position: static !important;
-    margin-left: auto !important;
-  }
+  .nav-item { flex: none !important; }
+  .nav-item .nav-badge { top: -7px !important; right: -9px !important; }
 
   /* Columna principal */
   .main-col {

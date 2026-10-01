@@ -10,37 +10,37 @@ const NAV_CONFIGS = {
   admin: [
     { id: 'home',     label: 'Dashboard', icon: 'home' },
     { id: 'areas',    label: 'Áreas',     icon: 'zap',   color: 'cm'  },
-    { id: 'bodega',   label: 'Bodega',    icon: 'box'  },
+    { id: 'bodega',   label: 'Bodega',    icon: 'box',   color: 'bod' },
     { id: 'usuarios', label: 'Usuarios',  icon: 'users' },
   ],
   asistente: [
     { id: 'home',     label: 'Dashboard', icon: 'home' },
     { id: 'areas',    label: 'Áreas',     icon: 'zap',   color: 'cm'  },
-    { id: 'bodega',   label: 'Bodega',    icon: 'box'  },
+    { id: 'bodega',   label: 'Bodega',    icon: 'box',   color: 'bod' },
     { id: 'usuarios', label: 'Usuarios',  icon: 'users' },
   ],
   tecnico_cambios: [
     { id: 'home',    label: 'Inicio',  icon: 'home' },
     { id: 'cambios', label: 'Órdenes', icon: 'list', color: 'cm' },
     { id: 'mapa',    label: 'Mapa',    icon: 'map',  color: 'cm' },
-    { id: 'bodega',  label: 'Bodega',  icon: 'box'  },
+    { id: 'bodega',  label: 'Bodega',  icon: 'box',  color: 'bod' },
   ],
   tecnico_caracterizacion: [
     { id: 'home',                label: 'Inicio',  icon: 'home' },
     { id: 'caracterizacion',     label: 'Órdenes', icon: 'list', color: 'cr' },
     { id: 'caracterizacion_mapa',label: 'Mapa',    icon: 'map',  color: 'cr' },
-    { id: 'bodega',              label: 'Bodega',  icon: 'box'  },
+    { id: 'bodega',              label: 'Bodega',  icon: 'box', color: 'bod' },
   ],
   tecnico_reclamos: [
     { id: 'home',     label: 'Inicio',  icon: 'home' },
     { id: 'reclamos', label: 'Reclamos', icon: 'list', color: 'cm' },
-    { id: 'bodega',   label: 'Bodega',  icon: 'box'  },
+    { id: 'bodega',   label: 'Bodega',  icon: 'box', color: 'bod' },
   ],
   tecnico_ami: [
     { id: 'home',     label: 'Inicio',  icon: 'home' },
     { id: 'ami',      label: 'Órdenes', icon: 'list', color: 'am' },
     { id: 'ami_mapa', label: 'Mapa',    icon: 'map',  color: 'am' },
-    { id: 'bodega',   label: 'Bodega',  icon: 'box'  },
+    { id: 'bodega',   label: 'Bodega',  icon: 'box', color: 'bod' },
   ],
   tecnico_none: [
     { id: 'home', label: 'Inicio', icon: 'home' },
@@ -211,17 +211,19 @@ function buildNavbar(session) {
     return;
   }
 
-  navbar.innerHTML = items.map(item => `
+  // Cápsula flotante: .navbar es el contenedor (con el margen inferior) y
+  // .nav-pill la barra visible. Los mapas siguen midiendo .navbar.
+  navbar.innerHTML = `<div class="nav-pill">${items.map(item => `
     <div class="nav-item${item.color ? ' ' + item.color : ''}"
          data-tab="${item.id}"
          onclick="window.__router.navigateTo('${item.id}')">
-      <div style="position:relative;display:inline-flex">
+      <div class="nav-ico">
         ${getNavIcon(item.icon)}
-        <span class="nav-badge" data-badge-for="${item.id}" style="display:none;position:absolute;top:-6px;right:-8px;min-width:16px;height:16px;padding:0 4px;border-radius:8px;background:#ef4444;color:#fff;font-size:10px;font-weight:800;line-height:16px;text-align:center;box-shadow:0 0 0 2px var(--bg,#0d1117)"></span>
+        <span class="nav-badge" data-badge-for="${item.id}" style="display:none;position:absolute;top:-4px;right:6px;min-width:16px;height:16px;padding:0 4px;border-radius:8px;background:#ef4444;color:#fff;font-size:10px;font-weight:800;line-height:16px;text-align:center;box-shadow:0 0 0 2px #0d1626"></span>
       </div>
-      <span>${item.label}</span>
+      <span class="nav-lbl">${item.label}</span>
     </div>
-  `).join('');
+  `).join('')}</div>`;
   // Repintar badges guardados (por si el listener ya tenía datos)
   if (window.__pintarBadgeSolicitudes) window.__pintarBadgeSolicitudes();
 }
