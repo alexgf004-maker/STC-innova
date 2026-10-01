@@ -6,7 +6,7 @@
 
 import { db } from '../firebase.js';
 import { leerStats, recalcularStats } from '../stats.js';
-import { setupRefreshBtn, toast } from '../ui.js';
+import { toast, escapeHtml } from '../ui.js';
 
 const META_DIARIA = 15;
 
@@ -22,15 +22,10 @@ export async function init(container, session) {
     cargarDespachosPendientesTecnico(session);
     return;
   }
-  if (role === 'admin')     {
-    renderHomeAdmin(container, session);
-    return;
-  }
-  if (role === 'asistente') {
-    renderHomeAsistente(container, session);
-    setupRefreshBtn(async () => {
-      renderHomeAsistente(container, session);
-    });
+  // Admin y asistente comparten inicio. El botón de refrescar de la barra
+  // superior ya vuelve a abrir la vista, no hace falta otro listener aquí.
+  if (role === 'admin' || role === 'asistente') {
+    renderHomeOficina(container, session);
     return;
   }
 
@@ -85,7 +80,7 @@ function intentarPintarPendientes(intento){
   // Buscar el contenedor donde pintar: el primer .flex-col dentro del container del técnico
   let cont = null;
   if (__containerTec) {
-    cont = __containerTec.querySelector('.flex-col') || __containerTec;
+    cont = __containerTec.querySelector('#home-despachos-slot') || __containerTec.querySelector('.flex-col') || __containerTec;
   }
   if (!cont) {
     if (intento < 20) return setTimeout(()=>intentarPintarPendientes(intento+1), 100);
@@ -94,8 +89,8 @@ function intentarPintarPendientes(intento){
   renderDespachosPendientesTecnico(cont);
 }
 
-const CAMP_LABEL_HOME = { CAMBIOS:'Cambio de Medidores', AMI:'AMI', Caracterizacion:'Caracterización', ReclamosSIGET:'Reclamos SIGET' };
-const CAMP_COLOR_HOME = { CAMBIOS:'#2dd4bf', AMI:'#fbbf24', Caracterizacion:'#a78bfa', ReclamosSIGET:'#f472b6' };
+const CAMP_LABEL_HOME = { CAMBIOS:'Cambio de Medidores', AMI:'AMI', Caracterizacion:'Caracterización', Reclamos:'Reclamos SIGET', ReclamosSIGET:'Reclamos SIGET', OTC:'OTC' };
+const CAMP_COLOR_HOME = { CAMBIOS:'#2dd4bf', AMI:'#a78bfa', Caracterizacion:'#ef4444', Reclamos:'#fbbf24', ReclamosSIGET:'#fbbf24', OTC:'#60a5fa' };
 
 function renderDespachosPendientesTecnico(cont) {
   document.getElementById('despachos-pend-tec')?.remove();
@@ -104,7 +99,7 @@ function renderDespachosPendientesTecnico(cont) {
 
   const wrap = document.createElement('div');
   wrap.id = 'despachos-pend-tec';
-  wrap.style.cssText = 'margin-bottom:12px';
+  wrap.style.cssText = 'margin-bottom:18px';
 
   wrap.innerHTML = `
     <div class="flex-col gap-10">
@@ -121,7 +116,7 @@ function renderDespachosPendientesTecnico(cont) {
             </div>
             <div style="flex:1">
               <div style="font-size:14px;font-weight:800">Material por recibir</div>
-              <div style="font-size:11px;color:var(--text-4)">${lbl} · te lo entrega ${p.entregadoPor||'bodega'}</div>
+              <div style="font-size:11px;color:var(--text-4)">${escapeHtml(lbl)} · te lo entrega ${escapeHtml(p.entregadoPor||'bodega')}</div>
             </div>
             <div style="font-size:10px;font-weight:700;color:${col};background:${col}1a;border:1px solid ${col}44;padding:3px 10px;border-radius:20px">${totalItems} items</div>
           </div>
@@ -134,7 +129,7 @@ function renderDespachosPendientesTecnico(cont) {
                 : '';
               return `<div style="padding:7px 0;border-top:1px solid var(--border)">
                 <div style="display:flex;justify-content:space-between;font-size:12px">
-                  <span style="color:var(--text-2)">${(m.nombre||m.name||'—')}</span>
+                  <span style="color:var(--text-2)">${escapeHtml(m.nombre||m.name||'—')}</span>
                   <span style="font-weight:700">${m.cantidad} ${m.unit||''}</span>
                 </div>${series}
               </div>`;
@@ -540,12 +535,13 @@ function renderHomeReclamos(container, session) {
 
   container.innerHTML = `
     <div class="ds-view anim-up">
+      <div id="home-despachos-slot"></div>
 
       <!-- Tarjeta protagonista de identidad -->
       <div class="ds-pcard rc" style="margin-bottom:24px">
         <div style="display:flex;justify-content:space-between;align-items:flex-start">
           <div>
-            <div style="font-size:18px;font-weight:700;color:#fff;line-height:1.1">${session.displayName}</div>
+            <div style="font-size:18px;font-weight:700;color:#fff;line-height:1.1">${escapeHtml(session.displayName)}</div>
             <div style="font-size:13px;color:rgba(255,255,255,.75);margin-top:3px">Reclamos SIGET</div>
           </div>
           <div class="ds-pcard-badge">${fechaCorta}</div>
@@ -609,12 +605,13 @@ function renderHomeTecnico(container, session, area, destino) {
     </style>
 
     <div class="ds-view anim-up">
+      <div id="home-despachos-slot"></div>
 
       <!-- Tarjeta protagonista: identidad + meta del día + cuadrilla -->
       <div class="ds-pcard ${color}" id="meta-card" style="margin-bottom:24px">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:18px">
           <div>
-            <div style="font-size:18px;font-weight:700;color:#fff;line-height:1.1">${session.displayName}</div>
+            <div style="font-size:18px;font-weight:700;color:#fff;line-height:1.1">${escapeHtml(session.displayName)}</div>
             <div style="font-size:13px;color:rgba(255,255,255,.75);margin-top:3px">${area === 'CAMBIOS' ? 'Cambios' : area === 'Caracterizacion' ? 'Caracterización' : area} · ${destino || ''}</div>
           </div>
           <div class="ds-pcard-badge">${fechaCorta}</div>
@@ -654,7 +651,7 @@ function renderHomeTecnico(container, session, area, destino) {
       <div class="ds-sec">Avance total de la pareja</div>
       <div class="ds-card" style="margin-bottom:24px">
         <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:12px">
-          <div class="ds-num-md" id="prog-total-pct" style="color:var(--text-1)">—</div>
+          <div class="ds-num-md" id="prog-total-pct" style="color:var(--text)">—</div>
           <div style="font-size:15px;font-weight:600;color:${accentColor}" id="prog-total-bar-pct">—</div>
         </div>
         <div class="ds-bar"><i id="prog-total-bar" class="${color}"></i></div>
@@ -671,14 +668,151 @@ function renderHomeTecnico(container, session, area, destino) {
   `;
 }
 
-// ── Personal asignado hoy ─────────────────────────
+// ── Inicio de oficina (admin / asistente) ─────────
 const AREA_INFO_HOME = {
-  CAMBIOS:         { label: 'Cambios',        color: '#2dd4bf', rgb: '45,212,191' },
-  Caracterizacion: { label: 'Caracterización', color: '#ef4444', rgb: '239,68,68' },
-  Reclamos:        { label: 'Reclamos SIGET',  color: '#fbbf24', rgb: '251,191,36' },
-  OTC:             { label: 'OTC',             color: '#60a5fa', rgb: '96,165,250' },
+  CAMBIOS:         { label: 'Cambios',         color: '#2dd4bf', rgb: '45,212,191',  ruta: 'cambios' },
+  Caracterizacion: { label: 'Caracterización', color: '#ef4444', rgb: '239,68,68',   ruta: 'caracterizacion' },
+  AMI:             { label: 'AMI',             color: '#a78bfa', rgb: '167,139,250', ruta: 'ami' },
+  Reclamos:        { label: 'Reclamos SIGET',  color: '#fbbf24', rgb: '251,191,36',  ruta: 'reclamos' },
+  OTC:             { label: 'OTC',             color: '#60a5fa', rgb: '96,165,250',  ruta: null },
 };
+const ORDEN_AREAS = ['CAMBIOS', 'Caracterizacion', 'AMI', 'Reclamos', 'OTC'];
 
+const IC_HOME = {
+  CAMBIOS:  '<circle cx="12" cy="12" r="3"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
+  Caracterizacion: '<path d="M3 3v18h18"/><path d="M18 17V9M13 17V5M8 17v-3"/>',
+  AMI:      '<path d="M4.9 16.1a10 10 0 010-8.2M7.8 13.8a6 6 0 010-3.6M19.1 7.9a10 10 0 010 8.2M16.2 10.2a6 6 0 010 3.6"/><circle cx="12" cy="12" r="2"/>',
+  Reclamos: '<path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>',
+  bodega:   '<path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/>',
+  usuarios: '<path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/>',
+  devolver: '<polyline points="9 10 4 15 9 20"/><path d="M20 4v7a4 4 0 01-4 4H4"/>',
+};
+const icHome = (k, color, n = 20) => `<svg viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="${n}" height="${n}">${IC_HOME[k]}</svg>`;
+
+function saludo() {
+  const h = new Date().getHours();
+  return h < 12 ? 'Buenos días' : h < 19 ? 'Buenas tardes' : 'Buenas noches';
+}
+function fechaLarga() {
+  const t = new Date().toLocaleDateString('es-SV', { weekday: 'long', day: 'numeric', month: 'long' });
+  return t.charAt(0).toUpperCase() + t.slice(1);
+}
+
+// Lo que falta revisar en cada área. Solo se leen los documentos en ese
+// estado (no colecciones completas), con tope para no gastar lecturas.
+const TOPE_REVISION = 300;
+const REVISION = [
+  { area: 'CAMBIOS',         col: 'cambios_ordenes',         campo: 'estadoCampo', valor: 'hecha',         txt: 'por aprobar' },
+  { area: 'Caracterizacion', col: 'caracterizacion_ordenes', campo: 'estado',      valor: 'por_confirmar', txt: 'por confirmar' },
+  { area: 'AMI',             col: 'ami_ordenes',             campo: 'estadoCampo', valor: 'hecha',         txt: 'por confirmar' },
+];
+
+function renderHomeOficina(container, session) {
+  const esAdmin = session.role === 'admin';
+  const tile = (id, ruta, color, titulo, icono, sub) => `
+    <div class="hm-tile" onclick="window.__router.navigateTo('${ruta}')">
+      <div class="hm-tile-ic" style="background:${color}1f">${icono}</div>
+      <div style="min-width:0;flex:1">
+        <div class="hm-tile-t">${titulo}</div>
+        <div class="hm-tile-s" id="${id}">${sub}</div>
+      </div>
+    </div>`;
+
+  container.innerHTML = `
+    <div class="ds-view anim-up">
+      <div style="margin-bottom:18px">
+        <div style="font-size:13px;color:var(--text-3)">${saludo()},</div>
+        <div style="font-size:24px;font-weight:600;letter-spacing:-.02em;line-height:1.15;margin-top:2px">${escapeHtml(session.displayName || '')}</div>
+        <div style="font-size:12px;color:var(--text-4);margin-top:4px">${fechaLarga()} · ${esAdmin ? 'Administrador' : 'Asistente'}</div>
+      </div>
+
+      <div id="aviso-solicitudes"></div>
+
+      <div class="ds-pcard otc" style="margin-bottom:24px">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start">
+          <div class="ds-pcard-lbl">Pendiente de revisar</div>
+          <div class="ds-pcard-badge">${new Date().toLocaleDateString('es-SV', { day: 'numeric', month: 'short' })}</div>
+        </div>
+        <div style="font-size:38px;font-weight:500;letter-spacing:-.02em;line-height:1;color:#fff;margin-top:6px" id="hm-rev-total">—</div>
+        <div style="font-size:12px;color:rgba(255,255,255,.75);margin-top:8px" id="hm-rev-sub">Cargando…</div>
+        <div style="height:1px;background:rgba(255,255,255,.15);margin:16px 0 12px"></div>
+        <div style="display:flex;align-items:center;gap:7px">
+          <svg viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.6)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15" style="flex-shrink:0">${IC_HOME.usuarios}</svg>
+          <div style="font-size:13px;color:rgba(255,255,255,.9);font-weight:500" id="hm-campo">Cargando…</div>
+        </div>
+      </div>
+
+      <div class="ds-sec">Áreas</div>
+      <div class="hm-grid" style="margin-bottom:22px">
+        ${['CAMBIOS', 'Caracterizacion', 'AMI', 'Reclamos'].map(a => {
+          const i = AREA_INFO_HOME[a];
+          return tile('hm-sub-' + a, i.ruta, i.color, i.label, icHome(a, i.color),
+            a === 'Reclamos' ? 'Bitácora de órdenes' : '<span class="hm-cargando">…</span>');
+        }).join('')}
+      </div>
+
+      <div class="ds-sec">Gestión</div>
+      <div class="hm-grid" style="margin-bottom:24px">
+        ${tile('hm-sub-bodega', 'bodega', '#a78bfa', 'Bodega', icHome('bodega', '#a78bfa'), 'Inventario y despachos')}
+        ${tile('hm-sub-usuarios', 'usuarios', '#94a3b8', 'Usuarios', icHome('usuarios', '#94a3b8'), 'Gestión y asignación')}
+      </div>
+
+      <div class="ds-sec" style="display:flex;align-items:center">Personal de hoy
+        <span style="margin-left:auto;font-size:11px;font-weight:600;color:var(--text-3);cursor:pointer;text-transform:none;letter-spacing:0" onclick="window.__router.navigateTo('usuarios')">Asignar</span>
+      </div>
+      <div id="personal-hoy"><div class="ds-lbl" style="text-align:center;padding:16px">Cargando…</div></div>
+    </div>
+  `;
+
+  pintarAvisoSolicitudes();
+  cargarRevisiones();
+  cargarPersonalHoy();
+}
+
+async function cargarRevisiones() {
+  const res = await Promise.all(REVISION.map(r =>
+    db.collection(r.col).where(r.campo, '==', r.valor).limit(TOPE_REVISION).get()
+      .then(snap => ({ ...r, n: snap.size }))
+      .catch(err => { console.warn('[home] revisión', r.col, err.message); return { ...r, n: null }; })
+  ));
+  // Devoluciones de material esperando aprobación en bodega
+  let devol = null;
+  try {
+    const d = await db.collection('devoluciones_pendientes').where('estado', '==', 'pendiente').limit(TOPE_REVISION).get();
+    devol = d.size;
+  } catch (e) { devol = null; }
+  if (!document.getElementById('hm-rev-total')) return;   // ya salió del inicio
+
+  const fmt = n => n >= TOPE_REVISION ? TOPE_REVISION + '+' : String(n);
+  res.forEach(r => {
+    const el = document.getElementById('hm-sub-' + r.area);
+    if (!el) return;
+    el.innerHTML = r.n === null ? 'Sin datos'
+      : r.n ? `<span style="color:#fbbf24;font-weight:600">${fmt(r.n)} ${r.txt}</span>`
+      : '<span style="color:#22c55e">Al día</span>';
+  });
+  window.__homeDevol = devol;
+  pintarSubBodega();
+
+  const total = res.reduce((a, r) => a + (r.n || 0), 0) + (devol || 0);
+  const partes = res.filter(r => r.n).map(r => `${fmt(r.n)} en ${AREA_INFO_HOME[r.area].label}`);
+  if (devol) partes.push(`${devol} devolución${devol > 1 ? 'es' : ''} de material`);
+  document.getElementById('hm-rev-total').textContent = total >= TOPE_REVISION ? TOPE_REVISION + '+' : total;
+  document.getElementById('hm-rev-sub').textContent = total ? partes.join(' · ') : 'Todo revisado, nada pendiente';
+}
+
+function pintarSubBodega() {
+  const el = document.getElementById('hm-sub-bodega');
+  if (!el) return;
+  const sol = Object.values(window.__solicPorCampana || {}).reduce((a, b) => a + b, 0);
+  const dev = window.__homeDevol || 0;
+  const partes = [];
+  if (sol) partes.push(`${sol} solicitud${sol > 1 ? 'es' : ''}`);
+  if (dev) partes.push(`${dev} devolución${dev > 1 ? 'es' : ''}`);
+  el.innerHTML = partes.length ? `<span style="color:#fbbf24;font-weight:600">${partes.join(' · ')}</span>` : 'Inventario y despachos';
+}
+
+// ── Personal asignado hoy ─────────────────────────
 async function cargarPersonalHoy() {
   const el = document.getElementById('personal-hoy');
   if (!el) return;
@@ -690,205 +824,115 @@ async function cargarPersonalHoy() {
       .get();
 
     const todos = snap.docs.map(d => d.data());
-    const asignados = todos.filter(u => u.asignacionActual?.destino);
-    const sinAsignar = todos.filter(u => !u.asignacionActual?.destino);
+    const asignados = todos.filter(u => u.asignacionActual?.area && u.asignacionActual?.destino);
+    const sinAsignar = todos.filter(u => !(u.asignacionActual?.area && u.asignacionActual?.destino));
+
+    // Resumen en la tarjeta de arriba y en el acceso a Usuarios
+    const campo = document.getElementById('hm-campo');
+    if (campo) campo.textContent = `${asignados.length} técnico${asignados.length !== 1 ? 's' : ''} en campo`
+      + (sinAsignar.length ? ` · ${sinAsignar.length} sin asignar` : '');
+    const subU = document.getElementById('hm-sub-usuarios');
+    if (subU) subU.innerHTML = sinAsignar.length
+      ? `<span style="color:#fbbf24;font-weight:600">${sinAsignar.length} sin asignar hoy</span>`
+      : 'Gestión y asignación';
 
     // Agrupar por ÁREA y dentro de cada área por pareja/destino
     const porArea = {};
     asignados.forEach(u => {
-      const area = u.asignacionActual.area || 'Sin área';
+      const area = u.asignacionActual.area;
       const dest = u.asignacionActual.destino;
       if (!porArea[area]) porArea[area] = {};
       if (!porArea[area][dest]) porArea[area][dest] = [];
       porArea[area][dest].push(u.displayName);
     });
 
-    const areas = Object.keys(porArea).sort();
-    if (!areas.length && !sinAsignar.length) { el.innerHTML = ''; return; }
+    const areas = Object.keys(porArea).sort((a, b) => {
+      const ia = ORDEN_AREAS.indexOf(a), ib = ORDEN_AREAS.indexOf(b);
+      return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
+    });
+    if (!areas.length && !sinAsignar.length) {
+      el.innerHTML = '<div class="dev-module"><div class="dev-title">Sin técnicos activos</div></div>';
+      return;
+    }
+    const porNombre = (a, b) => String(a).localeCompare(String(b), 'es', { numeric: true });
 
     el.innerHTML = `
-      <div class="ds-card">
-        <div class="flex-col gap-12">
-          ${areas.map(area => {
-            const info = AREA_INFO_HOME[area] || { label: area, color: '#94a3b8', rgb: '148,163,184' };
-            const parejas = Object.keys(porArea[area]).sort();
-            return `
-              <div>
-                <div style="display:flex;align-items:center;gap:7px;margin-bottom:9px">
-                  <div style="width:8px;height:8px;border-radius:50%;background:${info.color}"></div>
-                  <div style="font-size:12px;font-weight:700;letter-spacing:.02em;color:${info.color}">${info.label}</div>
-                </div>
-                <div class="flex-col gap-8" style="padding-left:15px">
-                  ${parejas.map(pareja => `
-                    <div style="display:flex;align-items:flex-start;gap:10px">
-                      <div style="font-size:12px;font-weight:600;color:var(--text-3);min-width:72px;flex-shrink:0;padding-top:3px">${pareja}</div>
-                      <div style="display:flex;flex-wrap:wrap;gap:6px">
-                        ${porArea[area][pareja].map(nombre => `
-                          <div style="font-size:12px;font-weight:500;background:rgba(${info.rgb},.1);border:1px solid rgba(${info.rgb},.28);border-radius:10px;padding:5px 11px;color:rgba(255,255,255,.85)">${nombre}</div>
-                        `).join('')}
-                      </div>
-                    </div>`).join('')}
-                </div>
-              </div>`;
-          }).join('')}
-          ${sinAsignar.length ? `
-          <div style="display:flex;align-items:flex-start;gap:10px;padding-top:12px;border-top:1px solid var(--border)">
-            <div style="font-size:12px;font-weight:600;color:var(--text-4);min-width:72px;flex-shrink:0;padding-top:3px">Sin asignar</div>
-            <div style="display:flex;flex-wrap:wrap;gap:6px">
-              ${sinAsignar.map(u => `
-                <div style="font-size:12px;font-weight:500;background:var(--glass);border:1px solid var(--border);border-radius:10px;padding:5px 11px;color:var(--text-3)">${u.displayName}</div>
-              `).join('')}
-            </div>
-          </div>` : ''}
-        </div>
+      <div class="flex-col" style="gap:10px">
+        ${areas.map(area => {
+          const info = AREA_INFO_HOME[area] || { label: area, color: '#94a3b8', rgb: '148,163,184' };
+          const parejas = Object.keys(porArea[area]).sort(porNombre);
+          const n = parejas.reduce((a, p) => a + porArea[area][p].length, 0);
+          return `
+            <div class="ds-card" style="padding:14px 16px">
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+                <span style="width:8px;height:8px;border-radius:50%;background:${info.color}"></span>
+                <span style="font-size:13px;font-weight:600;color:${info.color}">${escapeHtml(info.label)}</span>
+                <span style="margin-left:auto;font-size:11px;color:var(--text-3)">${parejas.length} pareja${parejas.length !== 1 ? 's' : ''} · ${n} técnico${n !== 1 ? 's' : ''}</span>
+              </div>
+              <div class="flex-col gap-8">
+                ${parejas.map(pareja => `
+                  <div style="display:flex;align-items:flex-start;gap:10px">
+                    <div style="font-size:12px;font-weight:600;color:var(--text-3);min-width:64px;flex-shrink:0;padding-top:4px">${escapeHtml(pareja)}</div>
+                    <div style="display:flex;flex-wrap:wrap;gap:6px">
+                      ${porArea[area][pareja].sort(porNombre).map(nombre => `
+                        <div class="hm-chip" style="background:rgba(${info.rgb},.1);border-color:rgba(${info.rgb},.28)">${escapeHtml(nombre)}</div>
+                      `).join('')}
+                    </div>
+                  </div>`).join('')}
+              </div>
+            </div>`;
+        }).join('')}
+        ${sinAsignar.length ? `
+        <div class="ds-card" style="padding:14px 16px;cursor:pointer" onclick="window.__router.navigateTo('usuarios')">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+            <span style="width:8px;height:8px;border-radius:50%;background:#fbbf24"></span>
+            <span style="font-size:13px;font-weight:600;color:#fbbf24">Sin asignar</span>
+            <span style="margin-left:auto;font-size:11px;color:var(--text-3)">Tocar para asignar</span>
+          </div>
+          <div style="display:flex;flex-wrap:wrap;gap:6px">
+            ${sinAsignar.map(u => u.displayName).sort(porNombre).map(n => `<div class="hm-chip">${escapeHtml(n)}</div>`).join('')}
+          </div>
+        </div>` : ''}
       </div>
     `;
   } catch(err) {
     console.warn('[home] Error cargando personal:', err);
+    el.innerHTML = '<div class="ds-lbl" style="text-align:center;padding:16px">No se pudo cargar el personal</div>';
   }
 }
+
+// ── Técnico sin asignación ────────────────────────
 function renderNoAsignacion(container, session) {
   container.innerHTML = `
-    <div class="no-assign anim-up">
-      <div class="no-assign-icon">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-          <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
-          <line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/>
-          <line x1="3" y1="10" x2="21" y2="10"/>
-        </svg>
-      </div>
-      <h3>Sin asignación hoy</h3>
-      <p>No tienes área asignada para el día de hoy. Contacta a tu asistente.</p>
-      <div class="no-assign-badge">${session.displayName}</div>
-    </div>
-
-    <div class="flex-col gap-10 anim-up d1" style="margin-top:24px">
-      <div class="section-label" style="text-align:center;margin-bottom:2px">Material de bodega</div>
-      <div class="quick-card" onclick="window.__router.navigateTo('bodega')" style="cursor:pointer">
-        <div class="qc-icon" style="background:var(--purple-glass)">
-          <svg viewBox="0 0 24 24" fill="none" stroke="var(--purple)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
-        </div>
-        <div class="qc-title" style="color:var(--purple)">Solicitar material</div>
-        <div class="qc-sub">Pide material, revisa tu stock y pedidos</div>
-      </div>
-      <div class="quick-card" onclick="window.__abrirDevolucion()" style="cursor:pointer">
-        <div class="qc-icon" style="background:rgba(45,212,191,.15)">
-          <svg viewBox="0 0 24 24" fill="none" stroke="#2dd4bf" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 10 4 15 9 20"/><path d="M20 4v7a4 4 0 01-4 4H4"/></svg>
-        </div>
-        <div class="qc-title" style="color:#2dd4bf">Devolver material</div>
-        <div class="qc-sub">Reintegrar material a bodega</div>
-      </div>
-    </div>
-  `;
-}
-
-// ── Home Admin ────────────────────────────────────
-function renderHomeAdmin(container, session) {
-  const hoy = new Date().toLocaleDateString('es-SV', { weekday:'long', day:'numeric', month:'long' });
-  const fechaLabel = hoy.charAt(0).toUpperCase() + hoy.slice(1);
-  const fechaCorta = new Date().toLocaleDateString('es-SV', { day:'numeric', month:'short' });
-  const ini = (n => { const p = String(n||'').trim().split(/\s+/); return ((p[0]?.[0]||'') + (p[1]?.[0]||'')).toUpperCase() || '?'; })(session.displayName);
-
-  const acceso = (ruta, color, titulo, sub, iconSvg) => `
-    <div class="ds-act" onclick="window.__router.navigateTo('${ruta}')" style="text-align:left;padding:16px">
-      <div style="display:flex;align-items:center;gap:12px">
-        <div style="width:40px;height:40px;border-radius:12px;background:${color}22;display:flex;align-items:center;justify-content:center;flex-shrink:0">${iconSvg}</div>
-        <div style="min-width:0">
-          <div style="font-size:14px;font-weight:600;color:var(--text-1)">${titulo}</div>
-          <div style="font-size:11px;color:var(--text-3);margin-top:1px">${sub}</div>
-        </div>
-      </div>
-    </div>`;
-
-  const ic = (color, path) => `<svg viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="20" height="20">${path}</svg>`;
-
-  container.innerHTML = `
     <div class="ds-view anim-up">
+      <div style="margin-bottom:18px">
+        <div style="font-size:13px;color:var(--text-3)">${saludo()},</div>
+        <div style="font-size:24px;font-weight:600;letter-spacing:-.02em;line-height:1.15;margin-top:2px">${escapeHtml(session.displayName || '')}</div>
+        <div style="font-size:12px;color:var(--text-4);margin-top:4px">${fechaLarga()}</div>
+      </div>
+      <div id="home-despachos-slot"></div>
 
-      <!-- Tarjeta premium de identidad (admin) -->
-      <div class="ds-pcard otc" style="margin-bottom:26px">
-        <div style="display:flex;justify-content:space-between;align-items:flex-start">
-          <div>
-            <div style="font-size:18px;font-weight:700;color:#fff;line-height:1.1">${session.displayName}</div>
-            <div style="font-size:13px;color:rgba(255,255,255,.75);margin-top:3px">Administrador · INNOVA STC</div>
-          </div>
-          <div class="ds-pcard-badge">${fechaCorta}</div>
+      <div class="ds-card" style="text-align:center;padding:26px 18px;margin-bottom:24px">
+        <div style="width:52px;height:52px;border-radius:16px;margin:0 auto 14px;display:flex;align-items:center;justify-content:center;background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.25)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#fbbf24" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="24" height="24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+        </div>
+        <div style="font-size:16px;font-weight:600">Sin asignación hoy</div>
+        <div style="font-size:13px;color:var(--text-3);margin-top:6px;line-height:1.45">Todavía no tienes área ni pareja para hoy.<br>Cuando te asignen, aquí te salen tu meta y tus órdenes.</div>
+      </div>
+
+      <div class="ds-sec">Material</div>
+      <div class="hm-grid">
+        <div class="hm-tile" onclick="window.__router.navigateTo('bodega')">
+          <div class="hm-tile-ic" style="background:#a78bfa1f">${icHome('bodega', '#a78bfa')}</div>
+          <div style="min-width:0;flex:1"><div class="hm-tile-t">Bodega</div><div class="hm-tile-s">Pedir material</div></div>
+        </div>
+        <div class="hm-tile" onclick="window.__abrirDevolucion()">
+          <div class="hm-tile-ic" style="background:#2dd4bf1f">${icHome('devolver', '#2dd4bf')}</div>
+          <div style="min-width:0;flex:1"><div class="hm-tile-t">Devolver</div><div class="hm-tile-s">Regresar material</div></div>
         </div>
       </div>
-
-      <div class="ds-sec">Campañas</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:20px">
-        ${acceso('cambios', '#2dd4bf', 'Cambios', 'Cambio de medidores', ic('#2dd4bf','<circle cx="12" cy="12" r="3"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>'))}
-        ${acceso('caracterizacion', '#ef4444', 'Caracterización', 'Instalación y retiro', ic('#ef4444','<path d="M3 3v18h18"/><path d="M18 17V9M13 17V5M8 17v-3"/>'))}
-        ${acceso('ami', '#a78bfa', 'AMI', 'Medidores remotos', ic('#a78bfa','<path d="M4.9 16.1a10 10 0 010-8.2M7.8 13.8a6 6 0 010-3.6M19.1 7.9a10 10 0 010 8.2M16.2 10.2a6 6 0 010 3.6"/><circle cx="12" cy="12" r="2"/>'))}
-        ${acceso('reclamos', '#fbbf24', 'Reclamos SIGET', 'Bitácora de órdenes', ic('#fbbf24','<path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>'))}
-      </div>
-
-      <div class="ds-sec">Gestión</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:26px">
-        ${acceso('bodega', '#8b5cf6', 'Bodega', 'Inventario y despachos', ic('#8b5cf6','<path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/>'))}
-        ${acceso('usuarios', '#94a3b8', 'Usuarios', 'Gestión y asignación', ic('#94a3b8','<path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/>'))}
-      </div>
-
-      <div class="ds-sec">Personal activo hoy</div>
-      <div id="personal-hoy"><div class="ds-lbl" style="text-align:center;padding:16px">Cargando…</div></div>
-
     </div>
   `;
-  cargarPersonalHoy();
-}
-
-// ── Home Asistente ────────────────────────────────
-function renderHomeAsistente(container, session) {
-  const hoy = new Date().toLocaleDateString('es-SV', { weekday:'long', day:'numeric', month:'long' });
-  const fechaLabel = hoy.charAt(0).toUpperCase() + hoy.slice(1);
-  const fechaCorta = new Date().toLocaleDateString('es-SV', { day:'numeric', month:'short' });
-
-  const acceso = (ruta, color, titulo, sub, iconSvg) => `
-    <div class="ds-act" onclick="window.__router.navigateTo('${ruta}')" style="text-align:left;padding:16px">
-      <div style="display:flex;align-items:center;gap:12px">
-        <div style="width:40px;height:40px;border-radius:12px;background:${color}22;display:flex;align-items:center;justify-content:center;flex-shrink:0">${iconSvg}</div>
-        <div style="min-width:0">
-          <div style="font-size:14px;font-weight:600;color:var(--text-1)">${titulo}</div>
-          <div style="font-size:11px;color:var(--text-3);margin-top:1px">${sub}</div>
-        </div>
-      </div>
-    </div>`;
-  const ic = (color, path) => `<svg viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="20" height="20">${path}</svg>`;
-
-  container.innerHTML = `
-    <div class="ds-view anim-up">
-
-      <div class="ds-pcard otc" style="margin-bottom:26px">
-        <div style="display:flex;justify-content:space-between;align-items:flex-start">
-          <div>
-            <div style="font-size:18px;font-weight:700;color:#fff;line-height:1.1">${session.displayName}</div>
-            <div style="font-size:13px;color:rgba(255,255,255,.75);margin-top:3px">Asistente · Operación diaria</div>
-          </div>
-          <div class="ds-pcard-badge">${fechaCorta}</div>
-        </div>
-      </div>
-
-      <div class="ds-sec">Campañas</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:20px">
-        ${acceso('cambios', '#2dd4bf', 'Cambios', 'Confirmar y asignar', ic('#2dd4bf','<circle cx="12" cy="12" r="3"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>'))}
-        ${acceso('caracterizacion', '#ef4444', 'Caracterización', 'Instalación y retiro', ic('#ef4444','<path d="M3 3v18h18"/><path d="M18 17V9M13 17V5M8 17v-3"/>'))}
-        ${acceso('ami', '#a78bfa', 'AMI', 'Medidores remotos', ic('#a78bfa','<path d="M4.9 16.1a10 10 0 010-8.2M7.8 13.8a6 6 0 010-3.6M19.1 7.9a10 10 0 010 8.2M16.2 10.2a6 6 0 010 3.6"/><circle cx="12" cy="12" r="2"/>'))}
-        ${acceso('reclamos', '#fbbf24', 'Reclamos SIGET', 'Bitácora de órdenes', ic('#fbbf24','<path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>'))}
-      </div>
-
-      <div class="ds-sec">Gestión</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:26px">
-        ${acceso('bodega', '#8b5cf6', 'Bodega', 'Aprobar solicitudes', ic('#8b5cf6','<path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/>'))}
-        ${acceso('usuarios', '#94a3b8', 'Usuarios', 'Gestión y asignación', ic('#94a3b8','<path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/>'))}
-      </div>
-
-      <div class="ds-sec">Personal activo hoy</div>
-      <div id="personal-hoy"><div class="ds-lbl" style="text-align:center;padding:16px">Cargando…</div></div>
-
-    </div>
-  `;
-  cargarPersonalHoy();
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -1188,31 +1232,27 @@ window.__abrirDevolucion = async function(){
 // Lee el conteo por campaña que mantiene el listener global (app.js)
 // y se registra para repintarse cuando llegan cambios en vivo.
 function pintarAvisoSolicitudes(){
+  pintarSubBodega();
   const cont=document.getElementById('aviso-solicitudes');
   if(!cont) return;
-  const CAMP={ CAMBIOS:{l:'Cambio de Medidores',c:'#2dd4bf'}, AMI:{l:'AMI',c:'#fbbf24'}, Caracterizacion:{l:'Caracterización',c:'#a78bfa'}, ReclamosSIGET:{l:'Reclamos SIGET',c:'#f472b6'}, OTC:{l:'OTC',c:'#60a5fa'} };
   const data=window.__solicPorCampana||{};
   const total=Object.values(data).reduce((a,b)=>a+b,0);
   if(!total){ cont.innerHTML=''; return; }
   const chips=Object.entries(data).filter(([,n])=>n>0).map(([k,n])=>{
-    const info=CAMP[k]||{l:k,c:'#94a3b8'};
-    return `<div style="display:flex;align-items:center;gap:6px;background:${info.c}18;border:1px solid ${info.c}44;border-radius:20px;padding:5px 12px">
-      <span style="font-size:11px;font-weight:700;color:${info.c}">${info.l}</span>
-      <span style="min-width:18px;height:18px;border-radius:9px;background:${info.c};color:#0d1117;font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center">${n}</span>
-    </div>`;
+    const c=CAMP_COLOR_HOME[k]||'#94a3b8', l=CAMP_LABEL_HOME[k]||k;
+    return `<span class="hm-chip" style="display:inline-flex;align-items:center;gap:6px;background:${c}14;border-color:${c}44"><span style="color:${c};font-weight:600">${escapeHtml(l)}</span><b>${n}</b></span>`;
   }).join('');
   cont.innerHTML=`
-    <div class="anim-up d1" onclick="window.__router.navigateTo('bodega')" style="cursor:pointer;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.3);border-radius:16px;padding:14px 16px">
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
-        <div style="width:34px;height:34px;border-radius:10px;background:rgba(239,68,68,.15);display:flex;align-items:center;justify-content:center">
-          <svg viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><path d="M6 8a6 6 0 0112 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 003.4 0"/></svg>
+    <div class="hm-aviso" onclick="window.__router.navigateTo('bodega')">
+      <div style="display:flex;align-items:center;gap:12px">
+        <div class="hm-tile-ic" style="background:rgba(251,191,36,.14)"><svg viewBox="0 0 24 24" fill="none" stroke="#fbbf24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><path d="M6 8a6 6 0 0112 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 003.4 0"/></svg></div>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:14px;font-weight:600">${total} solicitud${total>1?'es':''} de material</div>
+          <div style="font-size:11.5px;color:var(--text-3);margin-top:1px">Toca para ir a Bodega y despachar</div>
         </div>
-        <div style="flex:1">
-          <div style="font-size:14px;font-weight:800;color:#f87171">${total} solicitud${total>1?'es':''} de material</div>
-          <div style="font-size:11px;color:var(--text-4)">Toca para ir a Bodega y despachar</div>
-        </div>
+        <svg viewBox="0 0 24 24" fill="none" stroke="var(--text-3)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><polyline points="9 18 15 12 9 6"/></svg>
       </div>
-      <div style="display:flex;flex-wrap:wrap;gap:6px">${chips}</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px">${chips}</div>
     </div>`;
 }
 
