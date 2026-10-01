@@ -16,6 +16,7 @@
 
 import { db } from '../firebase.js';
 import { toast, escapeHtml } from '../ui.js';
+import { devolverAPendiente, puedeDevolverse } from './ami_devolver.js';
 
 const COL = 'ami_ordenes';
 const MOTIVOS_VISITA = ['Cuarto eléctrico cerrado', 'Sin acceso al edificio', 'Medidor no encontrado', 'Cliente no permite', 'Otro'];
@@ -298,6 +299,7 @@ function abrirAccion(o) {
             <button class="btn-action outline" id="cd-ya" style="height:44px;font-size:12px">Ya estaba cambiado</button>
           </div>` : ''}
         ${v.esAdmin && o.estadoCampo === 'hecha' ? `<button class="btn-action cm" id="cd-confirmar" style="height:50px">Confirmar cambio</button>` : ''}
+        ${v.esAdmin && puedeDevolverse(o) ? `<button class="btn-action warn" id="cd-devolver" style="height:46px">Devolver a pendiente</button>` : ''}
         <button class="btn-action outline" id="cd-acc-cerrar" style="height:44px">Cerrar</button>
       </div>
     </div>
@@ -306,6 +308,9 @@ function abrirAccion(o) {
   sh.querySelector('#cd-acc-cerrar').onclick = cerrar;
   sh.querySelector('#cd-hecha')?.addEventListener('click', () => marcarHecha(o, sh));
   sh.querySelector('#cd-confirmar')?.addEventListener('click', () => { cerrar(); confirmarLote([o], null); });
+  sh.querySelector('#cd-devolver')?.addEventListener('click', async () => {
+    if (await devolverAPendiente(o, vista_.session)) { cerrar(); pintar(); }
+  });
   sh.querySelector('#cd-visita')?.addEventListener('click', () => formVisita(o, sh));
   sh.querySelector('#cd-ya')?.addEventListener('click', () => formYaCambiado(o, sh));
 }
