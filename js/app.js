@@ -235,14 +235,14 @@ function mostrarPantallaMantenimiento(msg) {
       </div>
 
       <div class="mnt-titulo">${nombre ? 'Un momento, <span id="mnt-nombre"></span>' : 'Un momento'}</div>
-      <div class="mnt-sub">Estamos haciendo mejoras en la app</div>
+      <div class="mnt-sub">Ando haciéndole unas cosillas a la app</div>
       <div class="mnt-msg" id="mnt-msg"></div>
 
       <div class="ds-card mnt-estado">
         <div style="display:flex;align-items:center;gap:10px">
           <span class="mnt-punto"></span>
           <div style="flex:1;min-width:0;text-align:left">
-            <div style="font-size:13px;font-weight:600">Te dejamos entrar en cuanto terminemos</div>
+            <div style="font-size:13px;font-weight:600">Te dejo entrar en cuanto termine</div>
             <div style="font-size:12px;color:var(--text-3);margin-top:2px" id="mnt-cuenta">Revisando…</div>
           </div>
         </div>
@@ -253,18 +253,18 @@ function mostrarPantallaMantenimiento(msg) {
     <div class="mnt-pie">
       <button class="mnt-btn" id="mnt-reintentar">Revisar ahora</button>
       <button class="mnt-btn-link" id="mnt-salir">Cerrar sesión</button>
-      <div class="mnt-nota">Tu trabajo guardado no se pierde. Si es urgente, avisa a tu coordinadora.</div>
+      <div class="mnt-nota">Lo que ya guardaste no se pierde. Si es urgente, escríbeme.</div>
     </div>`;
   document.body.appendChild(ov);
   if (nombre) ov.querySelector('#mnt-nombre').textContent = nombre;
-  ov.querySelector('#mnt-msg').textContent = msg || 'Serán solo unos minutos.';
+  ov.querySelector('#mnt-msg').textContent = msg || 'Ya casi queda, dame unos minutitos.';
 
   // Cuenta regresiva + revisión automática del estado
   let falta = SEG, revisando = false;
   const cuenta = ov.querySelector('#mnt-cuenta');
   const barra = ov.querySelector('#mnt-barra');
   const pintar = () => {
-    cuenta.textContent = revisando ? 'Revisando…' : `Volvemos a revisar en ${falta} s`;
+    cuenta.textContent = revisando ? 'Revisando…' : `Vuelvo a revisar en ${falta} s`;
     barra.style.width = `${((SEG - falta) / SEG) * 100}%`;
   };
   const revisar = async () => {
