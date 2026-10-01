@@ -70,6 +70,9 @@ btnLogin.addEventListener('click', doLogin);
 function setLoading(loading) {
   btnLogin.disabled = loading;
   btnLabel.innerHTML = loading ? '<div class="spinner"></div>' : 'Ingresar';
+  // Al terminar, el botón depende de los campos (tras un error el PIN se
+  // borra y no debe quedar habilitado con el PIN vacío).
+  if (!loading) checkReady();
 }
 
 async function doLogin() {

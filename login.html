@@ -16,7 +16,7 @@
 
 <div id="login-wrapper">
 
-  <!-- Logo -->
+  <!-- Marca -->
   <div class="login-logo">
     <div class="login-logo-mark">
       <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -27,39 +27,58 @@
     <p>Servicios Técnicos y Comerciales</p>
   </div>
 
-  <!-- Card de login -->
+  <!-- Tarjeta de acceso -->
   <div class="login-card">
+    <div class="login-head anim-up">
+      <div class="login-title">Iniciar sesión</div>
+      <div class="login-sub">Ingresa con tu usuario y tu PIN</div>
+    </div>
 
-    <!-- Campo usuario -->
+    <!-- Usuario -->
     <div class="login-field anim-up d1">
-      <div class="login-field-label">Usuario</div>
-      <input id="inp-user" class="login-input" type="text"
-             placeholder="Nombre de usuario"
-             autocomplete="off" autocorrect="off"
-             autocapitalize="off" spellcheck="false"/>
-      <label class="remember-label">
-        <input type="checkbox" id="chk-remember"/>
-        <span>Recordar usuario</span>
-      </label>
+      <label class="login-field-label" for="inp-user">Usuario</label>
+      <div class="login-input-wrap">
+        <svg class="login-input-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        <input id="inp-user" class="login-input" type="text"
+               placeholder="Tu nombre de usuario"
+               autocomplete="off" autocorrect="off"
+               autocapitalize="off" spellcheck="false"/>
+      </div>
     </div>
 
-    <!-- Campo PIN -->
+    <!-- PIN -->
     <div class="login-field anim-up d2">
-      <div class="login-field-label">PIN de acceso</div>
-      <input id="inp-pin" class="login-input" type="password"
-             inputmode="numeric" maxlength="8"
-             placeholder="••••" autocomplete="off"/>
+      <label class="login-field-label" for="inp-pin">PIN de acceso</label>
+      <div class="login-input-wrap">
+        <svg class="login-input-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+        <input id="inp-pin" class="login-input" type="password"
+               inputmode="numeric" maxlength="8"
+               placeholder="••••" autocomplete="off"/>
+        <button type="button" class="login-ver-pin" id="btn-ver-pin" title="Mostrar PIN" aria-label="Mostrar PIN">
+          <svg class="ojo-abierto" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+          <svg class="ojo-cerrado" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19m-6.72-1.07a3 3 0 11-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+        </button>
+      </div>
     </div>
+
+    <!-- Recordar usuario -->
+    <label class="remember-label anim-up d2">
+      <input type="checkbox" id="chk-remember"/>
+      <span class="remember-switch"></span>
+      <span class="remember-txt">Recordar usuario en este teléfono</span>
+    </label>
 
     <!-- Error -->
-    <div id="login-error" class="login-error anim-up d3"></div>
+    <div id="login-error" class="login-error"></div>
 
-    <!-- Botón ingresar -->
+    <!-- Ingresar -->
     <button id="btn-login" class="btn-login anim-up d3" disabled>
       <span id="btn-login-label">Ingresar</span>
+      <svg class="btn-login-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
     </button>
-
   </div>
+
+  <div class="login-pie">¿Olvidaste tu PIN? Pide a tu coordinadora que lo restablezca.</div>
 </div>
 
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
@@ -67,6 +86,19 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script type="module" src="js/auth.js"></script>
 <script>
+  // Mostrar u ocultar el PIN (solo cambia cómo se ve el campo)
+  (function () {
+    var btn = document.getElementById('btn-ver-pin');
+    var pin = document.getElementById('inp-pin');
+    btn.addEventListener('click', function () {
+      var ver = pin.type === 'password';
+      pin.type = ver ? 'text' : 'password';
+      btn.classList.toggle('visible', ver);
+      btn.setAttribute('aria-label', ver ? 'Ocultar PIN' : 'Mostrar PIN');
+      btn.title = ver ? 'Ocultar PIN' : 'Mostrar PIN';
+      pin.focus();
+    });
+  })();
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('/STC-innova/sw.js');
   }
