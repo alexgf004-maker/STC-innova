@@ -188,21 +188,20 @@ async function toggleMantenimiento() {
   }
 }
 
-// Refresca el botón y la franja de aviso del admin
+// Refresca el estado en el menú de cuenta, el punto del avatar y la franja de aviso
 function pintarEstadoMantenimiento() {
-  const btn = document.getElementById('btn-mant');
-  if (btn) {
-    btn.style.color       = mantenimientoActivo_ ? '#fbbf24' : '';
-    btn.style.background  = mantenimientoActivo_ ? 'rgba(251,191,36,.14)' : '';
-    btn.style.borderColor = mantenimientoActivo_ ? 'rgba(251,191,36,.4)'  : '';
-    btn.title = mantenimientoActivo_ ? 'Mantenimiento ACTIVO — toca para apagar' : 'Activar mantenimiento';
+  const est = document.getElementById('menu-mant-estado');
+  if (est) {
+    est.textContent = mantenimientoActivo_ ? 'Activo' : 'Apagado';
+    est.className = 'estado-badge ' + (mantenimientoActivo_ ? 'warn' : 'muted');
   }
+  document.getElementById('btn-cuenta')?.classList.toggle('alerta', mantenimientoActivo_);
 
   document.getElementById('aviso-mant')?.remove();
   if (mantenimientoActivo_) {
     const aviso = document.createElement('div');
     aviso.id = 'aviso-mant';
-    aviso.style.cssText = 'position:fixed;bottom:0;left:0;right:0;z-index:800;background:#fbbf24;color:#0a1628;text-align:center;padding:6px 12px;font-size:11px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;cursor:pointer';
+    aviso.className = 'aviso-mant';   // flota arriba de la barra de navegación
     aviso.textContent = 'Modo mantenimiento activo — solo tú puedes entrar. Toca para apagar.';
     aviso.addEventListener('click', toggleMantenimiento);
     document.body.appendChild(aviso);
@@ -247,43 +246,62 @@ function setupTopbar(session) {
   // Botón refresh para admin y asistente
   if (role === 'admin' || role === 'asistente') {
     document.getElementById('btn-refresh').style.display = '';
-    document.getElementById('btn-refresh').addEventListener('click', () => {
+    // onclick (no addEventListener): setupTopbar corre dos veces al arrancar
+    document.getElementById('btn-refresh').onclick = () => {
       navigateTo(window.__router.currentTab || 'home');
-    });
+    };
   }
 
-  // Botón de mantenimiento — SOLO admin
-  if (role === 'admin') {
-    const acciones  = document.querySelector('.topbar-actions');
-    const btnLogout = document.getElementById('btn-logout');
-    if (acciones && btnLogout && !document.getElementById('btn-mant')) {
-      const btnMant = document.createElement('div');
-      btnMant.className = 'topbar-btn';
-      btnMant.id = 'btn-mant';
-      btnMant.innerHTML = `
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="17" height="17">
-          <path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"/>
-        </svg>`;
-      btnMant.addEventListener('click', toggleMantenimiento);
-      acciones.insertBefore(btnMant, btnLogout);
-    }
-  }
-
-  // Botón "Cambiar PIN" — todos los roles
-  const acc  = document.querySelector('.topbar-actions');
+  // Menú de cuenta (avatar con iniciales): Cambiar PIN, mantenimiento (admin)
+  // y Cerrar sesión. Deja la barra con solo lo esencial a la vista.
+  const acc = document.querySelector('.topbar-actions');
   const salir = document.getElementById('btn-logout');
-  if (acc && salir && !document.getElementById('btn-pin')) {
-    const btnPin = document.createElement('div');
-    btnPin.className = 'topbar-btn';
-    btnPin.id = 'btn-pin';
-    btnPin.title = 'Cambiar PIN';
-    btnPin.innerHTML = `
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="17" height="17">
-        <rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/>
-      </svg>`;
-    btnPin.addEventListener('click', () => abrirCambioPin(false));
-    acc.insertBefore(btnPin, salir);
+  if (acc && salir && !document.getElementById('btn-cuenta')) {
+    salir.style.display = 'none';   // su acción se dispara desde el menú
+    const ini = iniciales(displayName);
+    const btn = document.createElement('div');
+    btn.className = 'topbar-avatar';
+    btn.id = 'btn-cuenta';
+    btn.title = 'Tu cuenta';
+    btn.textContent = ini;
+    acc.appendChild(btn);
+
+    const menu = document.createElement('div');
+    menu.className = 'topbar-menu';
+    menu.id = 'menu-cuenta';
+    const icono = d => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="17" height="17">${d}</svg>`;
+    menu.innerHTML = `
+      <div class="topbar-menu-head">
+        <div class="topbar-avatar" style="cursor:default">${ini}</div>
+        <div style="min-width:0">
+          <div style="font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" id="menu-nombre"></div>
+          <div style="font-size:11px;color:var(--text-3);margin-top:2px" id="menu-rol"></div>
+        </div>
+      </div>
+      <div class="topbar-menu-item" id="menu-pin">${icono('<rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/>')}<span>Cambiar PIN</span></div>
+      ${role === 'admin' ? `<div class="topbar-menu-item" id="menu-mant">${icono('<path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"/>')}<span>Modo mantenimiento</span><span class="estado-badge muted" id="menu-mant-estado" style="margin-left:auto">Apagado</span></div>` : ''}
+      <div class="topbar-menu-item salir" id="menu-salir">${icono('<path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>')}<span>Cerrar sesión</span></div>`;
+    document.getElementById('topbar').appendChild(menu);
+
+    const cerrar = () => menu.classList.remove('abierto');
+    btn.addEventListener('click', e => { e.stopPropagation(); menu.classList.toggle('abierto'); });
+    document.addEventListener('click', e => { if (!menu.contains(e.target)) cerrar(); });
+    menu.querySelector('#menu-pin').addEventListener('click', () => { cerrar(); abrirCambioPin(false); });
+    menu.querySelector('#menu-mant')?.addEventListener('click', () => { cerrar(); toggleMantenimiento(); });
+    menu.querySelector('#menu-salir').addEventListener('click', () => { cerrar(); salir.click(); });
   }
+  // Datos del menú (se actualizan si la sesión se refrescó)
+  const nom = document.getElementById('menu-nombre');
+  if (nom) nom.textContent = displayName || '';
+  const rol = document.getElementById('menu-rol');
+  if (rol) rol.textContent = getSubtitle(role, area);
+  const av = document.getElementById('btn-cuenta');
+  if (av) av.textContent = iniciales(displayName);
+}
+
+function iniciales(nombre) {
+  return String(nombre || '').trim().split(/\s+/).slice(0, 2)
+    .map(p => (p.match(/[\p{L}\p{N}]/u) || [''])[0]).join('').toUpperCase() || '?';
 }
 
 function getSubtitle(role, area) {
@@ -291,7 +309,8 @@ function getSubtitle(role, area) {
   if (role === 'asistente') return 'Asistente · Operación diaria';
   if (role === 'tecnico') {
     if (!area) return 'Técnico · Sin asignación hoy';
-    return `Técnico · Área ${area}`;
+    const AREA_TXT = { CAMBIOS: 'Cambios', Caracterizacion: 'Caracterización', Reclamos: 'Reclamos SIGET', AMI: 'AMI' };
+    return `Técnico · ${AREA_TXT[area] || area}`;
   }
   return 'INNOVA STC';
 }
