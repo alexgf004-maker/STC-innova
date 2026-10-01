@@ -21,6 +21,7 @@
 
 import { db } from '../firebase.js';
 import { toast, escapeHtml } from '../ui.js';
+import { devolverAPendiente, puedeDevolverse } from './ami_devolver.js';
 
 // ── Identidad del área ────────────────────────────
 const AREA = 'AMI';
@@ -143,6 +144,7 @@ function seccionMetas() {
 // ── Estado del módulo ─────────────────────────────
 let container_, session_, role_, pareja_;
 let ordenes_ = [];
+let busquedaActuales_ = [];  // órdenes que salieron en la búsqueda por NC (para devolver)
 let condominios_ = [];       // órdenes de condominio (tipoSitio:'condominio'), aparte de la ruta diaria
 let activeTab_ = 'panel';   // 'panel' | 'ordenes' | 'mapa'
 let esAdmin_ = false;
@@ -271,6 +273,12 @@ function setTab(tab) {
     // Botones de confirmar (una y por pareja) — solo admin
     cont.querySelectorAll('.ami-confirmar-una').forEach(b => {
       b.onclick = () => confirmarOrdenes([b.dataset.id]);
+    });
+    cont.querySelectorAll('#ami-lista-ordenes .ami-devolver').forEach(b => {
+      b.onclick = async () => {
+        const o = ordenes_.find(x => x.id === b.dataset.id);
+        if (o && await devolverAPendiente(o, session_)) setTab('ordenes');
+      };
     });
     cont.querySelectorAll('.ami-confirmar-pareja').forEach(b => {
       b.onclick = () => {
@@ -593,6 +601,7 @@ function renderOrdenes() {
             <div class="estado-badge ${o.estadoCampo === 'hecha' || o.estadoCampo === 'aprobada' ? 'ok' : 'muted'}">${o.estadoCampo || 'pendiente'}</div>
           </div>
           ${o.direccion ? `<div class="orden-dir" style="margin-top:6px">${o.direccion}</div>` : ''}
+          ${esAdmin_ && puedeDevolverse(o) ? `<div><button class="ami-devolver" data-id="${o.id}" style="margin-top:8px;padding:8px 12px;border-radius:10px;border:1px solid rgba(251,191,36,.35);background:rgba(251,191,36,.08);color:#fbbf24;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">Devolver a pendiente</button></div>` : ''}
         </div>`;
     };
 
@@ -606,7 +615,10 @@ function renderOrdenes() {
           <span class="estado-badge ok">Realizada</span>
         </div>
         ${o.hechaPor ? `<div style="font-size:11px;color:var(--text-4);margin-top:4px">Marcó: ${o.hechaPor}</div>` : ''}
-        <button class="ami-confirmar-una" data-id="${o.id}" style="margin-top:8px;padding:8px;border-radius:10px;border:1px solid rgba(34,197,94,.4);background:rgba(34,197,94,.12);color:#22c55e;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">Confirmar</button>
+        <div style="display:flex;gap:8px">
+          <button class="ami-confirmar-una" data-id="${o.id}" style="flex:1;margin-top:8px;padding:8px;border-radius:10px;border:1px solid rgba(34,197,94,.4);background:rgba(34,197,94,.12);color:#22c55e;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">Confirmar</button>
+          <button class="ami-devolver" data-id="${o.id}" style="margin-top:8px;padding:8px 12px;border-radius:10px;border:1px solid rgba(251,191,36,.35);background:rgba(251,191,36,.08);color:#fbbf24;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">Devolver a pendiente</button>
+        </div>
       </div>`;
 
     const seccion = (titulo, arr, color) => arr.length ? `
@@ -708,6 +720,7 @@ async function buscarHistorial(nc) {
     const snapO = await db.collection(COLECCION).get();
     const actuales = snapO.docs.map(d => ({ id: d.id, ...d.data() }))
       .filter(o => String(o.nc ?? '').includes(nc));
+    busquedaActuales_ = actuales;
     if (actuales.length) {
       html += `
         <div style="display:flex;align-items:center;gap:8px;margin:4px 0 10px">
@@ -735,7 +748,11 @@ async function buscarHistorial(nc) {
                 ${fila('Cuándo', fmt(o.fechaHecha))}
                 ${o.estadoCampo === 'aprobada' ? fila('Confirmó', `${o.aprobadoPor || ''}${o.fechaAprobacion ? ' · ' + fmt(o.fechaAprobacion) : ''}`) : ''}
               </div>
-              ${hecha ? `<button class="ami-buscar-confirmar" data-id="${o.id}" style="margin-top:8px;padding:8px;border-radius:10px;border:1px solid rgba(34,197,94,.4);background:rgba(34,197,94,.12);color:#22c55e;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">Confirmar</button>` : ''}
+              ${o.motivoDevolucion || o.devueltaPor ? `<div style="font-size:11px;color:#fbbf24;margin-top:6px">Devuelta por ${escapeHtml(o.devueltaPor || '')}${o.motivoDevolucion ? ': ' + escapeHtml(o.motivoDevolucion) : ''}</div>` : ''}
+              <div style="display:flex;gap:8px">
+                ${hecha ? `<button class="ami-buscar-confirmar" data-id="${o.id}" style="flex:1;margin-top:8px;padding:8px;border-radius:10px;border:1px solid rgba(34,197,94,.4);background:rgba(34,197,94,.12);color:#22c55e;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">Confirmar</button>` : ''}
+                ${esAdmin_ && puedeDevolverse(o) ? `<button class="ami-devolver" data-id="${o.id}" style="margin-top:8px;padding:8px 12px;border-radius:10px;border:1px solid rgba(251,191,36,.35);background:rgba(251,191,36,.08);color:#fbbf24;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">Devolver a pendiente</button>` : ''}
+              </div>
             </div>`;
           }).join('')}
         </div>`;
@@ -772,6 +789,16 @@ async function buscarHistorial(nc) {
   // Enganchar botones confirmar de los resultados
   cont.querySelectorAll('.ami-buscar-confirmar').forEach(b => {
     b.onclick = () => confirmarOrdenes([b.dataset.id]);
+  });
+  cont.querySelectorAll('.ami-devolver').forEach(b => {
+    b.onclick = async () => {
+      const o = busquedaActuales_.find(x => x.id === b.dataset.id);
+      if (o && await devolverAPendiente(o, session_)) {
+        const enLista = ordenes_.find(x => x.id === o.id);
+        if (enLista) Object.assign(enLista, o);
+        buscarHistorial(nc);
+      }
+    };
   });
 }
 

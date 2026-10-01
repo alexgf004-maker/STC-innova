@@ -10,6 +10,7 @@
 
 import { db } from '../firebase.js';
 import { toast, escapeHtml } from '../ui.js';
+import { devolverAPendiente, puedeDevolverse } from './ami_devolver.js';
 import { abrirVistaCondominio, refrescarVistaCondominio, cerrarVistaCondominio, claveEdificio } from './ami_condominio.js';
 
 const PAREJA_COLORS = {
@@ -342,7 +343,7 @@ function renderShell(container) {
     });
   });
 
-  window.__mapa = { verOrden, marcarHecha, marcarVisita, abrirGoogleMaps, confirmarRealizada, confirmarVisita, asignarIndividual, confirmarIndividual, confirmarZona, cancelarZona, abrirYaCambiado, abrirPedirAyuda, abrirGenerarOrden, buscarContiguos, limpiarContiguos, confirmarOrden, eliminarOrden };
+  window.__mapa = { verOrden, marcarHecha, marcarVisita, abrirGoogleMaps, confirmarRealizada, confirmarVisita, asignarIndividual, confirmarIndividual, confirmarZona, cancelarZona, abrirYaCambiado, abrirPedirAyuda, abrirGenerarOrden, buscarContiguos, limpiarContiguos, confirmarOrden, eliminarOrden, devolverOrden };
 
   // onSnapshot ya maneja actualizaciones en tiempo real
   // Este listener es fallback para cambios desde cambios.js
@@ -1108,6 +1109,11 @@ function verOrden(id) {
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><polyline points="20 6 9 17 4 12"/></svg>
           Confirmar
         </button>` : ''}
+      ${!isTecnico && puedeDevolverse(o) ? `
+        <button class="btn-action" style="background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.35);color:#fbbf24" onclick="window.__mapa.devolverOrden('${o.id}')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><polyline points="9 14 4 9 9 4"/><path d="M20 20v-7a4 4 0 00-4-4H4"/></svg>
+          Devolver
+        </button>` : ''}
       ${!isTecnico ? `
         <button class="icon-btn" title="Eliminar orden" style="color:#f87171;border-color:rgba(239,68,68,.3)" onclick="window.__mapa.eliminarOrden('${o.id}')">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
@@ -1130,6 +1136,17 @@ function verOrden(id) {
 }
 
 // Confirmar (aprobar) una orden hecha — solo admin/asistente.
+// Admin: devolver a pendiente una orden marcada por error (realizada o visita)
+async function devolverOrden(id) {
+  const o = ordenes_.find(x => x.id === id);
+  if (!o) return;
+  if (await devolverAPendiente(o, session_)) {
+    closePanel();
+    plotMarkers();
+    updateStatChip();
+  }
+}
+
 async function confirmarOrden(id) {
   const o = ordenes_.find(x => x.id === id);
   if (!o) return;
