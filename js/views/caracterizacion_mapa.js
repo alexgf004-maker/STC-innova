@@ -25,6 +25,10 @@ let markers_ = {};          // ordenId -> { titular, suplente1, suplente2, linea
 let markersRet_ = {};       // retiroId -> marker
 let selected_ = null;       // { ordenId, nivel }  nivel: 'titular'|'suplente1'|'suplente2'
 let geoMarker_ = null, geoCircle_ = null, watchId_ = null;
+let selectedRet_ = null;    // retiro con la hoja abierta
+let unsubOrd_ = null, unsubRet_ = null;   // listeners en vivo
+let cargado_ = { o: false, r: false }, encuadrado_ = false;
+let parejasActivas_ = [];   // parejas con técnico activo en Caracterización
 
 // Modo zona (admin)
 let puntos_ = [], poliPreview_ = null, zonaPoligono_ = null;
@@ -35,10 +39,12 @@ const UPR_COLOR = '#38bdf8';   // celeste: punto UPR (sin suplentes)
 const RETIRO_COLOR = '#f59e0b';  // ámbar: retiros (cuadrado)
 
 export async function init(container, session) {
+  cleanup();
   container_ = container;
   session_ = session;
   role_ = session.role;
   esAdmin_ = (session.role === 'admin' || session.role === 'asistente');
+  cargado_ = { o: false, r: false }; encuadrado_ = false;
 
   // Animación del anillo de pulso + hojas responsivas (una sola vez)
   if (!document.getElementById('crc-pulso-css')) {
@@ -48,6 +54,13 @@ export async function init(container, session) {
       @keyframes crc-pulso{0%{transform:scale(.8);opacity:.5}100%{transform:scale(1.8);opacity:0}}
       .crc-hoja{position:fixed;left:0;right:0;bottom:0;z-index:1200;transform:translateY(calc(100% + 120px));transition:transform .25s ease;background:#0d1117;border-top:1px solid var(--border);border-radius:20px 20px 0 0;padding:18px 20px calc(var(--navbar-h,72px) + 26px);max-height:calc(85vh - var(--navbar-h,72px));overflow-y:auto}
       .crc-hoja.abierta{transform:translateY(0)}
+      #crc-leaflet .leaflet-top.leaflet-left{display:none}
+      #crc-leaflet .leaflet-control-attribution{display:none}
+      .crc-ley{display:flex;align-items:center;gap:7px;font-size:10px;color:var(--text-3);line-height:1.2}
+      .crc-ley i{width:11px;height:11px;border-radius:50%;border:1.5px solid rgba(255,255,255,.8);flex-shrink:0}
+      .crc-res{display:flex;align-items:center;gap:10px;padding:10px;border-radius:10px;background:var(--glass);border:1px solid var(--border);cursor:pointer;margin-top:6px}
+      .crc-res:active{background:var(--glass-hov)}
+      @media (max-width:520px){ .crc-lbl{display:none} }
       @media (min-width:820px){
         .crc-hoja{left:auto;right:16px;bottom:auto;top:80px;width:340px;max-height:calc(100vh - 160px);border:1px solid var(--border);border-radius:16px;transform:translateX(calc(100% + 40px));box-shadow:0 8px 40px rgba(0,0,0,.5)}
         .crc-hoja.abierta{transform:translateX(0)}
@@ -56,30 +69,45 @@ export async function init(container, session) {
     document.head.appendChild(st);
   }
   container.scrollTop = 0;
+  const lupa = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>';
   container.innerHTML = `
-    <div style="position:fixed;top:var(--topbar-h,62px);left:0;right:0;bottom:var(--navbar-h,72px);z-index:1">
+    <div id="crc-wrapper" style="position:fixed;top:var(--topbar-h,62px);left:0;right:0;bottom:var(--navbar-h,72px);z-index:1">
       <div id="crc-leaflet" style="width:100%;height:100%"></div>
-      <div id="crc-leyenda" style="position:absolute;bottom:16px;left:12px;z-index:500;display:none;flex-direction:column;gap:4px;background:rgba(13,17,23,.85);border:1px solid var(--border);border-radius:10px;padding:8px 10px;pointer-events:none">
-        <div style="display:flex;align-items:center;gap:6px"><div style="width:11px;height:11px;border-radius:50%;background:#a78bfa;border:1.5px solid rgba(255,255,255,.8)"></div><span style="font-size:10px;color:var(--text-3)">Instalación</span></div>
-        <div style="display:flex;align-items:center;gap:6px"><div style="width:11px;height:11px;border-radius:3px;background:#f59e0b;border:1.5px solid rgba(255,255,255,.8)"></div><span style="font-size:10px;color:var(--text-3)">Retiro</span></div>
+
+      <div class="mapa-controls-top" style="right:12px;flex-wrap:wrap">
+        <div class="mapa-stat-chip" style="border-color:rgba(239,68,68,.45);background:rgba(239,68,68,.12)">
+          <div class="mapa-stat-dot" style="background:#ef4444"></div>
+          <span class="crc-lbl" style="font-weight:800;color:#f87171;letter-spacing:.02em;margin-right:2px">Caracterización</span>
+          <span id="crc-map-stat">Cargando…</span>
+        </div>
+        ${esAdmin_ ? `
+        <button class="mapa-btn-icon" id="crc-zona" title="Asignar zona a pareja" style="border-color:rgba(239,68,68,.45);color:#f87171">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><path d="M3 3h7v7H3zM14 3h7v7h-7zM14 14h7v7h-7zM3 14h7v7H3z"/></svg>
+        </button>
+        <button class="mapa-btn-icon" id="crc-reset-asig" title="Quitar todas las asignaciones">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><path d="M3 12a9 9 0 1 0 9-9 9 9 0 0 0-6.7 3"/><path d="M3 3v5h5"/></svg>
+        </button>` : `
+        <button class="mapa-btn-icon" id="crc-gps" title="Mi ubicación" style="color:#3b82f6">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>
+        </button>`}
+        <button class="mapa-btn-icon" id="crc-buscar-btn" title="Buscar NC, medidor o nombre" style="border-color:rgba(239,68,68,.45);color:#f87171">${lupa}</button>
       </div>
 
-      <div style="position:absolute;top:12px;left:12px;right:12px;z-index:500;display:flex;gap:8px;align-items:center;pointer-events:none">
-        <div style="background:rgba(13,17,23,.9);border:1px solid var(--border);border-radius:12px;padding:8px 14px;pointer-events:auto">
-          <div style="font-size:12px;font-weight:800">Caracterización</div>
-          <div style="font-size:10px;color:var(--text-4)" id="crc-map-stat">Cargando…</div>
+      <!-- Buscador (oculto hasta tocar la lupa) -->
+      <div id="crc-buscar-box" style="display:none;position:absolute;top:60px;left:12px;right:12px;z-index:1000;background:rgba(13,17,23,.96);border:1px solid rgba(239,68,68,.4);border-radius:12px;padding:10px;max-height:60%;overflow-y:auto">
+        <div style="display:flex;gap:8px">
+          <input id="crc-buscar-input" class="form-input" style="height:40px;font-size:14px" placeholder="NC, medidor o nombre" autocomplete="off"/>
+          <button id="crc-buscar-cerrar" class="btn-action outline" style="width:auto;height:40px;padding:0 12px;font-size:12px">Cerrar</button>
         </div>
-        <div style="flex:1"></div>
-        ${esAdmin_ ? `<button id="crc-reset-asig" title="Quitar todas las asignaciones" style="pointer-events:auto;height:40px;width:40px;border-radius:12px;border:1px solid var(--border);background:rgba(13,17,23,.9);color:var(--text-3);display:flex;align-items:center;justify-content:center;cursor:pointer;margin-right:8px">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="17" height="17"><path d="M3 12a9 9 0 1 0 9-9 9 9 0 0 0-6.7 3"/><path d="M3 3v5h5"/></svg>
-        </button>
-        <button id="crc-zona" style="pointer-events:auto;height:40px;padding:0 14px;border-radius:12px;border:1px solid rgba(167,139,250,.5);background:rgba(13,17,23,.9);color:#a78bfa;font-size:12px;font-weight:700;display:flex;align-items:center;gap:6px;cursor:pointer;font-family:inherit">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><polygon points="12 2 15 8.3 22 9.3 17 14 18 21 12 17.8 6 21 7 14 2 9.3 9 8.3 12 2"/></svg>
-          Asignar zona
-        </button>` : `
-        <button id="crc-gps" style="pointer-events:auto;width:40px;height:40px;border-radius:12px;border:1px solid var(--border);background:rgba(13,17,23,.9);color:#3b82f6;display:flex;align-items:center;justify-content:center;cursor:pointer">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="20" height="20"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>
-        </button>`}
+        <div id="crc-buscar-res"></div>
+      </div>
+
+      <div id="crc-leyenda" class="mapa-leyenda" style="display:flex;flex-direction:column;gap:5px;pointer-events:none"></div>
+
+      <!-- Controles al dibujar una zona (admin) -->
+      <div id="crc-zona-ctrl" style="position:absolute;bottom:20px;left:50%;transform:translateX(-50%);z-index:900;display:none;gap:8px">
+        <button id="crc-zona-cancelar" style="background:rgba(13,17,23,.92);color:var(--text-2);border:1px solid var(--border);border-radius:20px;padding:10px 18px;font-size:13px;font-weight:700;font-family:inherit;cursor:pointer;box-shadow:0 4px 20px rgba(0,0,0,.4)">Cancelar</button>
+        <button id="crc-cerrar-poli" style="display:none;background:#f87171;color:#0d1117;border:none;border-radius:20px;padding:10px 22px;font-size:13px;font-weight:800;font-family:inherit;cursor:pointer;box-shadow:0 4px 20px rgba(0,0,0,.4)">Cerrar zona</button>
       </div>
 
       <!-- Hoja de detalle del punto (técnico) -->
@@ -89,8 +117,22 @@ export async function init(container, session) {
       <div id="crc-sheet-zona" class="crc-hoja"></div>
     </div>`;
 
-  await cargarOrdenes();
+  ajustarTamano();
   initMap();
+  pintarLeyenda();
+  if (esAdmin_) await cargarParejasActivas();
+  suscribir();
+
+  container.querySelector('#crc-buscar-btn').onclick = () => {
+    const box = container.querySelector('#crc-buscar-box');
+    const ver = box.style.display === 'none';
+    box.style.display = ver ? 'block' : 'none';
+    if (ver) container.querySelector('#crc-buscar-input').focus();
+  };
+  container.querySelector('#crc-buscar-cerrar').onclick = () => { container.querySelector('#crc-buscar-box').style.display = 'none'; };
+  container.querySelector('#crc-buscar-input').oninput = e => buscar(e.target.value);
+  container.querySelector('#crc-zona-cancelar').onclick = cancelarZona;
+  container.querySelector('#crc-cerrar-poli').onclick = cerrarPoligono;
 
   if (esAdmin_) {
     container.querySelector('#crc-zona').onclick = activarModoZona;
@@ -105,68 +147,127 @@ export async function init(container, session) {
 }
 
 export function cleanup() {
+  if (unsubOrd_) { unsubOrd_(); unsubOrd_ = null; }
+  if (unsubRet_) { unsubRet_(); unsubRet_ = null; }
   if (watchId_ != null && navigator.geolocation) navigator.geolocation.clearWatch(watchId_);
   watchId_ = null;
-  document.getElementById('crc-cerrar-poli')?.remove();
   if (map_) { try { map_.remove(); } catch {} map_ = null; }
-  markers_ = {}; selected_ = null; geoMarker_ = null; geoCircle_ = null; puntos_ = [];
+  markers_ = {}; markersRet_ = {}; ordenes_ = []; retiros_ = [];
+  selected_ = null; selectedRet_ = null; geoMarker_ = null; geoCircle_ = null;
+  puntos_ = []; poliPreview_ = null; zonaPoligono_ = null;
 }
 
-async function cargarOrdenes() {
-  try {
-    const snap = await db.collection('caracterizacion_ordenes').get();
-    let todas = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-
-    // El técnico ve SOLO las órdenes de su pareja. El admin ve todas.
-    if (!esAdmin_) {
-      const miPareja = session_.asignacionActual?.destino || null;
-      if (miPareja) todas = todas.filter(o => o.pareja === miPareja);
-      else todas = [];   // sin pareja asignada, no ve nada (evita el desorden)
-    }
-    ordenes_ = todas;
-  } catch (err) {
-    toast('Error cargando órdenes: ' + err.message, 'error');
-    ordenes_ = [];
+// Mismo cálculo que los mapas de Cambios y AMI: en PC el menú va a la
+// izquierda (no hay barra inferior); en teléfono, barra inferior.
+function ajustarTamano() {
+  const w = container_.querySelector('#crc-wrapper');
+  const topbar = document.querySelector('.topbar');
+  const navbar = document.querySelector('.navbar');
+  if (window.innerWidth >= 768) {
+    w.style.top = (topbar ? topbar.offsetHeight : 56) + 'px';
+    w.style.bottom = '0px';
+    w.style.left = (navbar ? navbar.offsetWidth : 200) + 'px';
+    w.style.right = '0px';
+  } else {
+    if (topbar) w.style.top = topbar.offsetHeight + 'px';
+    if (navbar) w.style.bottom = navbar.offsetHeight + 'px';
   }
+}
 
-  // Retiros (fase paralela): se pintan en el mismo mapa como cuadrados ámbar
+// Parejas con al menos un técnico activo en Caracterización (para asignar).
+async function cargarParejasActivas() {
   try {
-    const snapR = await db.collection('caracterizacion_retiros').get();
-    let rets = snapR.docs.map(d => ({ id: d.id, ...d.data() }));
-    if (!esAdmin_) {
-      const miPareja = session_.asignacionActual?.destino || null;
-      rets = miPareja ? rets.filter(r => r.pareja === miPareja) : [];
+    const us = await db.collection('users')
+      .where('asignacionActual.area', '==', 'Caracterizacion')
+      .where('active', '==', true).get();
+    const set = new Set();
+    us.docs.forEach(d => { const p = d.data().asignacionActual?.destino; if (p) set.add(p); });
+    parejasActivas_ = [...set];
+  } catch { parejasActivas_ = []; }
+}
+// Activas + las que ya tengan puntos; si no hay ninguna, las 3 de siempre.
+function parejasDisponibles() {
+  const num = x => parseInt(String(x).replace(/\D/g, ''), 10) || 0;
+  const set = new Set([...parejasActivas_, ...ordenes_.map(o => o.pareja), ...retiros_.map(r => r.pareja)].filter(Boolean));
+  const lista = [...set].sort((a, b) => num(a) - num(b));
+  return lista.length ? lista : PAREJAS_CRC;
+}
+
+// Escucha en vivo: el técnico solo lee lo de su pareja (consulta filtrada,
+// no toda la colección); el admin ve todo. Lo que marca un técnico le
+// aparece a su compañero y al admin sin recargar.
+function suscribir() {
+  const miPareja = session_.asignacionActual?.destino || null;
+  if (!esAdmin_ && !miPareja) { cargado_ = { o: true, r: true }; updateStat(); return; }
+  const colO = db.collection('caracterizacion_ordenes');
+  const colR = db.collection('caracterizacion_retiros');
+  const qO = esAdmin_ ? colO : colO.where('pareja', '==', miPareja);
+  const qR = esAdmin_ ? colR : colR.where('pareja', '==', miPareja);
+  unsubOrd_ = qO.onSnapshot(snap => aplicarCambios(snap, 'o'),
+    err => { toast('Error cargando órdenes: ' + err.message, 'error'); cargado_.o = true; trasCarga(); });
+  unsubRet_ = qR.onSnapshot(snap => aplicarCambios(snap, 'r'),
+    () => { cargado_.r = true; trasCarga(); });
+}
+
+function aplicarCambios(snap, tipo) {
+  const lista = tipo === 'o' ? ordenes_ : retiros_;
+  snap.docChanges().forEach(ch => {
+    const data = { id: ch.doc.id, ...ch.doc.data() };
+    const i = lista.findIndex(x => x.id === data.id);
+    const ajeno = !ch.doc.metadata.hasPendingWrites;   // cambio que no hice yo
+    if (ch.type === 'removed') {
+      if (i >= 0) lista.splice(i, 1);
+      if (tipo === 'o') quitarMarcadores(data.id); else quitarRetiro(data.id);
+      avisarSiAbierta(tipo, data.id, 'Este punto ya no está asignado a tu pareja');
+      return;
     }
-    retiros_ = rets;
-  } catch (err) {
-    retiros_ = [];
-  }
+    const antes = i >= 0 ? lista[i] : null;
+    if (i >= 0) lista[i] = data; else lista.push(data);
+    if (tipo === 'o') pintarOrden(data); else pintarRetiro(data);
+    if (antes && ajeno && cargado_[tipo] &&
+        (antes.estado !== data.estado || antes._nivelVisible !== data._nivelVisible)) {
+      avisarSiAbierta(tipo, data.id, 'Tu pareja actualizó este punto');
+    }
+  });
+  cargado_[tipo] = true;
+  trasCarga();
+}
+
+function avisarSiAbierta(tipo, id, msg) {
+  const abierta = tipo === 'o' ? selected_?.ordenId === id : selectedRet_ === id;
+  if (!abierta) return;
+  cerrarTodasLasHojas();
+  toast(msg, 'warn');
+}
+
+function trasCarga() {
+  updateStat();
+  pintarLeyenda();
+  if (!encuadrado_ && cargado_.o && cargado_.r) { encuadrado_ = true; encuadrar(); }
+}
+
+// Mostrar todos los puntos (instalaciones y retiros) al abrir el mapa
+function encuadrar() {
+  if (!map_) return;
+  const pts = [];
+  ordenes_.forEach(o => { if (o.titular?.lat != null) pts.push([o.titular.lat, o.titular.lng]); });
+  retiros_.forEach(r => { if (r.lat != null) pts.push([r.lat, r.lng]); });
+  if (!pts.length) return;
+  if (pts.length === 1) map_.setView(pts[0], 16);
+  else map_.fitBounds(L.latLngBounds(pts).pad(0.08), { maxZoom: 17 });
 }
 
 function initMap() {
-  const conPuntos = ordenes_.filter(o => o.titular?.lat != null);
-  const center = conPuntos.length ? [conPuntos[0].titular.lat, conPuntos[0].titular.lng] : [13.7942, -88.8965];
-  const zoom = conPuntos.length ? 14 : 8;
-
   map_ = L.map('crc-leaflet', {
-    center, zoom, zoomControl: false, attributionControl: false,
+    center: [13.7942, -88.8965], zoom: 8, zoomControl: false, attributionControl: false,
     rotate: true, touchRotate: true, rotateControl: false,
   });
+  L.control.zoom({ position: 'bottomright' }).addTo(map_);
 
   L.tileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', {
     maxZoom: 20, attribution: '© Google', keepBuffer: 4,
     errorTileUrl: 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7',
   }).addTo(map_).on('tileerror', () => {});
-
-  // Pintar solo los titulares al inicio (cascada)
-  ordenes_.forEach(o => pintarOrden(o));
-  // Pintar los retiros (cuadrados ámbar)
-  retiros_.forEach(r => pintarRetiro(r));
-  if (retiros_.length) {
-    const ley = container_.querySelector('#crc-leyenda');
-    if (ley) ley.style.display = 'flex';
-  }
-  updateStat();
 
   // Tocar el mapa (fuera de un marcador) cierra cualquier hoja abierta,
   // salvo cuando se está dibujando una zona.
@@ -176,17 +277,82 @@ function initMap() {
   });
 }
 
+// Leyenda según lo que ve cada rol
+function pintarLeyenda() {
+  const el = container_?.querySelector('#crc-leyenda');
+  if (!el) return;
+  const item = (color, txt, cuadro) => `<div class="crc-ley"><i style="background:${color};${cuadro ? 'border-radius:3px' : ''}"></i>${txt}</div>`;
+  const hayUPR = ordenes_.some(o => o.esUPR);
+  el.innerHTML = esAdmin_
+    ? item('#64748b', 'Sin asignar') +
+      parejasDisponibles().map(p => item(colorPareja(p), escapeHtml(p))).join('') +
+      item('#22c55e', 'Por confirmar') +
+      (retiros_.length ? item('#94a3b8', 'Cuadro = retiro', true) : '')
+    : item(NIVEL_COLOR.titular, 'Titular') +
+      item(NIVEL_COLOR.suplente1, 'Suplente 1') +
+      item(NIVEL_COLOR.suplente2, 'Suplente 2') +
+      (hayUPR ? item(UPR_COLOR, 'UPR') : '') +
+      item('#22c55e', 'Hecha (por confirmar)') +
+      (retiros_.length ? item(RETIRO_COLOR, 'Retiro', true) : '');
+}
+
+// Buscador: NC, medidor o nombre en titulares, suplentes visibles y retiros
+function buscar(texto) {
+  const res = container_.querySelector('#crc-buscar-res');
+  const q = String(texto || '').trim().toLowerCase();
+  if (q.length < 2) { res.innerHTML = q ? '<div style="font-size:12px;color:var(--text-4);margin-top:8px">Escribe al menos 2 caracteres</div>' : ''; return; }
+  const coincide = p => p && [p.nc, p.medidor, p.nombre].some(v => String(v ?? '').toLowerCase().includes(q));
+  const encontrados = [];
+  ordenes_.forEach(o => {
+    if (o.estado === 'confirmada') return;
+    ['titular', 'suplente1', 'suplente2'].forEach(k => {
+      if (!coincide(o[k])) return;
+      // Al técnico solo se le lleva a puntos ya visibles de la cascada
+      const niveles = ['titular', 'suplente1', 'suplente2'];
+      const visible = esAdmin_ || niveles.indexOf(k) <= niveles.indexOf(o._nivelVisible || 'titular');
+      encontrados.push({ tipo: 'o', o, k, visible });
+    });
+  });
+  retiros_.forEach(r => { if (coincide(r)) encontrados.push({ tipo: 'r', r }); });
+  if (!encontrados.length) { res.innerHTML = '<div style="font-size:12px;color:var(--text-4);margin-top:8px">Sin coincidencias</div>'; return; }
+  res.innerHTML = encontrados.slice(0, 20).map((x, i) => {
+    const p = x.tipo === 'o' ? x.o[x.k] : x.r;
+    const color = x.tipo === 'r' ? RETIRO_COLOR : NIVEL_COLOR[x.k];
+    const etq = x.tipo === 'r' ? 'Retiro' : NIVEL_LABEL[x.k] + (x.visible ? '' : ' · aún no visible');
+    return `<div class="crc-res" data-i="${i}">
+      <i style="width:10px;height:10px;border-radius:${x.tipo === 'r' ? '2px' : '50%'};background:${color};flex-shrink:0"></i>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(p.nombre || 'NC ' + p.nc)}</div>
+        <div style="font-size:11px;color:var(--text-4)">NC ${escapeHtml(p.nc || '')}${p.medidor ? ' · ' + escapeHtml(p.medidor) : ''} · ${etq}</div>
+      </div>
+    </div>`;
+  }).join('');
+  res.querySelectorAll('.crc-res').forEach(el => el.onclick = () => {
+    const x = encontrados[Number(el.dataset.i)];
+    container_.querySelector('#crc-buscar-box').style.display = 'none';
+    if (x.tipo === 'r') { map_.setView([x.r.lat, x.r.lng], 18); abrirDetalleRetiro(x.r.id); return; }
+    const k = x.visible ? x.k : (x.o._nivelVisible || 'titular');
+    if (!x.visible) toast(`Es ${NIVEL_LABEL[x.k]} de esta orden; aparece si no se logra el punto actual`, 'warn');
+    const p = x.o[k] || x.o.titular;
+    if (p?.lat != null) map_.setView([p.lat, p.lng], 18);
+    if (esAdmin_) { x.o.estado === 'por_confirmar' ? abrirConfirmar(x.o.id) : abrirAsignarIndividual(x.o.id); }
+    else abrirDetalle(x.o.id, k);
+  });
+}
+
 function cerrarTodasLasHojas() {
   const s1 = container_.querySelector('#crc-sheet');
   const s2 = container_.querySelector('#crc-sheet-zona');
   if (s1) s1.classList.remove('abierta');
   if (s2) s2.classList.remove('abierta');
   selected_ = null;
+  selectedRet_ = null;
 }
 
 // Pinta una orden según su estado. Muestra el titular; si la orden ya
 // avanzó en la cascada (nivel intentado), muestra hasta ahí.
 function pintarOrden(o) {
+  if (!map_) return;
   quitarMarcadores(o.id);
   markers_[o.id] = {};
 
@@ -267,15 +433,23 @@ function crearMarcador(p, color, texto, activo, destacar, atenuado) {
   return L.marker([p.lat, p.lng], { icon });
 }
 
+function quitarRetiro(id) {
+  if (markersRet_[id]) { if (map_) map_.removeLayer(markersRet_[id]); delete markersRet_[id]; }
+}
+
 // ── RETIROS: cuadrado ámbar (verde si retirado, rojo si no se pudo) ──
 function pintarRetiro(r) {
-  if (markersRet_[r.id]) { map_.removeLayer(markersRet_[r.id]); delete markersRet_[r.id]; }
+  if (!map_) return;
+  quitarRetiro(r.id);
   if (r.lat == null || r.lng == null) return;
 
   // Pendiente: gris si no tiene pareja, color de su pareja si está asignado.
   // Retirado = verde, No se pudo = rojo (el estado manda sobre la asignación).
+  // Técnico: pendiente en ámbar (como dice la leyenda). Admin: color de la
+  // pareja (o gris si no tiene), igual que las instalaciones.
   const color = r.estado === 'retirado' ? '#22c55e'
               : r.estado === 'no_retirado' ? '#ef4444'
+              : !esAdmin_ ? RETIRO_COLOR
               : r.pareja ? colorPareja(r.pareja) : '#64748b';
   const atenuado = r.estado === 'retirado';   // los hechos se ven más tenues
   const marca = r.estado === 'retirado' ? '&#10003;' : r.estado === 'no_retirado' ? '&#10007;' : '';
@@ -297,6 +471,7 @@ function abrirDetalleRetiro(retiroId) {
   const r = retiros_.find(x => x.id === retiroId);
   if (!r) return;
   cerrarTodasLasHojas();
+  selectedRet_ = retiroId;
   const sheet = container_.querySelector('#crc-sheet');
   const hecho = r.estado === 'retirado' || r.estado === 'no_retirado';
 
@@ -307,23 +482,23 @@ function abrirDetalleRetiro(retiroId) {
       <div style="width:9px;height:9px;background:${RETIRO_COLOR};border-radius:2px"></div>
       <span style="font-size:11px;font-weight:800;letter-spacing:.04em;color:${RETIRO_COLOR}">RETIRO</span>
     </div>
-    <div style="font-size:17px;font-weight:800;color:#fff;margin-bottom:2px">${r.nombre || r.nc}</div>
-    <div style="font-size:13px;font-weight:600;color:rgba(255,255,255,.8);margin-bottom:12px">NC ${r.nc}${r.pareja ? ' · ' + r.pareja : ''}</div>
+    <div style="font-size:17px;font-weight:800;color:#fff;margin-bottom:2px">${escapeHtml(r.nombre || r.nc)}</div>
+    <div style="font-size:13px;font-weight:600;color:rgba(255,255,255,.8);margin-bottom:12px">NC ${escapeHtml(r.nc)}${r.pareja ? ' · ' + escapeHtml(r.pareja) : ''}</div>
 
     ${r.direccion ? `
     <div style="display:flex;align-items:flex-start;gap:8px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);border-radius:11px;padding:10px 12px;margin-bottom:12px">
       <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" style="flex-shrink:0;margin-top:1px"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>
-      <div style="font-size:13px;font-weight:500;color:rgba(255,255,255,.95);line-height:1.4">${r.direccion}</div>
+      <div style="font-size:13px;font-weight:500;color:rgba(255,255,255,.95);line-height:1.4">${escapeHtml(r.direccion)}</div>
     </div>` : ''}
 
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:14px">
       ${r.medidor ? `<div style="background:var(--glass);border:1px solid var(--border);border-radius:10px;padding:9px 11px;grid-column:1 / -1">
         <div style="font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:rgba(255,255,255,.45);margin-bottom:3px">Medidor</div>
-        <div style="font-size:15px;font-weight:700;color:${RETIRO_COLOR};font-family:monospace">${r.medidor}</div>
+        <div style="font-size:15px;font-weight:700;color:${RETIRO_COLOR};font-family:monospace">${escapeHtml(r.medidor)}</div>
       </div>` : ''}
       ${r.ds ? `<div style="background:var(--glass);border:1px solid var(--border);border-radius:10px;padding:9px 11px">
         <div style="font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:rgba(255,255,255,.45);margin-bottom:3px">DS</div>
-        <div style="font-size:14px;font-weight:700;color:#fff">${r.ds}</div>
+        <div style="font-size:14px;font-weight:700;color:#fff">${escapeHtml(r.ds)}</div>
       </div>` : ''}
     </div>
     </div><!-- fin panel-scroll-info -->
@@ -333,7 +508,7 @@ function abrirDetalleRetiro(retiroId) {
       <div style="background:var(--glass);border:1px solid var(--border);border-radius:12px;padding:12px;margin-bottom:8px">
         <div style="font-size:12px;font-weight:700;color:${r.estado === 'retirado' ? '#22c55e' : '#ef4444'}">${r.estado === 'retirado' ? 'Retirado' : 'No se pudo retirar'}</div>
         ${r.motivo ? `<div style="font-size:11px;color:#f87171;margin-top:4px">${escapeHtml(r.motivo)}</div>` : ''}
-        ${r.hechoPor ? `<div style="font-size:10px;color:var(--text-4);margin-top:6px">Por ${r.hechoPor}${r.fechaHecho ? ' · ' + fmtFechaCorta(r.fechaHecho) : ''}</div>` : ''}
+        ${r.hechoPor ? `<div style="font-size:10px;color:var(--text-4);margin-top:6px">Por ${escapeHtml(r.hechoPor)}${r.fechaHecho ? ' · ' + fmtFechaCorta(r.fechaHecho) : ''}</div>` : ''}
       </div>
       ${!esAdmin_ ? `<button id="crc-ret-deshacer" style="width:100%;padding:11px;border-radius:12px;border:1px solid var(--border);background:var(--glass);color:var(--text-3);font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">Volver a marcar</button>` : ''}
     ` : `
@@ -414,7 +589,7 @@ function fmtFechaCorta(ts) {
 function quitarMarcadores(ordenId) {
   const g = markers_[ordenId];
   if (!g) return;
-  Object.values(g).forEach(m => { if (m && map_.hasLayer(m)) map_.removeLayer(m); });
+  Object.values(g).forEach(m => { if (m && map_ && map_.hasLayer(m)) map_.removeLayer(m); });
   delete markers_[ordenId];
 }
 
@@ -442,27 +617,27 @@ function abrirDetalle(ordenId, nivel) {
       <div style="width:10px;height:10px;border-radius:50%;background:${(o.esUPR && nivel==='titular') ? UPR_COLOR : NIVEL_COLOR[nivel]}"></div>
       <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:${(o.esUPR && nivel==='titular') ? UPR_COLOR : NIVEL_COLOR[nivel]}">${NIVEL_LABEL[nivel]}</div>
     </div>
-    <div style="font-size:17px;font-weight:800;color:#fff;margin-bottom:2px">${p.nombre || '—'}</div>
-    <div style="font-size:13px;font-weight:600;color:rgba(255,255,255,.8);margin-bottom:12px">NC ${p.nc}</div>
+    <div style="font-size:17px;font-weight:800;color:#fff;margin-bottom:2px">${escapeHtml(p.nombre || '—')}</div>
+    <div style="font-size:13px;font-weight:600;color:rgba(255,255,255,.8);margin-bottom:12px">NC ${escapeHtml(p.nc)}</div>
 
     ${p.direccion ? `
     <div style="display:flex;align-items:flex-start;gap:8px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);border-radius:11px;padding:10px 12px;margin-bottom:12px">
       <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" style="flex-shrink:0;margin-top:1px"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>
-      <div style="font-size:13px;font-weight:500;color:rgba(255,255,255,.95);line-height:1.4">${p.direccion}</div>
+      <div style="font-size:13px;font-weight:500;color:rgba(255,255,255,.95);line-height:1.4">${escapeHtml(p.direccion)}</div>
     </div>` : ''}
 
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:${visitas.length?'12px':'16px'}">
       ${p.medidor ? `<div style="background:var(--glass);border:1px solid var(--border);border-radius:10px;padding:9px 11px;grid-column:1 / -1">
         <div style="font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:rgba(255,255,255,.45);margin-bottom:3px">Medidor</div>
-        <div style="font-size:15px;font-weight:700;color:#f472b6;font-family:monospace">${p.medidor}</div>
+        <div style="font-size:15px;font-weight:700;color:#f472b6;font-family:monospace">${escapeHtml(p.medidor)}</div>
       </div>` : ''}
       ${p.ds ? `<div style="background:var(--glass);border:1px solid var(--border);border-radius:10px;padding:9px 11px">
         <div style="font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:rgba(255,255,255,.45);margin-bottom:3px">DS</div>
-        <div style="font-size:14px;font-weight:700;color:#fff">${p.ds}</div>
+        <div style="font-size:14px;font-weight:700;color:#fff">${escapeHtml(p.ds)}</div>
       </div>` : ''}
       ${o.tarifa ? `<div style="background:var(--glass);border:1px solid var(--border);border-radius:10px;padding:9px 11px">
         <div style="font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:rgba(255,255,255,.45);margin-bottom:3px">Tarifa</div>
-        <div style="font-size:14px;font-weight:700;color:#fff">${o.tarifa}</div>
+        <div style="font-size:14px;font-weight:700;color:#fff">${escapeHtml(o.tarifa)}</div>
       </div>` : ''}
     </div>
 
@@ -636,8 +811,8 @@ function updateStat() {
   const hechas = ordenes_.filter(o => o.estado === 'por_confirmar' || o.estado === 'confirmada').length;
   const pend = ordenes_.filter(o => !o.estado || o.estado === 'pendiente').length;
   const retPend = retiros_.filter(r => !r.estado || r.estado === 'pendiente').length;
-  let txt = `${pend} pendientes · ${hechas} hechas`;
-  if (retiros_.length) txt += ` · ${retPend} retiros`;
+  let txt = `${pend} pendiente${pend !== 1 ? 's' : ''} · ${hechas} hecha${hechas !== 1 ? 's' : ''}`;
+  if (retiros_.length) txt += ` · ${retPend} retiro${retPend !== 1 ? 's' : ''}`;
   el.textContent = txt;
 }
 
@@ -670,29 +845,20 @@ function pointInPolygon(point, vertices) {
 function limpiarPoligono() {
   if (poliPreview_) { map_.removeLayer(poliPreview_); poliPreview_ = null; }
   if (zonaPoligono_) { map_.removeLayer(zonaPoligono_); zonaPoligono_ = null; }
-  const btn = document.getElementById('crc-cerrar-poli');
-  if (btn) btn.style.display = 'none';
+  const ctrl = container_.querySelector('#crc-zona-ctrl');
+  if (ctrl) ctrl.style.display = 'none';
 }
 
 function activarModoZona() {
   if (!map_) return;
-  cerrarSheet();
+  cerrarTodasLasHojas();
   puntos_ = [];
   limpiarPoligono();
   map_.getContainer().style.cursor = 'crosshair';
   toast('Toca para marcar la zona · ciérrala con el botón o doble toque', 'ok', 5000);
-
-  let btn = document.getElementById('crc-cerrar-poli');
-  if (!btn) {
-    btn = document.createElement('button');
-    btn.id = 'crc-cerrar-poli';
-    btn.textContent = 'Cerrar zona';
-    btn.style.cssText = 'position:fixed;bottom:100px;left:50%;transform:translateX(-50%);z-index:700;background:#a78bfa;color:#0d1117;border:none;border-radius:20px;padding:10px 24px;font-size:13px;font-weight:800;font-family:inherit;cursor:pointer;display:none;box-shadow:0 4px 20px rgba(0,0,0,.4)';
-    document.body.appendChild(btn);
-    btn.addEventListener('click', cerrarPoligono);
-  }
-  btn.style.display = 'none';
-
+  const ctrl = container_.querySelector('#crc-zona-ctrl');
+  ctrl.style.display = 'flex';
+  container_.querySelector('#crc-cerrar-poli').style.display = 'none';
   map_.on('click', onMapClickZona_);
   map_.on('dblclick', onMapDblZona_);
 }
@@ -709,7 +875,7 @@ function onMapClickZona_(e) {
   } else {
     poliPreview_ = L.polygon(puntos_, { color:'#a78bfa', weight:2, fillOpacity:.1, dashArray:'6,4' }).addTo(map_);
   }
-  const btn = document.getElementById('crc-cerrar-poli');
+  const btn = container_.querySelector('#crc-cerrar-poli');
   if (btn) btn.style.display = puntos_.length >= 3 ? '' : 'none';
 }
 
@@ -723,8 +889,8 @@ function cerrarPoligono() {
   map_.off('click', onMapClickZona_);
   map_.off('dblclick', onMapDblZona_);
   map_.getContainer().style.cursor = '';
-  const btn = document.getElementById('crc-cerrar-poli');
-  if (btn) btn.style.display = 'none';
+  const ctrl = container_.querySelector('#crc-zona-ctrl');
+  if (ctrl) ctrl.style.display = 'none';
   if (poliPreview_) { map_.removeLayer(poliPreview_); poliPreview_ = null; }
   zonaPoligono_ = L.polygon(puntos_, { color:'#a78bfa', weight:2, fillOpacity:.12 }).addTo(map_);
 
@@ -747,7 +913,7 @@ function abrirSheetZona(cuantas, cuantosRet) {
     <div style="font-size:12px;color:var(--text-4);margin-bottom:16px">${detalle}</div>
     <div class="form-label" style="margin-bottom:8px">Pareja</div>
     <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px" id="crc-zona-parejas">
-      ${PAREJAS_CRC.map(p => `<div class="crc-zp" data-val="${p}" style="cursor:pointer;padding:9px 16px;border-radius:20px;border:1px solid var(--border);background:var(--glass);font-size:13px;font-weight:700">${p}</div>`).join('')}
+      ${parejasDisponibles().map(p => `<div class="crc-zp" data-val="${escapeHtml(p)}" style="cursor:pointer;padding:9px 16px;border-radius:20px;border:1px solid var(--border);background:var(--glass);font-size:13px;font-weight:700">${p}</div>`).join('')}
       <div class="crc-zp" data-val="null" style="cursor:pointer;padding:9px 16px;border-radius:20px;border:1px solid var(--border);background:var(--glass);font-size:13px;font-weight:700;color:var(--text-4)">Sin pareja</div>
     </div>
     <div id="crc-zona-err" class="form-error" style="display:none;margin-bottom:8px"></div>
@@ -809,6 +975,7 @@ async function confirmarZona(pareja) {
     dentro.forEach(o => { o.pareja = val; pintarOrden(o); });
     dentroRet.forEach(r => { r.pareja = val; pintarRetiro(r); });
     cancelarZona();
+    pintarLeyenda();
     const partes = [];
     if (dentro.length) partes.push(`${dentro.length} instalaciones`);
     if (dentroRet.length) partes.push(`${dentroRet.length} retiros`);
@@ -830,13 +997,13 @@ function abrirConfirmar(ordenId) {
   const sheet = container_.querySelector('#crc-sheet-zona');
   sheet.innerHTML = `
     <div style="width:36px;height:4px;background:var(--border);border-radius:2px;margin:0 auto 14px"></div>
-    <div style="font-size:15px;font-weight:800;margin-bottom:2px">${t.nombre || o.ncTitular}</div>
+    <div style="font-size:15px;font-weight:800;margin-bottom:2px">${escapeHtml(t.nombre || o.ncTitular)}</div>
     <div style="font-size:11px;color:var(--text-4);margin-bottom:14px">NC ${o.ncTitular}${o.pareja ? ' · ' + o.pareja : ''}</div>
 
     <div style="background:var(--glass);border:1px solid var(--border);border-radius:12px;padding:12px;margin-bottom:14px">
       <div style="font-size:12px;font-weight:700;color:#22c55e;margin-bottom:6px">${o.logranoEn ? `Hecha en ${NIVEL_LABEL[o.logranoEn]}` : 'Sin lograr (solo visitas)'}</div>
       ${visitas.length ? `<div style="font-size:11px;color:#fbbf24">Visitas cobrables: ${visitas.map(v=>NIVEL_LABEL[v]).join(', ')} (${visitas.length})</div>` : `<div style="font-size:11px;color:var(--text-4)">Sin visitas</div>`}
-      ${o.hechaPor ? `<div style="font-size:10px;color:var(--text-4);margin-top:6px">Marcada por ${o.hechaPor}</div>` : ''}
+      ${o.hechaPor ? `<div style="font-size:10px;color:var(--text-4);margin-top:6px">Marcada por ${escapeHtml(o.hechaPor)}</div>` : ''}
     </div>
 
     <div style="display:flex;gap:8px">
@@ -884,12 +1051,12 @@ function abrirAsignarIndividual(ordenId) {
   if (!o) return;
   const t = o.titular || {};
   const nSup = [o.suplente1, o.suplente2].filter(s => s && s.nc).length;
-  const dato = (etq, val) => val ? `<div style="display:flex;justify-content:space-between;gap:12px;font-size:12px;margin-bottom:3px"><span style="color:var(--text-4)">${etq}</span><span style="color:var(--text-2);text-align:right">${val}</span></div>` : '';
+  const dato = (etq, val) => val ? `<div style="display:flex;justify-content:space-between;gap:12px;font-size:12px;margin-bottom:3px"><span style="color:var(--text-4)">${etq}</span><span style="color:var(--text-2);text-align:right">${escapeHtml(val)}</span></div>` : '';
   const sheet = container_.querySelector('#crc-sheet-zona');
   sheet.innerHTML = `
     <div style="width:36px;height:4px;background:var(--border);border-radius:2px;margin:0 auto 14px"></div>
     ${o.esUPR ? `<div style="display:inline-block;font-size:11px;font-weight:800;letter-spacing:.06em;color:${UPR_COLOR};background:rgba(56,189,248,.14);border:1px solid rgba(56,189,248,.45);border-radius:8px;padding:3px 9px;margin-bottom:8px">UPR${o.tarifa ? ' · ' + o.tarifa : ''}</div>` : ''}
-    <div style="font-size:15px;font-weight:800;margin-bottom:2px">${t.nombre || o.ncTitular}</div>
+    <div style="font-size:15px;font-weight:800;margin-bottom:2px">${escapeHtml(t.nombre || o.ncTitular)}</div>
     <div style="font-size:11px;color:var(--text-4);margin-bottom:12px">NC ${o.ncTitular} · ${o.pareja ? o.pareja : 'sin asignar'}</div>
     <div style="background:var(--glass);border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:14px">
       ${dato('Dirección', t.direccion)}
@@ -900,7 +1067,7 @@ function abrirAsignarIndividual(ordenId) {
     </div>
     <div class="form-label" style="margin-bottom:8px">Asignar a</div>
     <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px" id="crc-ind-parejas">
-      ${PAREJAS_CRC.map(p => `<div class="crc-ip" data-val="${p}" style="cursor:pointer;padding:9px 16px;border-radius:20px;border:1px solid ${o.pareja===p?'#a78bfa':'var(--border)'};background:${o.pareja===p?'rgba(167,139,250,.15)':'var(--glass)'};font-size:13px;font-weight:700">${p}</div>`).join('')}
+      ${parejasDisponibles().map(p => `<div class="crc-ip" data-val="${p}" style="cursor:pointer;padding:9px 16px;border-radius:20px;border:1px solid ${o.pareja===p?'#a78bfa':'var(--border)'};background:${o.pareja===p?'rgba(167,139,250,.15)':'var(--glass)'};font-size:13px;font-weight:700">${p}</div>`).join('')}
       <div class="crc-ip" data-val="null" style="cursor:pointer;padding:9px 16px;border-radius:20px;border:1px solid var(--border);background:var(--glass);font-size:13px;font-weight:700;color:var(--text-4)">Quitar</div>
     </div>
     <button id="crc-ind-cerrar" style="width:100%;padding:11px;border-radius:12px;border:1px solid var(--border);background:var(--glass);color:var(--text-3);font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">Cerrar</button>`;
