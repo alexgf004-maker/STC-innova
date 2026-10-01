@@ -6,7 +6,7 @@
 
 import { db, auth, SEED } from '../firebase.js';
 import { hashPin, derivePassword, generateSalt } from '../crypto.js';
-import { toast } from '../ui.js';
+import { toast, escapeHtml } from '../ui.js';
 
 const AREAS    = ['CAMBIOS', 'Caracterizacion', 'Reclamos', 'AMI'];
 const DESTINOS = {
@@ -20,6 +20,19 @@ const ROLES = ['tecnico', 'asistente', 'admin'];
 
 let container_, session_;
 let usuarios = [];
+let filtro_ = 'todos', busq_ = '', verInactivos_ = false;
+
+const AREA_TXT  = { CAMBIOS: 'Cambios', Caracterizacion: 'Caracterización', Reclamos: 'Reclamos SIGET', AMI: 'AMI', OTC: 'OTC' };
+const AREA_CLS  = { CAMBIOS: 'cm', Caracterizacion: 'cr', Reclamos: 'rc', AMI: 'am', OTC: 'otc' };
+const ICO = {
+  plus:  '<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>',
+  pin:   '<path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/>',
+  lock:  '<rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/>',
+  off:   '<circle cx="12" cy="12" r="10"/><line x1="8" y1="8" x2="16" y2="16"/><line x1="16" y1="8" x2="8" y2="16"/>',
+  on:    '<path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>',
+  dots:  '<circle cx="12" cy="5" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="12" cy="19" r="1.4"/>',
+};
+const svg = (d, n = 16) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="${n}" height="${n}">${d}</svg>`;
 
 // ── Entry point ───────────────────────────────────
 export async function init(container, session) {
@@ -33,40 +46,35 @@ export async function init(container, session) {
 // ── Shell del módulo ──────────────────────────────
 function renderShell() {
   container_.innerHTML = `
-    <div class="flex-col gap-12" style="padding-top:4px">
-
-      <!-- Header -->
-      <div class="usuarios-header anim-up">
-        <div>
-          <div class="section-title">Usuarios</div>
-          <div class="section-sub" id="usuarios-count">Cargando…</div>
-        </div>
-        <button class="btn-primary" id="btn-nuevo-usuario">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="14" height="14">
-            <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
-          </svg>
-          Nuevo
-        </button>
+    <div class="flex-col gap-12">
+      <div class="anim-up">
+        <div style="font-size:24px;font-weight:600;letter-spacing:-.02em;line-height:1.15">Usuarios</div>
+        <div style="font-size:12px;color:var(--text-4);margin-top:4px" id="usuarios-count">Cargando…</div>
       </div>
 
-      <!-- Filtros -->
+      <button class="us-btn-main anim-up" id="btn-nuevo-usuario">${svg(ICO.plus)} Nuevo usuario</button>
+
+      <div class="ds-mini anim-up d1" id="us-resumen"></div>
+
+      <div class="buscar-wrap anim-up d1" style="margin-bottom:0">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14" style="color:var(--text-4);flex-shrink:0"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input class="buscar-input" id="us-buscar" placeholder="Buscar por nombre o usuario…" autocomplete="off"/>
+      </div>
+
       <div class="filter-row anim-up d1" id="filter-row">
         <div class="filter-chip active" data-filter="todos">Todos</div>
         <div class="filter-chip" data-filter="tecnico">Técnicos</div>
-        <div class="filter-chip" data-filter="asistente">Asistentes</div>
-        <div class="filter-chip" data-filter="admin">Admin</div>
+        <div class="filter-chip" data-filter="sinasignar">Sin asignar</div>
+        <div class="filter-chip" data-filter="oficina">Oficina</div>
       </div>
 
-      <!-- Lista -->
-      <div id="usuarios-list" class="flex-col gap-8 anim-up d2">
+      <div id="usuarios-list" class="anim-up d2">
         <div class="loading-placeholder">
           <div class="loading-bar"></div>
           <div class="loading-bar short"></div>
           <div class="loading-bar"></div>
-          <div class="loading-bar short"></div>
         </div>
       </div>
-
     </div>
 
     <!-- Sheet crear usuario -->
@@ -80,7 +88,7 @@ function renderShell() {
             <input class="form-input" id="nu-name" type="text" placeholder="Ej: Juan Pérez"/>
           </div>
           <div class="form-field">
-            <div class="form-label">Username</div>
+            <div class="form-label">Usuario para entrar</div>
             <input class="form-input" id="nu-user" type="text" placeholder="Ej: juan.perez" autocapitalize="off"/>
           </div>
           <div class="form-field">
@@ -92,7 +100,7 @@ function renderShell() {
             <div class="select-row" id="nu-rol-row">
               <div class="select-chip active" data-val="tecnico">Técnico</div>
               <div class="select-chip" data-val="asistente">Asistente</div>
-              <div class="select-chip" data-val="admin">Admin</div>
+              ${session_.role === 'admin' ? '<div class="select-chip" data-val="admin">Admin</div>' : ''}
             </div>
           </div>
           <div id="nu-error" class="form-error"></div>
@@ -138,7 +146,7 @@ function renderShell() {
         <div class="sheet-title" id="sheet-cred-title">Editar credenciales</div>
         <div class="sheet-body">
           <div class="form-field">
-            <div class="form-label">Username</div>
+            <div class="form-label">Usuario para entrar</div>
             <input class="form-input" id="cred-username" type="text" autocomplete="off" autocapitalize="none"/>
           </div>
           <div class="form-field">
@@ -164,14 +172,16 @@ function renderShell() {
   document.getElementById('btn-guardar-asig').addEventListener('click', guardarAsignacion);
   document.getElementById('btn-guardar-cred')?.addEventListener('click', guardarCredenciales);
 
-  // Filtros
-  document.querySelectorAll('.filter-chip').forEach(chip => {
+  // Filtros y buscador
+  document.querySelectorAll('#filter-row .filter-chip').forEach(chip => {
     chip.addEventListener('click', () => {
-      document.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
+      document.querySelectorAll('#filter-row .filter-chip').forEach(c => c.classList.remove('active'));
       chip.classList.add('active');
-      renderLista(chip.dataset.filter);
+      filtro_ = chip.dataset.filter;
+      renderLista();
     });
   });
+  document.getElementById('us-buscar').addEventListener('input', e => { busq_ = e.target.value; renderLista(); });
 
   // Select chips
   setupSelectChips('nu-rol-row');
@@ -199,12 +209,7 @@ async function loadUsuarios() {
   try {
     const snap = await db.collection('users').orderBy('displayName').get();
     usuarios = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-
-    const total = usuarios.length;
-    const activos = usuarios.filter(u => u.active).length;
-    document.getElementById('usuarios-count').textContent = `${activos} activos · ${total} total`;
-
-    renderLista('todos');
+    renderLista();
   } catch (err) {
     console.error('[usuarios] Error cargando:', err);
     document.getElementById('usuarios-list').innerHTML = `
@@ -217,69 +222,129 @@ async function loadUsuarios() {
 }
 
 // ── Render lista ──────────────────────────────────
-function renderLista(filtro) {
+// Agrupada: técnicos por área asignada hoy, luego oficina, e inactivos
+// plegados al final. Tocar la asignación la cambia; "⋮" abre las acciones.
+function renderLista(filtroArg) {
+  if (typeof filtroArg === 'string') filtro_ = filtroArg;
   const list = document.getElementById('usuarios-list');
-  let filtered = filtro === 'todos'
-    ? usuarios
-    : usuarios.filter(u => u.role === filtro);
+  if (!list) return;
 
-  if (!filtered.length) {
-    list.innerHTML = `<div class="dev-module"><div class="dev-title">Sin usuarios</div><p>No hay usuarios con este filtro.</p></div>`;
+  // Resumen
+  const activos = usuarios.filter(u => u.active !== false);
+  const tecs = activos.filter(u => u.role === 'tecnico');
+  const sinAsig = tecs.filter(u => !u.asignacionActual?.area).length;
+  document.getElementById('usuarios-count').textContent = `${activos.length} activos · ${usuarios.length} en total`;
+  document.getElementById('us-resumen').innerHTML = `
+    <div class="ds-m"><div class="ds-num-md">${tecs.length}</div><div class="ds-lbl-sm" style="margin-top:6px">Técnicos</div></div>
+    <div class="ds-m"><div class="ds-num-md" style="color:#22c55e">${tecs.length - sinAsig}</div><div class="ds-lbl-sm" style="margin-top:6px">Asignados</div></div>
+    <div class="ds-m"><div class="ds-num-md" style="color:${sinAsig ? '#fbbf24' : 'var(--text-3)'}">${sinAsig}</div><div class="ds-lbl-sm" style="margin-top:6px">Sin asignar</div></div>`;
+
+  // Filtro + búsqueda
+  const q = busq_.trim().toLowerCase();
+  let lista = usuarios.filter(u => !q || String(u.displayName || '').toLowerCase().includes(q) || String(u.username || '').toLowerCase().includes(q));
+  if (filtro_ === 'tecnico') lista = lista.filter(u => u.role === 'tecnico');
+  else if (filtro_ === 'sinasignar') lista = lista.filter(u => u.role === 'tecnico' && u.active !== false && !u.asignacionActual?.area);
+  else if (filtro_ === 'oficina') lista = lista.filter(u => u.role !== 'tecnico');
+
+  if (!lista.length) {
+    list.innerHTML = `<div class="dev-module"><div class="dev-title">Sin usuarios</div><p>${q ? 'Nadie coincide con la búsqueda.' : 'No hay usuarios con este filtro.'}</p></div>`;
     return;
   }
 
-  list.innerHTML = filtered.map(u => {
-    const asgn  = u.asignacionActual;
-    const area  = asgn?.area || null;
-    const dest  = asgn?.destino || null;
-    const color = area === 'CAMBIOS' ? 'cm' : area === 'Caracterizacion' ? 'cr' : area === 'Reclamos' ? 'rc' : area === 'AMI' ? 'am' : area === 'OTC' ? 'otc' : '';
+  const act = lista.filter(u => u.active !== false);
+  const inact = lista.filter(u => u.active === false);
+  const grupos = [];
+  const tecAct = act.filter(u => u.role === 'tecnico');
+  ['CAMBIOS', 'Caracterizacion', 'AMI', 'Reclamos', 'OTC'].forEach(a => {
+    const arr = tecAct.filter(u => u.asignacionActual?.area === a);
+    if (arr.length) grupos.push({ titulo: AREA_TXT[a], cls: AREA_CLS[a], arr });
+  });
+  const sinA = tecAct.filter(u => !u.asignacionActual?.area || !AREA_TXT[u.asignacionActual.area]);
+  if (sinA.length) grupos.push({ titulo: 'Técnicos sin asignar hoy', cls: '', arr: sinA });
+  const ofi = act.filter(u => u.role !== 'tecnico');
+  if (ofi.length) grupos.push({ titulo: 'Oficina', cls: '', arr: ofi });
 
-    return `
-      <div class="user-card ${u.active ? '' : 'inactive'}" data-uid="${u.id}">
-        <div class="user-card-left">
-          <div class="user-avatar ${color}">${getInitials(u.displayName)}</div>
-          <div class="user-info">
-            <div class="user-name">${u.displayName}</div>
-            <div class="user-meta">
-              <span class="role-badge ${u.role}">${getRoleLabel(u.role)}</span>
-              ${!u.active ? '<span class="inactive-badge">Inactivo</span>' : ''}
-            </div>
-            ${u.role === 'tecnico' ? `
-              <div class="user-asign ${color}">
-                ${area
-                  ? `<span>${area}</span><span class="dot-sep">·</span><span>${dest || '—'}</span>`
-                  : '<span class="sin-asign">Sin asignación hoy</span>'}
-              </div>` : ''}
-          </div>
+  const porPareja = (a, b) => String(a.asignacionActual?.destino || '').localeCompare(String(b.asignacionActual?.destino || ''), 'es', { numeric: true })
+    || String(a.displayName || '').localeCompare(String(b.displayName || ''));
+  const sec = (titulo, n, cls, extra = '') => `<div class="us-sec">
+      <span class="us-sec-dot ${cls}"></span><div class="ds-sec" style="margin:0">${titulo}</div>
+      <div style="margin-left:auto;display:flex;align-items:center;gap:8px">${extra}<span class="us-count">${n}</span></div>
+    </div>`;
+
+  list.innerHTML = grupos.map(g => sec(g.titulo, g.arr.length, g.cls)
+      + `<div class="flex-col gap-8">${g.arr.sort(porPareja).map(tarjetaUsuario).join('')}</div>`).join('')
+    + (inact.length ? sec('Inactivos', inact.length, '', `<button class="us-mini-btn" id="us-ver-inactivos">${verInactivos_ ? 'Ocultar' : 'Ver'}</button>`)
+      + (verInactivos_ ? `<div class="flex-col gap-8">${inact.map(tarjetaUsuario).join('')}</div>` : '') : '');
+
+  list.querySelector('#us-ver-inactivos')?.addEventListener('click', () => { verInactivos_ = !verInactivos_; renderLista(); });
+  list.querySelectorAll('[data-asignar]').forEach(b => b.onclick = () => asignar(b.dataset.asignar));
+  list.querySelectorAll('[data-acciones]').forEach(b => b.onclick = () => abrirAcciones(b.dataset.acciones));
+}
+
+function tarjetaUsuario(u) {
+  const area = u.asignacionActual?.area || null;
+  const dest = u.asignacionActual?.destino || null;
+  const cls = AREA_CLS[area] || '';
+  const esYo = u.id === session_.uid;
+  const asignacion = u.role !== 'tecnico' || u.active === false ? '' : `
+    <button class="us-asig ${area ? cls : 'sin'}" data-asignar="${u.id}">
+      ${svg(ICO.pin, 12)}
+      ${area ? `${escapeHtml(AREA_TXT[area] || area)} · ${escapeHtml(dest || '—')}` : 'Sin asignar · tocar para asignar'}
+    </button>`;
+  return `
+    <div class="us-card ${u.active === false ? 'inactivo' : ''}">
+      <div class="user-avatar ${cls}">${escapeHtml(getInitials(u.displayName))}</div>
+      <div style="flex:1;min-width:0">
+        <div style="display:flex;align-items:center;gap:6px;min-width:0">
+          <span class="us-nombre">${escapeHtml(u.displayName || '—')}</span>
+          ${esYo ? '<span class="estado-badge muted" style="font-size:9px;padding:2px 7px">Tú</span>' : ''}
         </div>
-        <div class="user-card-actions">
-          ${u.role === 'tecnico' ? `
-            <button class="icon-btn" onclick="window.__usuarios.asignar('${u.id}')" title="Asignar área">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
-                <path d="M17 3a2.828 2.828 0 114 4L7.5 20.5 2 22l1.5-5.5L17 3z"/>
-              </svg>
-            </button>` : ''}
-          ${session_.role === 'admin' ? `
-          <button class="icon-btn" onclick="window.__usuarios.editarCredenciales('${u.id}')" title="Cambiar PIN / username">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
-              <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
-              <path d="M7 11V7a5 5 0 0110 0v4"/>
-            </svg>
-          </button>` : ''}
-          ${puedeToggle(u) ? `
-          <button class="icon-btn ${u.active ? 'danger' : 'ok'}"
-                  onclick="window.__usuarios.toggleActive('${u.id}', ${u.active})"
-                  title="${u.active ? 'Desactivar' : 'Activar'}">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
-              ${u.active
-                ? '<circle cx="12" cy="12" r="10"/><line x1="8" y1="8" x2="16" y2="16"/><line x1="16" y1="8" x2="8" y2="16"/>'
-                : '<path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>'}
-            </svg>
-          </button>` : ''}
+        <div class="us-meta">${u.username ? '@' + escapeHtml(u.username) + ' · ' : ''}${getRoleLabel(u.role)}${u.active === false ? ' · Inactivo' : ''}</div>
+        ${asignacion}
+      </div>
+      ${tieneAcciones(u) ? `<button class="us-dots" data-acciones="${u.id}" title="Opciones">${svg(ICO.dots, 18)}</button>` : '<span style="width:34px;flex-shrink:0"></span>'}
+    </div>`;
+}
+
+function tieneAcciones(u) {
+  return (u.role === 'tecnico' && u.active !== false) || session_.role === 'admin' || puedeToggle(u);
+}
+
+// Hoja de acciones de un usuario
+function abrirAcciones(uid) {
+  const u = usuarios.find(x => x.id === uid);
+  if (!u) return;
+  document.getElementById('sheet-us-acciones')?.remove();
+  const sh = document.createElement('div');
+  sh.className = 'sheet-backdrop open';
+  sh.id = 'sheet-us-acciones';
+  const item = (id, ico, txt, sub, cls = '') => `<button class="us-accion ${cls}" id="${id}">${svg(ico, 18)}<span style="flex:1;text-align:left"><span style="display:block">${txt}</span>${sub ? `<span class="us-accion-sub">${sub}</span>` : ''}</span></button>`;
+  const area = u.asignacionActual?.area;
+  sh.innerHTML = `<div class="sheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-body">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">
+        <div class="user-avatar ${AREA_CLS[area] || ''}">${escapeHtml(getInitials(u.displayName))}</div>
+        <div style="min-width:0">
+          <div style="font-size:16px;font-weight:600">${escapeHtml(u.displayName || '—')}</div>
+          <div class="us-meta">${u.username ? '@' + escapeHtml(u.username) + ' · ' : ''}${getRoleLabel(u.role)}</div>
         </div>
       </div>
-    `;
-  }).join('');
+      <div class="flex-col gap-8">
+        ${u.role === 'tecnico' && u.active !== false ? item('us-a-asig', ICO.pin, 'Asignar área y pareja', area ? `${escapeHtml(AREA_TXT[area] || area)} · ${escapeHtml(u.asignacionActual?.destino || '—')}` : 'Sin asignar hoy') : ''}
+        ${session_.role === 'admin' ? item('us-a-cred', ICO.lock, 'Cambiar usuario o PIN', '') : ''}
+        ${puedeToggle(u) ? item('us-a-toggle', u.active === false ? ICO.on : ICO.off, u.active === false ? 'Activar usuario' : 'Desactivar usuario', u.active === false ? 'Podrá volver a entrar' : 'Ya no podrá entrar a la app', u.active === false ? 'ok' : 'danger') : ''}
+      </div>
+      <button class="btn-action outline" id="us-a-cerrar" style="height:44px;margin-top:12px">Cerrar</button>
+    </div>
+  </div>`;
+  document.body.appendChild(sh);
+  const cerrar = () => sh.remove();
+  sh.addEventListener('click', e => { if (e.target === sh) cerrar(); });
+  sh.querySelector('#us-a-cerrar').onclick = cerrar;
+  sh.querySelector('#us-a-asig')?.addEventListener('click', () => { cerrar(); asignar(uid); });
+  sh.querySelector('#us-a-cred')?.addEventListener('click', () => { cerrar(); editarCredenciales(uid); });
+  sh.querySelector('#us-a-toggle')?.addEventListener('click', () => { cerrar(); toggleActive(uid, u.active !== false); });
 }
 
 // ── Permisos ──────────────────────────────────────
@@ -369,16 +434,12 @@ async function crearUsuario() {
       role, active: true, asignacionActual: null,
     });
 
-    const total   = usuarios.length;
-    const activos = usuarios.filter(u => u.active).length;
-    document.getElementById('usuarios-count').textContent = `${activos} activos · ${total} total`;
-
     closeSheet('sheet-nuevo');
     document.getElementById('nu-name').value = '';
     document.getElementById('nu-user').value = '';
     document.getElementById('nu-pin').value  = '';
 
-    renderLista(document.querySelector('.filter-chip.active')?.dataset.filter || 'todos');
+    renderLista();
     toast(`Usuario ${name} creado`, 'ok');
 
   } catch (err) {
@@ -401,7 +462,7 @@ function asignar(uid) {
   const u = usuarios.find(x => x.id === uid);
   if (!u) return;
 
-  document.getElementById('sheet-asignar-title').textContent = `Asignar: ${u.displayName}`;
+  document.getElementById('sheet-asignar-title').textContent = `Asignar · ${u.displayName}`;
 
   // Resetear selección
   document.querySelectorAll('#asig-area-row .select-chip').forEach(c => c.classList.remove('active'));
@@ -436,9 +497,14 @@ function updateDestinoRow(area, selectedDestino = null) {
   label.textContent = (area === 'CAMBIOS' || area === 'Caracterizacion' || area === 'Reclamos' || area === 'AMI') ? 'Pareja' : 'Supervisor';
 
   const destinos = DESTINOS[area] || [];
-  row.innerHTML = destinos.map(d => `
-    <div class="select-chip ${selectedDestino === d ? 'active' : ''}" data-val="${d}">${d}</div>
-  `).join('');
+  // Cuántos técnicos activos ya están en cada pareja/destino de esa área
+  // (con la lista ya cargada, sin leer más de Firestore)
+  const ocupados = d => usuarios.filter(x => x.id !== asignarUID && x.active !== false
+    && x.asignacionActual?.area === area && x.asignacionActual?.destino === d).length;
+  row.innerHTML = destinos.map(d => {
+    const n = ocupados(d);
+    return `<div class="select-chip ${selectedDestino === d ? 'active' : ''}" data-val="${d}">${d}${n ? `<span class="us-chip-n">${n}</span>` : ''}</div>`;
+  }).join('');
 
   setupSelectChips('asig-destino-row');
 }
@@ -470,7 +536,7 @@ async function guardarAsignacion() {
     if (u) u.asignacionActual = asignacionActual;
 
     closeSheet('sheet-asignar');
-    renderLista(document.querySelector('.filter-chip.active')?.dataset.filter || 'todos');
+    renderLista();
     toast('Asignación guardada', 'ok');
 
   } catch (err) {
@@ -491,10 +557,7 @@ async function toggleActive(uid, currentlyActive) {
     await db.collection('users').doc(uid).update({ active: !currentlyActive });
     if (u) u.active = !currentlyActive;
 
-    const activos = usuarios.filter(x => x.active).length;
-    document.getElementById('usuarios-count').textContent = `${activos} activos · ${usuarios.length} total`;
-
-    renderLista(document.querySelector('.filter-chip.active')?.dataset.filter || 'todos');
+    renderLista();
     toast(`Usuario ${currentlyActive ? 'desactivado' : 'activado'}`, currentlyActive ? 'warn' : 'ok');
   } catch (err) {
     console.error('[usuarios] Error toggle:', err);
@@ -592,11 +655,30 @@ async function guardarCredenciales() {
       update.pinSalt = salt;
     }
 
+    // El login resuelve username -> uid + correo con la colección `usernames`.
+    // Si cambia el username hay que registrar el nuevo (con el MISMO correo
+    // interno de Firebase Auth, que no cambia) y borrar el viejo; antes solo
+    // se cambiaba en `users` y el usuario ya no podía entrar con el nuevo.
+    // Se registra primero el nuevo para no dejarlo sin forma de entrar.
+    const previo = usuarios.find(u => u.id === credUid_);
+    const viejo = previo?.username || '';
+    if (viejo !== username) {
+      let email = previo?.internalEmail || null;
+      if (viejo) {
+        const vDoc = await db.collection('usernames').doc(viejo).get().catch(() => null);
+        if (vDoc?.exists && vDoc.data().email) email = vDoc.data().email;
+      }
+      email = email || `${viejo || username}@innova-stc.internal`;
+      await db.collection('usernames').doc(username).set({ uid: credUid_, email });
+    }
+
     await db.collection('users').doc(credUid_).update(update);
+    if (viejo && viejo !== username) await db.collection('usernames').doc(viejo).delete().catch(() => {});
+
     const idx = usuarios.findIndex(u => u.id === credUid_);
     if (idx !== -1) usuarios[idx] = { ...usuarios[idx], ...update };
     closeSheet('sheet-credenciales');
-    renderLista(document.querySelector('.filter-chip.active')?.dataset.filter || 'todos');
+    renderLista();
     toast('Credenciales actualizadas', 'ok');
   } catch(err) {
     errEl.textContent = `Error: ${err.message}`;
