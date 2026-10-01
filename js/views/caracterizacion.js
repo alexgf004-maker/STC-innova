@@ -26,6 +26,24 @@ let padron_    = null;   // { NC: {nc,nombre,direccion,ds,medidor,lat,lng,sup1?,
 let ordenes_   = [];
 let retiros_   = [];     // puntos de retiro (colección caracterizacion_retiros)
 let pestana_   = 'instalacion';   // 'instalacion' | 'retiro'
+let verListas_ = false;          // la sección "Lista" (confirmadas) va plegada
+
+// Mismos colores de pareja que el mapa (por número, no solo 1-3)
+const PALETA_PAREJA = ['#2dd4bf','#fbbf24','#a78bfa','#f472b6','#60a5fa'];
+function colorPareja(pareja) {
+  const n = parseInt(String(pareja).replace(/\D/g, ''), 10);
+  return PALETA_PAREJA[(n - 1) % PALETA_PAREJA.length] || '#94a3b8';
+}
+// Título de sección con contador (patrón ds)
+const secTitulo = (titulo, n, extra = '') => `<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin:16px 0 10px">
+  <div class="ds-sec" style="margin:0">${titulo}</div>
+  <div style="display:flex;align-items:center;gap:8px">${extra}<span style="font-size:11px;font-weight:600;color:var(--text-3);background:var(--glass);border:1px solid var(--border);border-radius:10px;padding:2px 9px">${n}</span></div>
+</div>`;
+// Llevar al mapa con un punto abierto (el mapa lo lee al cargar)
+function verEnMapa(tipo, id) {
+  try { sessionStorage.setItem('crc_foco', JSON.stringify({ tipo, id })); } catch {}
+  window.__router.navigateTo('caracterizacion_mapa');
+}
 
 // ── Carga del padrón (una vez, cacheado en memoria) ──
 async function cargarPadron() {
@@ -238,31 +256,36 @@ export async function init(container, session) {
         <div style="font-size:24px;font-weight:600;letter-spacing:-.02em;line-height:1.15">Caracterización de la Carga</div>
         <div style="font-size:12px;color:var(--text-4);margin-top:4px">${esAdmin_ ? 'Órdenes del día' : 'Tus órdenes del día'}</div>
         ${esAdmin_ ? `
-        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px">
-          <button class="icon-btn" id="crc-excel" title="Descargar Excel de trazabilidad">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        <div style="display:flex;gap:8px;margin-top:14px">
+          <button id="crc-cargar" style="flex:1;display:flex;align-items:center;justify-content:center;gap:8px;padding:12px;border-radius:12px;border:1px solid rgba(239,68,68,.4);background:rgba(239,68,68,.1);color:#f87171;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            Cargar órdenes del día
           </button>
-          <button class="icon-btn" id="crc-mapa" title="Mapa y asignación de zonas">
+          <button class="icon-btn" id="crc-mapa" title="Mapa y asignación de zonas" style="width:46px;height:auto;border-radius:12px">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg>
           </button>
-          <button class="icon-btn" id="crc-complemento" title="Completar datos desde BDTH">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><path d="M20 6H10M20 12H10M20 18H10"/><path d="M4 7l2 2 3-3"/><path d="M4 13l2 2 3-3"/><path d="M4 19l2 2 3-3"/></svg>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+          <button class="crc-acc" id="crc-cargar-retiro" style="color:#f59e0b;border-color:rgba(245,158,11,.35);background:rgba(245,158,11,.08)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M22 12v5a2 2 0 01-2 2H4a2 2 0 01-2-2v-5"/><polyline points="8 8 12 4 16 8"/><line x1="12" y1="4" x2="12" y2="16"/></svg>
+            Subir retiros
           </button>
-          <button class="icon-btn" id="crc-cargar" title="Cargar órdenes del día">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          <button class="crc-acc" id="crc-complemento">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M20 6H10M20 12H10M20 18H10"/><path d="M4 7l2 2 3-3"/><path d="M4 13l2 2 3-3"/><path d="M4 19l2 2 3-3"/></svg>
+            Completar BDTH
           </button>
-          <button class="icon-btn" id="crc-cargar-retiro" title="Subir retiros" style="color:#f59e0b;border-color:rgba(245,158,11,.35);background:rgba(245,158,11,.1)">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><path d="M22 12v5a2 2 0 01-2 2H4a2 2 0 01-2-2v-5"/><polyline points="8 8 12 4 16 8"/><line x1="12" y1="4" x2="12" y2="16"/></svg>
+          <button class="crc-acc" id="crc-excel" title="Descargar Excel">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Excel
           </button>
         </div>
         <input type="file" id="crc-file" accept=".xlsx,.xls" style="display:none"/>
         <input type="file" id="crc-file-comp" accept=".xlsx,.xls" style="display:none"/>
         <input type="file" id="crc-file-retiro" accept=".xlsx,.xls" style="display:none"/>` : `
-        <div style="display:flex;gap:8px;margin-top:14px">
-          <button class="icon-btn" id="crc-mapa-tec" title="Ver mapa">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg>
-          </button>
-        </div>`}
+        <button id="crc-mapa-tec" style="width:100%;margin-top:14px;display:flex;align-items:center;justify-content:center;gap:8px;padding:12px;border-radius:12px;border:1px solid rgba(239,68,68,.4);background:rgba(239,68,68,.1);color:#f87171;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg>
+          Ver mapa
+        </button>`}
       </div>
 
       <!-- Pestañas Instalación / Retiro -->
@@ -271,20 +294,27 @@ export async function init(container, session) {
         <button class="area-tab crc-tab" data-tab="retiro">Retiro</button>
       </div>
 
-      ${esAdmin_ ? `
       <div style="margin-bottom:14px">
-        <div class="buscar-wrap" style="margin-bottom:4px">
+        <div class="buscar-wrap" style="margin-bottom:0">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14" style="color:var(--text-4);flex-shrink:0"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-          <input class="buscar-input" id="crc-buscar" type="text" placeholder="Buscar por NC, medidor o nombre…"/>
+          <input class="buscar-input" id="crc-buscar" type="text" placeholder="Buscar por NC, medidor o nombre…" autocomplete="off"/>
         </div>
-        <div style="font-size:11px;color:var(--text-4)">Busca en instalaciones y retiros. Deja vacío para ver la lista normal.</div>
       </div>
-      <div id="crc-busqueda"></div>` : ''}
+      <div id="crc-busqueda"></div>
 
       <div id="crc-estado"></div>
       <div id="crc-resumen"></div>
       <div id="crc-lista"></div>
     </div>`;
+
+  if (!document.getElementById('crc-lista-css')) {
+    const st = document.createElement('style');
+    st.id = 'crc-lista-css';
+    st.textContent = `.crc-acc{display:flex;align-items:center;gap:6px;padding:8px 12px;border-radius:10px;border:1px solid var(--border);background:var(--glass);color:var(--text-2);font-size:12px;font-weight:600;cursor:pointer;font-family:inherit}
+      .crc-acc:active{filter:brightness(1.15)}
+      .crc-tocable{cursor:pointer}.crc-tocable:active{background:var(--glass-hov)}`;
+    document.head.appendChild(st);
+  }
 
   // Pestañas
   const tabs = container.querySelectorAll('.crc-tab');
@@ -302,15 +332,14 @@ export async function init(container, session) {
     const fileRet = container.querySelector('#crc-file-retiro');
     container.querySelector('#crc-cargar-retiro').onclick = () => fileRet.click();
     fileRet.onchange = (e) => manejarArchivoRetiro(e.target.files[0]);
-    const inpBuscar = container.querySelector('#crc-buscar');
-    if (inpBuscar) {
-      let tb = null;
-      inpBuscar.oninput = () => { clearTimeout(tb); const v = inpBuscar.value; tb = setTimeout(() => buscarOrdenes(v), 250); };
-    }
     cargarPadron().catch(()=>{});
   } else {
     container.querySelector('#crc-mapa-tec').onclick = () => window.__router.navigateTo('caracterizacion_mapa');
   }
+  // Buscador (admin y técnico; el técnico solo encuentra lo de su pareja)
+  const inpBuscar = container.querySelector('#crc-buscar');
+  let tb = null;
+  inpBuscar.oninput = () => { clearTimeout(tb); const v = inpBuscar.value; tb = setTimeout(() => buscarOrdenes(v), 250); };
 
   setPestana(pestana_);
 }
@@ -337,14 +366,8 @@ async function buscarOrdenes(texto) {
   // Asegurar que ambas colecciones estén cargadas (el admin puede buscar
   // sin haber abierto la pestaña de retiros todavía).
   try {
-    if (!ordenes_.length) {
-      const s1 = await db.collection('caracterizacion_ordenes').get();
-      ordenes_ = s1.docs.map(d => ({ id: d.id, ...d.data() }));
-    }
-    if (!retiros_.length) {
-      const s2 = await db.collection('caracterizacion_retiros').get();
-      retiros_ = s2.docs.map(d => ({ id: d.id, ...d.data() }));
-    }
+    if (!ordenes_.length) ordenes_ = await leerColeccion('caracterizacion_ordenes');
+    if (!retiros_.length) retiros_ = await leerColeccion('caracterizacion_retiros');
   } catch (e) { /* seguimos con lo que haya */ }
 
   const norm = s => String(s ?? '').toLowerCase();
@@ -372,7 +395,7 @@ async function buscarOrdenes(texto) {
   const badgeClase = (txt) => txt === 'Realizada' || txt === 'Retirado' ? 'ok'
     : txt === 'Falta revisar' ? 'warn' : txt === 'No se pudo' ? 'crit' : 'muted';
 
-  const fila = (etq, val) => val ? `<div style="display:flex;justify-content:space-between;gap:12px;font-size:11px;margin-bottom:2px"><span style="color:var(--text-4)">${etq}</span><span style="color:var(--text-2);text-align:right">${val}</span></div>` : '';
+  const fila = (etq, val) => val ? `<div style="display:flex;justify-content:space-between;gap:12px;font-size:12px;margin-bottom:3px"><span style="color:var(--text-4)">${etq}</span><span style="color:var(--text-2);text-align:right">${escapeHtml(val)}</span></div>` : '';
 
   const tarjetaInst = (o) => {
     const t = o.titular || {};
@@ -382,7 +405,7 @@ async function buscarOrdenes(texto) {
     return `
       <div class="orden-card stacked" style="border-left:3px solid #ef4444">
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px">
-          <div class="orden-wo" style="color:#ef4444">NC ${o.ncTitular || '—'}</div>
+          <div class="orden-wo" style="color:#ef4444">NC ${escapeHtml(o.ncTitular || '—')}</div>
           <div style="flex:1"></div>
           ${o.esUPR ? '<span class="pareja-chip" style="color:#38bdf8;border-color:rgba(56,189,248,.4);background:rgba(56,189,248,.14)">UPR</span>' : ''}
           <span class="estado-badge ${badgeClase(est)}">${est}</span>
@@ -399,7 +422,8 @@ async function buscarOrdenes(texto) {
           ${yaHecha && !o.logranoEn ? fila('Resultado', 'Sin lograr') : ''}
           ${yaHecha && o.hechaPor ? fila('Marcó', o.hechaPor) : ''}
         </div>
-        ${faltaRevisar ? `
+        <button class="crc-ver-mapa crc-acc" data-tipo="o" data-id="${o.id}" style="margin-top:8px;width:100%;justify-content:center">Ver en el mapa</button>
+        ${faltaRevisar && esAdmin_ ? `
         <div style="margin-top:8px">
           <button class="crc-buscar-lista" data-orden="${o.id}"
             style="width:100%;padding:9px;border-radius:10px;border:1px solid rgba(34,197,94,.4);background:rgba(34,197,94,.12);color:#22c55e;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">Marcar como lista</button>
@@ -411,7 +435,7 @@ async function buscarOrdenes(texto) {
     return `
       <div class="orden-card stacked" style="border-left:3px solid #f59e0b">
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px">
-          <div class="orden-wo" style="color:#f59e0b">NC ${r.nc || '—'}</div>
+          <div class="orden-wo" style="color:#f59e0b">NC ${escapeHtml(r.nc || '—')}</div>
           <div style="flex:1"></div>
           <span class="estado-badge ${badgeClase(est)}">${est}</span>
         </div>
@@ -422,26 +446,23 @@ async function buscarOrdenes(texto) {
           ${fila('Dirección', r.direccion)}
           ${fila('Pareja', r.pareja)}
         </div>
+        <button class="crc-ver-mapa crc-acc" data-tipo="r" data-id="${r.id}" style="margin-top:8px;width:100%;justify-content:center">Ver en el mapa</button>
       </div>`;
   };
 
   const total = inst.length + rets.length;
   if (!total) {
-    cont.innerHTML = `<div style="text-align:center;padding:24px;color:var(--text-4);font-size:13px">Sin resultados para "${texto}"</div>`;
+    cont.innerHTML = `<div class="dev-module"><div class="dev-title">Sin resultados</div><p>Nada coincide con "${escapeHtml(texto)}".</p></div>`;
     return;
   }
-  const seccion = (titulo, arr, html, color) => arr.length ? `
-    <div style="display:flex;align-items:center;gap:8px;margin:8px 0 8px">
-      <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:${color}">${titulo}</div>
-      <div style="flex:1;height:1px;background:var(--border)"></div>
-      <div style="font-size:11px;color:var(--text-4)">${arr.length}</div>
-    </div>
+  const seccion = (titulo, arr, html) => arr.length ? `
+    ${secTitulo(titulo, arr.length)}
     <div style="display:flex;flex-direction:column;gap:8px">${arr.map(html).join('')}</div>` : '';
 
   cont.innerHTML = `
-    <div style="font-size:11px;color:var(--text-4);margin-bottom:4px">${total} resultado${total>1?'s':''}</div>
-    ${seccion('Instalaciones', inst, tarjetaInst, '#ef4444')}
-    ${seccion('Retiros', rets, tarjetaRet, '#f59e0b')}`;
+    ${seccion('Instalaciones', inst, tarjetaInst)}
+    ${seccion('Retiros', rets, tarjetaRet)}`;
+  cont.querySelectorAll('.crc-ver-mapa').forEach(b => b.onclick = () => verEnMapa(b.dataset.tipo, b.dataset.id));
 
   // Enganchar los botones de "marcar como lista"
   cont.querySelectorAll('.crc-buscar-lista').forEach(btn => {
@@ -468,22 +489,28 @@ async function marcarListaDesdeBuscador(ordenId, textoBusqueda) {
   }
 }
 
+// El técnico solo lee lo de su pareja (consulta filtrada, no toda la
+// colección); el admin lee todo. Sin pareja asignada, nada.
+async function leerColeccion(nombre) {
+  let q = db.collection(nombre);
+  if (!esAdmin_) {
+    const miPareja = session_.asignacionActual?.destino || null;
+    if (!miPareja) return [];
+    q = q.where('pareja', '==', miPareja);
+  }
+  const snap = await q.get();
+  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+}
+
 // ── Cargar y renderizar las órdenes del día ──
 async function cargarOrdenes() {
   const lista = container_.querySelector('#crc-lista');
   if (lista) lista.innerHTML = `<div style="text-align:center;padding:24px"><div class="spinner" style="margin:0 auto 8px"></div><div style="font-size:12px;color:var(--text-4)">Cargando órdenes…</div></div>`;
   try {
-    const snap = await db.collection('caracterizacion_ordenes').get();
-    let todas = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-    // El técnico ve SOLO las órdenes de su pareja
-    if (!esAdmin_) {
-      const miPareja = session_.asignacionActual?.destino || null;
-      todas = miPareja ? todas.filter(o => o.pareja === miPareja) : [];
-    }
-    ordenes_ = todas;
+    ordenes_ = await leerColeccion('caracterizacion_ordenes');
     if (pestana_ === 'instalacion') { renderResumen(); renderLista(); }
   } catch (err) {
-    if (lista) lista.innerHTML = `<div style="color:#ef4444;font-size:12px;padding:16px">Error cargando órdenes: ${err.message}</div>`;
+    if (lista) lista.innerHTML = `<div style="color:#ef4444;font-size:12px;padding:16px">Error cargando órdenes: ${escapeHtml(err.message)}</div>`;
   }
 }
 
@@ -491,16 +518,10 @@ async function cargarRetiros() {
   const lista = container_.querySelector('#crc-lista');
   if (lista && pestana_ === 'retiro') lista.innerHTML = `<div style="text-align:center;padding:24px"><div class="spinner" style="margin:0 auto 8px"></div><div style="font-size:12px;color:var(--text-4)">Cargando retiros…</div></div>`;
   try {
-    const snap = await db.collection('caracterizacion_retiros').get();
-    let todos = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-    if (!esAdmin_) {
-      const miPareja = session_.asignacionActual?.destino || null;
-      todos = miPareja ? todos.filter(r => r.pareja === miPareja) : [];
-    }
-    retiros_ = todos;
+    retiros_ = await leerColeccion('caracterizacion_retiros');
     if (pestana_ === 'retiro') { renderResumenRetiros(); renderListaRetiros(); }
   } catch (err) {
-    if (lista && pestana_ === 'retiro') lista.innerHTML = `<div style="color:#ef4444;font-size:12px;padding:16px">Error cargando retiros: ${err.message}</div>`;
+    if (lista && pestana_ === 'retiro') lista.innerHTML = `<div style="color:#ef4444;font-size:12px;padding:16px">Error cargando retiros: ${escapeHtml(err.message)}</div>`;
   }
 }
 
@@ -543,7 +564,7 @@ function renderResumen() {
     ${esAdmin_ ? panelParejas() : ''}
     <div class="ds-card" style="margin-bottom:16px">
       <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:12px">
-        <div style="font-size:14px;font-weight:600">${esAdmin_ ? 'Avance del día' : 'Tu avance del día'}</div>
+        <div style="font-size:14px;font-weight:600">${esAdmin_ ? 'Avance general' : 'Tu avance'}</div>
         <div style="font-size:12px;color:var(--text-4)">${listas} de ${total} · ${pct}%</div>
       </div>
       <div class="ds-bar"><i class="cr" style="width:${pct}%"></i></div>
@@ -559,7 +580,6 @@ function renderResumen() {
 // Panel por pareja: ejecutadas (marcadas hechas, aunque falte confirmar),
 // visitas, y avance contra la meta diaria.
 const META_PAREJA = 7;
-const PAREJA_COLOR = { 'Pareja 1':'#2dd4bf', 'Pareja 2':'#fbbf24', 'Pareja 3':'#a78bfa' };
 
 function panelParejas() {
   // Agrupar por pareja. "Ejecutada" = el técnico la marcó hecha (logró un punto),
@@ -578,16 +598,16 @@ function panelParejas() {
     if (ejecutada) parejas[p].ejecutadas++;
     parejas[p].visitas += Array.isArray(o.visitas) ? o.visitas.length : 0;
   }
-  const nombres = Object.keys(parejas).sort();
+  const nombres = Object.keys(parejas).sort((a, b) => (parseInt(a.replace(/\D/g, ''), 10) || 0) - (parseInt(b.replace(/\D/g, ''), 10) || 0));
   if (!nombres.length) return '';
 
   return `
     <div style="margin-bottom:18px">
       <div class="ds-sec">Avance por pareja · meta diaria ${META_PAREJA}</div>
-      <div style="display:grid;grid-template-columns:repeat(${Math.min(nombres.length,3)},1fr);gap:10px">
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px">
         ${nombres.map(nombre => {
           const d = parejas[nombre];
-          const color = PAREJA_COLOR[nombre] || '#94a3b8';
+          const color = colorPareja(nombre);
           const pct = Math.min(100, Math.round((d.ejecutadas / META_PAREJA) * 100));
           const cumplida = d.ejecutadas >= META_PAREJA;
           const acc = cumplida ? '#22c55e' : color;
@@ -595,7 +615,7 @@ function panelParejas() {
             <div class="ds-card" style="border-color:${cumplida?'rgba(34,197,94,.4)':'var(--border)'}">
               <div style="display:flex;align-items:center;gap:6px;min-width:0;margin-bottom:8px">
                 <span style="width:9px;height:9px;border-radius:50%;background:${color};flex-shrink:0"></span>
-                <span style="font-size:13px;font-weight:600;color:${acc};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${nombre}</span>
+                <span style="font-size:13px;font-weight:600;color:${acc};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(nombre)}</span>
               </div>
               <div style="display:flex;align-items:baseline;gap:4px;margin-bottom:10px">
                 <span class="ds-num-md" style="color:${acc}">${d.ejecutadas}</span>
@@ -619,10 +639,10 @@ function renderLista() {
   const el = container_.querySelector('#crc-lista');
   if (!el) return;
   if (!ordenes_.length) {
-    el.innerHTML = `<div class="dev-module">
-      <div class="dev-title">No hay órdenes cargadas</div>
-      <p>Usa el botón de arriba para cargar el Excel del día.</p>
-    </div>`;
+    const miPareja = session_.asignacionActual?.destino;
+    el.innerHTML = esAdmin_
+      ? `<div class="dev-module"><div class="dev-title">No hay órdenes cargadas</div><p>Usa "Cargar órdenes del día" para subir el Excel de DELSUR.</p></div>`
+      : `<div class="dev-module"><div class="dev-title">${miPareja ? 'No tienes órdenes asignadas' : 'Sin pareja asignada'}</div><p>${miPareja ? `Cuando te asignen puntos a ${escapeHtml(miPareja)} aparecerán aquí y en el mapa.` : 'Pide que te asignen a una pareja de Caracterización.'}</p></div>`;
     return;
   }
 
@@ -630,22 +650,23 @@ function renderLista() {
   const pend = ordenes_.filter(o => !o.estado || o.estado === 'pendiente');
   const confirmadas = ordenes_.filter(o => o.estado === 'confirmada');
 
-  const seccion = (titulo, arr, color) => arr.length ? `
-    <div style="margin-bottom:6px;margin-top:14px;display:flex;align-items:center;gap:8px">
-      <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:${color}">${titulo}</div>
-      <div style="flex:1;height:1px;background:var(--border)"></div>
-      <div style="font-size:11px;color:var(--text-4)">${arr.length}</div>
-    </div>
-    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:10px">${arr.map(tarjetaOrden).join('')}</div>` : '';
+  const grid = arr => `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:10px">${arr.map(tarjetaOrden).join('')}</div>`;
+  const seccion = (titulo, arr) => arr.length ? secTitulo(titulo, arr.length) + grid(arr) : '';
+  // "Lista" crece todos los días: va plegada, se abre a pedido
+  const seccionListas = confirmadas.length ? secTitulo('Lista', confirmadas.length,
+      `<button id="crc-toggle-listas" class="crc-acc" style="padding:4px 10px;font-size:11px">${verListas_ ? 'Ocultar' : 'Ver'}</button>`)
+    + (verListas_ ? grid(confirmadas) : '') : '';
 
-  el.innerHTML = seccion('Hecha, falta revisar', porConfirmar, '#fbbf24')
-               + seccion('Por hacer', pend, '#94a3b8')
-               + seccion('Lista', confirmadas, '#22c55e');
+  el.innerHTML = seccion('Hecha, falta revisar', porConfirmar)
+               + seccion('Por hacer', pend)
+               + seccionListas;
 
-  // Enganchar botones de confirmar
+  el.querySelector('#crc-toggle-listas')?.addEventListener('click', () => { verListas_ = !verListas_; renderLista(); });
+  // Enganchar botones de confirmar y tocar tarjeta -> mapa
   el.querySelectorAll('[data-confirmar]').forEach(btn => {
-    btn.onclick = () => confirmarDesdeLista(btn.dataset.confirmar);
+    btn.onclick = (e) => { e.stopPropagation(); confirmarDesdeLista(btn.dataset.confirmar); };
   });
+  el.querySelectorAll('.crc-tocable[data-orden]').forEach(c => c.onclick = () => verEnMapa('o', c.dataset.orden));
 }
 
 function tarjetaOrden(o) {
@@ -672,21 +693,21 @@ function tarjetaOrden(o) {
     <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;font-size:10px;color:var(--text-4)">
       ${o.logranoEn ? `<span>Hecha en <span style="color:#22c55e;font-weight:700">${LOGRO_LABEL[o.logranoEn]}</span></span>` : `<span style="color:#ef4444">Sin lograr</span>`}
       ${visitas.length ? `<span>· <span style="color:#fbbf24;font-weight:700">${visitas.length} visita${visitas.length>1?'s':''}</span> (${visitas.map(v=>LOGRO_LABEL[v]).join(', ')})</span>` : ''}
-      ${o.pareja ? `<span>· ${o.pareja}</span>` : ''}
-    </div>` : '';
+      ${o.pareja ? `<span>· ${escapeHtml(o.pareja)}</span>` : ''}
+    </div>` : (esAdmin_ ? `<div style="font-size:11px;color:${o.pareja ? colorPareja(o.pareja) : 'var(--text-4)'};margin-top:8px">${o.pareja ? escapeHtml(o.pareja) : 'Sin asignar'}</div>` : '');
 
   const botonConfirmar = (porConfirmar && esAdmin_)
     ? `<button data-confirmar="${o.id}" class="btn-action" style="margin-top:10px;height:38px;background:rgba(34,197,94,.12);border:1px solid rgba(34,197,94,.3);color:#22c55e">Marcar como lista</button>`
     : '';
 
   return `
-    <div class="orden-card stacked" style="${o.esUPR?'border-left:3px solid #38bdf8':''}">
+    <div class="orden-card stacked crc-tocable" data-orden="${o.id}" style="${o.esUPR?'border-left:3px solid #38bdf8':''}">
       <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px">
         <div class="orden-card-left" style="align-items:flex-start">
           <div class="status-dot ${dotClase}" ${dotStyle} style="margin-top:4px"></div>
           <div class="orden-info">
-            <div class="orden-wo" style="font-weight:700">${t.nombre || o.ncTitular || '—'}</div>
-            <div class="orden-dir">NC ${o.ncTitular}${o.tarifa ? ' · ' + o.tarifa : ''}${t.direccion ? ' · ' + t.direccion.split(',')[0] : ''}</div>
+            <div class="orden-wo" style="font-weight:700">${escapeHtml(t.nombre || o.ncTitular || '—')}</div>
+            <div class="orden-dir">NC ${escapeHtml(o.ncTitular)}${o.tarifa ? ' · ' + escapeHtml(o.tarifa) : ''}${t.direccion ? ' · ' + escapeHtml(t.direccion.split(',')[0]) : ''}</div>
           </div>
         </div>
         <div class="orden-card-right" style="flex-direction:column;align-items:flex-end;gap:4px">
@@ -741,7 +762,7 @@ function mostrarPrevisualizacion(ordenes, avisos, choques = []) {
   const sinCoordTit = ordenes.filter(o => !o.titular.tieneCoord).length;
 
   est.innerHTML = `
-    <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:12px">
+    <div style="background:var(--glass);border:1px solid var(--border);border-radius:16px;padding:16px;margin-bottom:12px">
       <div style="font-size:15px;font-weight:800;margin-bottom:10px">${ordenes.length} órdenes listas para cargar</div>
       <div class="flex-col gap-4" style="font-size:12px">
         <div style="display:flex;justify-content:space-between"><span style="color:var(--text-3)">Con titular + 2 suplentes</span><span style="font-weight:700;color:#22c55e">${conTres}</span></div>
@@ -1055,7 +1076,7 @@ function mostrarPrevisualizacionComplemento(cambios, totalArchivo, sinUsar, cols
   }
 
   est.innerHTML = `
-    <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:12px">
+    <div style="background:var(--glass);border:1px solid var(--border);border-radius:16px;padding:16px;margin-bottom:12px">
       <div style="font-size:15px;font-weight:800;margin-bottom:10px">${cambios.length} órdenes se completarán</div>
       <div class="flex-col gap-4" style="font-size:12px">
         <div style="display:flex;justify-content:space-between"><span style="color:var(--text-3)">Titulares a completar</span><span style="font-weight:700;color:#38bdf8">${titulares}</span></div>
@@ -1199,7 +1220,7 @@ function previsualizarRetiros(nuevos, sinCoord) {
   const yaExisten = nuevos.length - aCrear.length;
 
   est.innerHTML = `
-    <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:12px">
+    <div style="background:var(--glass);border:1px solid var(--border);border-radius:16px;padding:16px;margin-bottom:12px">
       <div style="font-size:15px;font-weight:800;margin-bottom:10px">${aCrear.length} retiros a cargar</div>
       <div class="flex-col gap-4" style="font-size:12px">
         <div style="display:flex;justify-content:space-between"><span style="color:var(--text-3)">Nuevos</span><span style="font-weight:700;color:#f59e0b">${aCrear.length}</span></div>
@@ -1244,18 +1265,16 @@ function renderResumenRetiros() {
   const pend = total - retirados - noPudo;
   const pct = total ? Math.round((retirados / total) * 100) : 0;
   el.innerHTML = `
-    <div class="progress-card" style="margin-bottom:16px">
-      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px">
-        <div style="font-size:13px;font-weight:700">${esAdmin_ ? 'Avance de retiros' : 'Tus retiros'}</div>
+    <div class="ds-card" style="margin-bottom:16px">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:12px">
+        <div style="font-size:14px;font-weight:600">${esAdmin_ ? 'Avance de retiros' : 'Tus retiros'}</div>
         <div style="font-size:12px;color:var(--text-4)">${retirados} de ${total} · ${pct}%</div>
       </div>
-      <div class="progress-bar-bg">
-        <div class="progress-bar-fill" style="width:${pct}%;background:#f59e0b"></div>
-      </div>
-      <div class="progress-stats" style="margin-top:10px">
-        <span><span class="stat-dot" style="background:#f59e0b"></span>${pend} por retirar</span>
-        <span><span class="stat-dot ok"></span>${retirados} retirados</span>
-        ${noPudo ? `<span><span class="stat-dot" style="background:#ef4444"></span>${noPudo} no se pudo</span>` : ''}
+      <div class="ds-bar"><i style="width:${pct}%;background:#f59e0b"></i></div>
+      <div style="margin-top:12px;display:flex;flex-wrap:wrap;gap:10px 14px;font-size:11px;color:var(--text-3)">
+        <span style="display:flex;align-items:center;gap:6px"><span style="width:7px;height:7px;border-radius:50%;background:#f59e0b"></span>${pend} por retirar</span>
+        <span style="display:flex;align-items:center;gap:6px"><span style="width:7px;height:7px;border-radius:50%;background:#22c55e"></span>${retirados} retirados</span>
+        ${noPudo ? `<span style="display:flex;align-items:center;gap:6px"><span style="width:7px;height:7px;border-radius:50%;background:#ef4444"></span>${noPudo} no se pudo</span>` : ''}
       </div>
     </div>`;
 }
@@ -1267,7 +1286,7 @@ function renderListaRetiros() {
     el.innerHTML = esAdmin_
       ? `<div class="dev-module">
           <div class="dev-title">No hay retiros cargados</div>
-          <p>Usa el botón naranja para subir el Excel.</p>
+          <p>Usa "Subir retiros" para cargar el Excel.</p>
         </div>`
       : `<div class="dev-module"><div class="dev-title">No tienes retiros asignados</div></div>`;
     return;
@@ -1284,16 +1303,16 @@ function renderListaRetiros() {
     const etiqueta = r.estado === 'retirado' ? 'Retirado' : r.estado === 'no_retirado' ? 'No se pudo' : 'Por retirar';
     const color = r.estado === 'retirado' ? '#22c55e' : r.estado === 'no_retirado' ? '#ef4444' : '#f59e0b';
     const meta = (r.estado === 'retirado' || r.estado === 'no_retirado')
-      ? `${r.hechoPor ? 'Por ' + r.hechoPor : ''}${r.fechaHecho ? ' · ' + fmtFechaHora(r.fechaHecho) : ''}${r.pareja ? ' · ' + r.pareja : ''}`
-      : (r.pareja || '');
+      ? `${r.hechoPor ? 'Por ' + escapeHtml(r.hechoPor) : ''}${r.fechaHecho ? ' · ' + fmtFechaHora(r.fechaHecho) : ''}${r.pareja ? ' · ' + escapeHtml(r.pareja) : ''}`
+      : (r.pareja ? escapeHtml(r.pareja) : (esAdmin_ ? 'Sin asignar' : ''));
     return `
-      <div class="orden-card stacked" style="border-left:3px solid ${color}">
+      <div class="orden-card stacked crc-tocable" data-retiro="${r.id}" style="border-left:3px solid ${color}">
         <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px">
           <div class="orden-card-left" style="align-items:flex-start">
             <div class="status-dot ${dotClase}" ${dotStyle} style="margin-top:4px"></div>
             <div class="orden-info">
-              <div class="orden-wo" style="font-weight:700">${r.nombre || r.nc}</div>
-              <div class="orden-dir">NC ${r.nc}${r.direccion ? ' · ' + r.direccion.split(',')[0] : ''}</div>
+              <div class="orden-wo" style="font-weight:700">${escapeHtml(r.nombre || r.nc)}</div>
+              <div class="orden-dir">NC ${escapeHtml(r.nc)}${r.direccion ? ' · ' + escapeHtml(r.direccion.split(',')[0]) : ''}</div>
             </div>
           </div>
           <div class="orden-card-right">
@@ -1305,17 +1324,13 @@ function renderListaRetiros() {
       </div>`;
   };
 
-  const seccion = (titulo, arr, color) => arr.length ? `
-    <div style="display:flex;align-items:center;gap:8px;margin:14px 0 8px">
-      <div style="font-size:11px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:${color}">${titulo}</div>
-      <div style="flex:1;height:1px;background:var(--border)"></div>
-      <div style="font-size:11px;color:var(--text-4)">${arr.length}</div>
-    </div>
-    <div style="display:flex;flex-direction:column;gap:8px">${arr.map(tarjeta).join('')}</div>` : '';
+  const seccion = (titulo, arr) => arr.length ? secTitulo(titulo, arr.length)
+    + `<div style="display:flex;flex-direction:column;gap:8px">${arr.map(tarjeta).join('')}</div>` : '';
 
-  el.innerHTML = seccion('Por retirar', pend, '#f59e0b')
-               + seccion('Retirados', retirados, '#22c55e')
-               + seccion('No se pudo', noPudo, '#ef4444');
+  el.innerHTML = seccion('Por retirar', pend)
+               + seccion('No se pudo', noPudo)
+               + seccion('Retirados', retirados);
+  el.querySelectorAll('.crc-tocable[data-retiro]').forEach(c => c.onclick = () => verEnMapa('r', c.dataset.retiro));
 }
 
 function descargarExcelRetiros() {

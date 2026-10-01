@@ -243,7 +243,30 @@ function avisarSiAbierta(tipo, id, msg) {
 function trasCarga() {
   updateStat();
   pintarLeyenda();
-  if (!encuadrado_ && cargado_.o && cargado_.r) { encuadrado_ = true; encuadrar(); }
+  if (!encuadrado_ && cargado_.o && cargado_.r) { encuadrado_ = true; encuadrar(); abrirFoco(); }
+}
+
+// Si se llegó desde la lista tocando un punto, abrirlo directamente
+function abrirFoco() {
+  let f = null;
+  try { f = JSON.parse(sessionStorage.getItem('crc_foco') || 'null'); sessionStorage.removeItem('crc_foco'); } catch {}
+  if (!f || !map_) return;
+  if (f.tipo === 'r') {
+    const r = retiros_.find(x => x.id === f.id);
+    if (!r) return;
+    if (r.lat == null) { toast('Ese retiro no tiene ubicación en el mapa', 'warn'); return; }
+    map_.setView([r.lat, r.lng], 18);
+    abrirDetalleRetiro(r.id);
+    return;
+  }
+  const o = ordenes_.find(x => x.id === f.id);
+  if (!o) return;
+  const nivel = o.logranoEn || o._nivelVisible || 'titular';
+  const p = o[nivel] || o.titular;
+  if (p?.lat == null) { toast('Esa orden no tiene ubicación en el mapa', 'warn'); return; }
+  map_.setView([p.lat, p.lng], 18);
+  if (esAdmin_) { o.estado === 'por_confirmar' ? abrirConfirmar(o.id) : abrirAsignarIndividual(o.id); }
+  else abrirDetalle(o.id, nivel);
 }
 
 // Mostrar todos los puntos (instalaciones y retiros) al abrir el mapa
