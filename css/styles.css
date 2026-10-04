@@ -2064,11 +2064,8 @@ body {
   padding-top: 12px;
   margin-top: 4px;
   border-top: 1px solid var(--border);
-  background: rgba(10,22,40,.96);
+  background: transparent;   /* el panel ya es opaco: así no se nota un recuadro más oscuro */
 }
-/* Dentro de .crc-hoja el fondo del panel es #0d1117 (sin transparencia),
-   no rgba(10,22,40,.96) — igualarlo para que no se note el recuadro. */
-.crc-hoja .panel-actions-fixed { background: #0d1117; }
 
 /* — AMI Condominio: vista de un edificio a pantalla completa — */
 .cd-flow { position: fixed; inset: 0; z-index: 600; background: var(--bg-base); overflow-y: auto; -webkit-overflow-scrolling: touch; }
