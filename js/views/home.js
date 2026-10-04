@@ -108,7 +108,7 @@ function renderDespachosPendientesTecnico(cont) {
         const lbl = CAMP_LABEL_HOME[p.area] || p.area;
         const totalItems = (p.items||[]).reduce((a,i)=>a+(Number(i.cantidad)||0),0);
         return `
-        <div style="background:linear-gradient(160deg,${col}18,var(--glass));border:1px solid ${col}55;border-radius:16px;padding:16px;position:relative;overflow:hidden">
+        <div style="background:linear-gradient(160deg,${col}24,rgba(255,255,255,.03));border:1px solid ${col}55;border-radius:18px;box-shadow:var(--sh-card);padding:16px;position:relative;overflow:hidden">
           <div style="position:absolute;top:0;left:0;width:100%;height:3px;background:${col}"></div>
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
             <div style="width:32px;height:32px;border-radius:9px;background:${col}22;display:flex;align-items:center;justify-content:center">
@@ -670,11 +670,11 @@ function renderHomeTecnico(container, session, area, destino) {
 
 // ── Inicio de oficina (admin / asistente) ─────────
 const AREA_INFO_HOME = {
-  CAMBIOS:         { label: 'Cambios',         color: '#2dd4bf', rgb: '45,212,191',  ruta: 'cambios' },
-  Caracterizacion: { label: 'Caracterización', color: '#ef4444', rgb: '239,68,68',   ruta: 'caracterizacion' },
-  AMI:             { label: 'AMI',             color: '#a78bfa', rgb: '167,139,250', ruta: 'ami' },
-  Reclamos:        { label: 'Reclamos SIGET',  color: '#fbbf24', rgb: '251,191,36',  ruta: 'reclamos' },
-  OTC:             { label: 'OTC',             color: '#60a5fa', rgb: '96,165,250',  ruta: null },
+  CAMBIOS:         { label: 'Cambios',         color: '#2dd4bf', rgb: '45,212,191',  ruta: 'cambios', cls: 'cm' },
+  Caracterizacion: { label: 'Caracterización', color: '#ef4444', rgb: '239,68,68',   ruta: 'caracterizacion', cls: 'cr' },
+  AMI:             { label: 'AMI',             color: '#a78bfa', rgb: '167,139,250', ruta: 'ami', cls: 'am' },
+  Reclamos:        { label: 'Reclamos SIGET',  color: '#fbbf24', rgb: '251,191,36',  ruta: 'reclamos', cls: 'rc' },
+  OTC:             { label: 'OTC',             color: '#60a5fa', rgb: '96,165,250',  ruta: null, cls: 'otc' },
 };
 const ORDEN_AREAS = ['CAMBIOS', 'Caracterizacion', 'AMI', 'Reclamos', 'OTC'];
 
@@ -709,9 +709,9 @@ const REVISION = [
 
 function renderHomeOficina(container, session) {
   const esAdmin = session.role === 'admin';
-  const tile = (id, ruta, color, titulo, icono, sub) => `
+  const tile = (id, ruta, cls, titulo, icono, sub) => `
     <div class="hm-tile" onclick="window.__router.navigateTo('${ruta}')">
-      <div class="hm-tile-ic" style="background:${color}1f">${icono}</div>
+      <div class="hm-ic ${cls}">${icono}</div>
       <div style="min-width:0;flex:1">
         <div class="hm-tile-t">${titulo}</div>
         <div class="hm-tile-s" id="${id}">${sub}</div>
@@ -746,15 +746,15 @@ function renderHomeOficina(container, session) {
       <div class="hm-grid" style="margin-bottom:22px">
         ${['CAMBIOS', 'Caracterizacion', 'AMI', 'Reclamos'].map(a => {
           const i = AREA_INFO_HOME[a];
-          return tile('hm-sub-' + a, i.ruta, i.color, i.label, icHome(a, i.color),
+          return tile('hm-sub-' + a, i.ruta, i.cls, i.label, icHome(a, '#fff'),
             a === 'Reclamos' ? 'Bitácora de órdenes' : '<span class="hm-cargando">…</span>');
         }).join('')}
       </div>
 
       <div class="ds-sec">Gestión</div>
       <div class="hm-grid" style="margin-bottom:24px">
-        ${tile('hm-sub-bodega', 'bodega', '#a78bfa', 'Bodega', icHome('bodega', '#a78bfa'), 'Inventario y despachos')}
-        ${tile('hm-sub-usuarios', 'usuarios', '#94a3b8', 'Usuarios', icHome('usuarios', '#94a3b8'), 'Gestión y asignación')}
+        ${tile('hm-sub-bodega', 'bodega', 'bod', 'Bodega', icHome('bodega', '#fff'), 'Inventario y despachos')}
+        ${tile('hm-sub-usuarios', 'usuarios', 'us', 'Usuarios', icHome('usuarios', '#fff'), 'Gestión y asignación')}
       </div>
 
       <div class="ds-sec" style="display:flex;align-items:center">Personal de hoy
@@ -788,8 +788,8 @@ async function cargarRevisiones() {
     const el = document.getElementById('hm-sub-' + r.area);
     if (!el) return;
     el.innerHTML = r.n === null ? 'Sin datos'
-      : r.n ? `<span style="color:#fbbf24;font-weight:600">${fmt(r.n)} ${r.txt}</span>`
-      : '<span style="color:#22c55e">Al día</span>';
+      : r.n ? `<span class="hm-pill warn">${fmt(r.n)} ${r.txt}</span>`
+      : '<span class="hm-pill ok">Al día</span>';
   });
   window.__homeDevol = devol;
   pintarSubBodega();
@@ -809,7 +809,7 @@ function pintarSubBodega() {
   const partes = [];
   if (sol) partes.push(`${sol} solicitud${sol > 1 ? 'es' : ''}`);
   if (dev) partes.push(`${dev} devolución${dev > 1 ? 'es' : ''}`);
-  el.innerHTML = partes.length ? `<span style="color:#fbbf24;font-weight:600">${partes.join(' · ')}</span>` : 'Inventario y despachos';
+  el.innerHTML = partes.length ? `<span class="hm-pill warn">${partes.join(' · ')}</span>` : 'Inventario y despachos';
 }
 
 // ── Personal asignado hoy ─────────────────────────
@@ -833,7 +833,7 @@ async function cargarPersonalHoy() {
       + (sinAsignar.length ? ` · ${sinAsignar.length} sin asignar` : '');
     const subU = document.getElementById('hm-sub-usuarios');
     if (subU) subU.innerHTML = sinAsignar.length
-      ? `<span style="color:#fbbf24;font-weight:600">${sinAsignar.length} sin asignar hoy</span>`
+      ? `<span class="hm-pill warn">${sinAsignar.length} sin asignar hoy</span>`
       : 'Gestión y asignación';
 
     // Agrupar por ÁREA y dentro de cada área por pareja/destino
@@ -923,11 +923,11 @@ function renderNoAsignacion(container, session) {
       <div class="ds-sec">Material</div>
       <div class="hm-grid">
         <div class="hm-tile" onclick="window.__router.navigateTo('bodega')">
-          <div class="hm-tile-ic" style="background:#a78bfa1f">${icHome('bodega', '#a78bfa')}</div>
+          <div class="hm-ic bod">${icHome('bodega', '#fff')}</div>
           <div style="min-width:0;flex:1"><div class="hm-tile-t">Bodega</div><div class="hm-tile-s">Pedir material</div></div>
         </div>
         <div class="hm-tile" onclick="window.__abrirDevolucion()">
-          <div class="hm-tile-ic" style="background:#2dd4bf1f">${icHome('devolver', '#2dd4bf')}</div>
+          <div class="hm-ic cm">${icHome('devolver', '#fff')}</div>
           <div style="min-width:0;flex:1"><div class="hm-tile-t">Devolver</div><div class="hm-tile-s">Regresar material</div></div>
         </div>
       </div>
@@ -1245,7 +1245,7 @@ function pintarAvisoSolicitudes(){
   cont.innerHTML=`
     <div class="hm-aviso" onclick="window.__router.navigateTo('bodega')">
       <div style="display:flex;align-items:center;gap:12px">
-        <div class="hm-tile-ic" style="background:rgba(251,191,36,.14)"><svg viewBox="0 0 24 24" fill="none" stroke="#fbbf24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><path d="M6 8a6 6 0 0112 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 003.4 0"/></svg></div>
+        <div class="hm-ic rc"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><path d="M6 8a6 6 0 0112 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 003.4 0"/></svg></div>
         <div style="flex:1;min-width:0">
           <div style="font-size:14px;font-weight:600">${total} solicitud${total>1?'es':''} de material</div>
           <div style="font-size:11.5px;color:var(--text-3);margin-top:1px">Toca para ir a Bodega y despachar</div>

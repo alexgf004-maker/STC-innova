@@ -6,16 +6,20 @@
 /* ── TOKENS ──────────────────────────────────── */
 :root {
   --bg-deep:    #070c12;
-  --bg-base:    #0a1628;
+  --bg-base:    #050a17;
   --bg-mid:     #0d2137;
-  --glass:      rgba(255,255,255,.06);
-  --glass-hov:  rgba(255,255,255,.09);
-  --border:     rgba(255,255,255,.08);
-  --border-md:  rgba(255,255,255,.12);
+  /* Superficie con luz arriba (estilo "Profundidad"). Es un degradado:
+     usarlo siempre como `background`, nunca dentro de otro gradiente. */
+  --glass:      linear-gradient(165deg, rgba(255,255,255,.09) 0%, rgba(255,255,255,.035) 55%, rgba(255,255,255,.02) 100%);
+  --glass-hov:  rgba(255,255,255,.12);
+  --border:     rgba(255,255,255,.09);
+  --border-md:  rgba(255,255,255,.13);
   --text:       #ffffff;
-  --text-2:     rgba(255,255,255,.6);
-  --text-3:     rgba(255,255,255,.35);
-  --text-4:     rgba(255,255,255,.2);
+  --text-2:     rgba(255,255,255,.65);
+  --text-3:     rgba(255,255,255,.52);
+  --text-4:     rgba(255,255,255,.36);
+  /* Relieve de las tarjetas: brillo en el borde de arriba + sombra */
+  --sh-card:    inset 0 1px 0 rgba(255,255,255,.08), 0 14px 30px -14px rgba(0,0,0,.95);
 
   /* Cambios (CM) */
   --cm:         #0d9488;
@@ -75,15 +79,10 @@ body {
 #bg {
   position: fixed; inset: 0; z-index: 0; pointer-events: none;
   background:
-    radial-gradient(ellipse 120% 60% at 50% -10%, rgba(13,148,136,.12) 0%, transparent 60%),
-    radial-gradient(ellipse 80% 50% at 90% 100%, rgba(37,99,235,.08) 0%, transparent 60%),
-    linear-gradient(180deg, #070c12 0%, #0a1628 50%, #0d2137 100%);
-}
-#bg::after {
-  content: '';
-  position: absolute; inset: 0;
-  background-image: radial-gradient(rgba(255,255,255,.015) 1px, transparent 1px);
-  background-size: 32px 32px;
+    radial-gradient(70% 30% at 15% -4%, rgba(45,212,191,.22), transparent 70%),
+    radial-gradient(60% 30% at 95% 0%, rgba(99,102,241,.26), transparent 70%),
+    radial-gradient(80% 40% at 50% 110%, rgba(37,99,235,.18), transparent 70%),
+    #050a17;
 }
 
 /* ── ANIMACIONES ─────────────────────────────── */
@@ -361,10 +360,8 @@ body {
   flex-shrink: 0;
   padding: max(12px, env(safe-area-inset-top)) 16px 12px;
   display: flex; align-items: center; gap: 12px;
-  background: rgba(10,18,32,.78);
-  backdrop-filter: blur(18px) saturate(140%);
-  -webkit-backdrop-filter: blur(18px) saturate(140%);
-  border-bottom: 1px solid rgba(255,255,255,.06);
+  background: transparent;
+  border-bottom: 1px solid rgba(255,255,255,.04);
   position: relative; z-index: 20;
 }
 .topbar-logo {
@@ -482,12 +479,12 @@ body {
 .nav-pill {
   pointer-events: auto;
   display: flex; gap: 2px; padding: 6px;
-  border-radius: 22px;
-  background: rgba(13,22,38,.92);
+  border-radius: 26px;
+  background: rgba(9,15,32,.86);
   backdrop-filter: blur(20px) saturate(140%);
   -webkit-backdrop-filter: blur(20px) saturate(140%);
   border: 1px solid rgba(255,255,255,.09);
-  box-shadow: 0 14px 34px -12px rgba(0,0,0,.75), inset 0 1px 0 rgba(255,255,255,.04);
+  box-shadow: 0 20px 44px -14px rgba(0,0,0,.95), inset 0 1px 0 rgba(255,255,255,.08);
 }
 /* Color de acento por área (--nav-acc) y su tinte (--nav-tint) */
 .nav-item          { --nav-acc: var(--cm-light);  --nav-tint: rgba(45,212,191,.16); }
@@ -519,7 +516,8 @@ body {
   max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .nav-item.active { color: var(--nav-acc); }
-.nav-item.active .nav-ico { background: var(--nav-tint); }
+.nav-item.active .nav-ico { background: var(--nav-acc); box-shadow: 0 6px 16px -4px var(--nav-acc); }
+.nav-item.active .nav-ico svg { stroke: #06101f; }
 .nav-item.active .nav-lbl { font-weight: 600; }
 .nav-item .nav-badge {
   position: absolute; top: 8px; right: calc(50% - 14px);
@@ -742,7 +740,7 @@ body {
 /* Skeleton */
 .user-card.skeleton {
   height: 72px;
-  background: linear-gradient(90deg, var(--glass) 25%, rgba(255,255,255,.09) 50%, var(--glass) 75%);
+  background: linear-gradient(90deg, rgba(255,255,255,.06) 25%, rgba(255,255,255,.09) 50%, rgba(255,255,255,.06) 75%);
   background-size: 200% 100%;
   animation: shimmer 1.4s infinite;
   border-radius: var(--radius);
@@ -1009,7 +1007,7 @@ body {
 .loading-placeholder { display: flex; flex-direction: column; gap: 12px; padding: 8px 0; }
 .loading-bar {
   height: 56px; border-radius: var(--radius);
-  background: linear-gradient(90deg, var(--glass) 25%, rgba(255,255,255,.1) 50%, var(--glass) 75%);
+  background: linear-gradient(90deg, rgba(255,255,255,.06) 25%, rgba(255,255,255,.1) 50%, rgba(255,255,255,.06) 75%);
   background-size: 200% 100%;
   animation: shimmer 1.5s infinite;
 }
@@ -1697,7 +1695,7 @@ body {
 .bod-stat { cursor: pointer; transition: border-color .2s, background .2s; }
 .bod-stat.sel { border-color: var(--bod-border); background: var(--bod-glass); }
 /* Fila de material */
-.bod-item-row { background: var(--glass); border: 1px solid var(--border); border-radius: 16px; overflow: hidden; }
+.bod-item-row { background: var(--glass); border: 1px solid var(--border); border-radius: 18px; overflow: hidden; box-shadow: var(--sh-card); }
 .bod-item-row.crit { border-color: rgba(239,68,68,.35); }
 .bod-item-row.warn { border-color: rgba(245,158,11,.3); }
 .bod-item-head { display: flex; align-items: center; gap: 12px; padding: 14px 15px; cursor: pointer; }
@@ -1841,7 +1839,8 @@ body {
     padding: 0; border: none; border-radius: 0; background: none; box-shadow: none;
     backdrop-filter: none; -webkit-backdrop-filter: none;
   }
-  .nav-ico { width: auto; height: auto; background: none !important; }
+  .nav-ico { width: auto; height: auto; background: none !important; box-shadow: none !important; }
+  .nav-item.active .nav-ico svg { stroke: currentColor; }
   .nav-item.active { background: var(--nav-tint); }
   .nav-lbl {
     font-size: 13px !important;
@@ -1990,17 +1989,17 @@ body {
 .ds-hero-num   { font-size: 50px; font-weight: 500; letter-spacing: -.02em; line-height: 1; color: var(--text); }
 .ds-hero-num small { font-size: 18px; font-weight: 400; color: var(--text-3); }
 .ds-num-lg     { font-size: 34px; font-weight: 500; letter-spacing: -.02em; line-height: 1; }
-.ds-num-md     { font-size: 25px; font-weight: 500; letter-spacing: -.01em; line-height: 1; }
+.ds-num-md     { font-size: 25px; font-weight: 600; letter-spacing: -.01em; line-height: 1; }
 .ds-title      { font-size: 20px; font-weight: 700; letter-spacing: -.01em; color: var(--text); }
 .ds-title-area { font-size: 30px; font-weight: 600; letter-spacing: -.02em; line-height: 1; }
-.ds-sec        { font-size: 15px; font-weight: 600; letter-spacing: -.01em; color: var(--text); margin: 6px 0 13px; }
+.ds-sec        { font-size: 16px; font-weight: 600; letter-spacing: -.015em; color: var(--text); margin: 6px 0 13px; }
 .ds-lbl        { font-size: 13px; font-weight: 400; color: var(--text-2); }
 .ds-lbl-sm     { font-size: 10px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--text-3); }
 .ds-val        { font-size: 14px; font-weight: 600; color: rgba(255,255,255,.9); }
 .ds-val-strong { font-size: 16px; font-weight: 700; color: #fff; }   /* legible bajo el sol */
 
 /* — Tarjetas — */
-.ds-card { background: var(--glass); border: 1px solid var(--border); border-radius: 16px; padding: 15px; }
+.ds-card { background: var(--glass); border: 1px solid var(--border); border-radius: 18px; padding: 15px; box-shadow: var(--sh-card); }
 .ds-card-lg { border-radius: 20px; padding: 20px; }
 
 /* — Tarjeta premium con degradado (una por vista) — */
@@ -2018,13 +2017,13 @@ body {
 
 /* — Fila de acciones — */
 .ds-acts { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; }
-.ds-act  { background: var(--glass); border:1px solid var(--border); border-radius:16px; padding:16px 6px 12px; text-align:center; cursor:pointer; }
+.ds-act  { background: var(--glass); border:1px solid var(--border); border-radius:18px; padding:16px 6px 12px; text-align:center; cursor:pointer; box-shadow: var(--sh-card); }
 .ds-act:active { background: var(--glass-hov); }
-.ds-act .ds-act-t { font-size:11px; font-weight:500; color:var(--text-2); margin-top:9px; }
+.ds-act .ds-act-t { font-size:11px; font-weight:500; color:var(--text); margin-top:9px; }
 
 /* — Mini stats — */
 .ds-mini { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; }
-.ds-m { background:var(--glass); border:1px solid var(--border); border-radius:16px; padding:15px 10px; text-align:center; }
+.ds-m { background:var(--glass); border:1px solid var(--border); border-radius:18px; padding:18px 10px; text-align:center; box-shadow: var(--sh-card); }
 
 /* — Barras de progreso finas — */
 .ds-bar { height:6px; background:rgba(255,255,255,.07); border-radius:5px; overflow:hidden; }
@@ -2218,3 +2217,20 @@ body {
 .hm-aviso:active { filter: brightness(1.15); }
 @media (max-width: 360px) { .hm-tile { padding: 12px; gap: 10px; } }
 @media (min-width: 768px) { .hm-grid { grid-template-columns: repeat(4, 1fr); } }
+
+/* ── Relieve "Profundidad" para las superficies principales ── */
+.card, .bod-item-card, .buscar-wrap, .us-card, .hm-tile, .hm-aviso, .user-card { box-shadow: var(--sh-card); }
+.us-card, .hm-tile, .hm-aviso { border-radius: 18px; }
+.hm-tile-t { font-size: 15px; }
+/* Ícono de área en cuadro de color sólido con el trazo en blanco */
+.hm-ic { width: 44px; height: 44px; border-radius: 14px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
+.hm-ic svg { stroke: #fff; }
+.hm-ic.cm  { background: linear-gradient(140deg,#2dd4bf,#0f766e); box-shadow: 0 8px 20px -8px rgba(45,212,191,.7); }
+.hm-ic.cr  { background: linear-gradient(140deg,#f87171,#b91c1c); box-shadow: 0 8px 20px -8px rgba(239,68,68,.7); }
+.hm-ic.am, .hm-ic.bod { background: linear-gradient(140deg,#a78bfa,#5b21b6); box-shadow: 0 8px 20px -8px rgba(139,92,246,.7); }
+.hm-ic.rc  { background: linear-gradient(140deg,#fbbf24,#b45309); box-shadow: 0 8px 20px -8px rgba(251,191,36,.6); }
+.hm-ic.us  { background: linear-gradient(140deg,#64748b,#334155); box-shadow: 0 8px 20px -8px rgba(100,116,139,.6); }
+/* Pastillas de estado (pendiente / al día) */
+.hm-pill { display: inline-block; padding: 3px 9px; border-radius: 999px; font-size: 11px; font-weight: 600; margin-top: 3px; }
+.hm-pill.warn { color: #fbbf24; background: rgba(251,191,36,.14); border: 1px solid rgba(251,191,36,.25); }
+.hm-pill.ok   { color: #22c55e; background: rgba(34,197,94,.12);  border: 1px solid rgba(34,197,94,.22); }
