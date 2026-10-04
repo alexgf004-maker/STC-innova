@@ -2432,3 +2432,35 @@ body {
 }
 .bod-btn-ico { box-shadow: var(--sh-card); }
 .bod-stat.sel { box-shadow: 0 0 0 1px var(--bod-border), var(--sh-card); }
+
+/* ── Menú de abajo (teléfono): fondo liso como la barra de arriba y la
+      pestaña activa como un círculo con el degradado de la marca que
+      sobresale de la barra. Reemplaza los estilos de menú anteriores. ── */
+@media (max-width: 767px) {
+  .nav-pill {
+    background: #08101f;
+    border: none; border-top: 1px solid rgba(255,255,255,.07);
+    box-shadow: none; border-radius: 0;
+    padding: 0 8px max(6px, env(safe-area-inset-bottom));
+    overflow: visible;
+  }
+  .nav-item { height: 60px; border-radius: 0; color: rgba(255,255,255,.42); overflow: visible; }
+  .nav-item .nav-ico {
+    width: 46px; height: 28px; border-radius: 14px;
+    background: none; box-shadow: none;
+    transition: transform .22s cubic-bezier(.16,1,.3,1), width .22s, height .22s, border-radius .22s;
+  }
+  .nav-item .nav-lbl { transition: transform .22s cubic-bezier(.16,1,.3,1); }
+  .nav-item.active { color: #fff; }
+  .nav-item.active .nav-ico {
+    width: 46px; height: 46px; border-radius: 50%;
+    transform: translateY(-14px);
+    background: var(--marca);
+    box-shadow: 0 10px 22px -6px rgba(34,211,238,.6), 0 0 0 5px #08101f;
+  }
+  .nav-item.active .nav-ico svg { stroke: #fff; }
+  .nav-item.active .nav-lbl { transform: translateY(-10px); font-weight: 600; }
+  .nav-item .nav-badge { box-shadow: 0 0 0 2px #08101f !important; }
+  /* En el círculo activo el globo va en la esquina, sin tapar el ícono */
+  .nav-item.active .nav-badge { top: -3px !important; right: -3px !important; }
+}
