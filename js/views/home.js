@@ -230,17 +230,16 @@ async function aceptarDespachoPendiente(id){
     // Red de seguridad: Firestore rechaza cualquier campo undefined
     Object.keys(salidaData).forEach(k=>{ if(salidaData[k]===undefined) salidaData[k]=null; });
 
-    const ref = await db.collection('kardex').doc('movimientos').collection('salidas').add(salidaData);
+    // Todo en una sola escritura atómica (antes eran 5 pasos sueltos: con
+    // mala señal podía quedar la salida sin descontar stock, o descontarse
+    // dos veces si el técnico reintentaba). Primero se hacen las lecturas.
+    const salidasCol = db.collection('kardex').doc('movimientos').collection('salidas');
+    // Mismo id que el pendiente: si por algo se reintenta, no se duplica la
+    // salida (las reglas no dejan al técnico sobrescribirla).
+    const ref = salidasCol.doc(id);
 
-    // 2. Descontar stock
-    const batch = db.batch();
-    for(const m of (p.items||[])){
-      batch.update(db.collection('kardex').doc('inventario').collection('items').doc(m.itemId),
-        {stock: firebase.firestore.FieldValue.increment(-(Number(m.cantidad)||0))});
-    }
-    await batch.commit();
-
-    // 3. Marcar series como despachadas
+    // Series a marcar como despachadas
+    const seriesRefs = [];
     for(const m of (p.items||[])){
       if(!m.requiereSerial) continue;
       const lista = __expandirSeriesPend(m);
@@ -249,20 +248,45 @@ async function aceptarDespachoPendiente(id){
         const snapSer = await db.collection('kardex').doc('seriales').collection('items')
           .where('itemId','==',m.itemId).where('estado','==','disponible').get();
         const serSet = new Set(lista);
-        const updates = snapSer.docs.filter(d=>serSet.has(String(d.data().serial).trim()))
-          .map(d=>d.ref.update({estado:'despachado',salidaId:ref.id,fechaSalida:now,usuarioDespacho:p.usuarioResponsable||nombreTec||''}));
-        await Promise.all(updates);
+        snapSer.docs.filter(d=>serSet.has(String(d.data().serial).trim())).forEach(d=>seriesRefs.push(d.ref));
+      }catch(e){ console.warn('[home] Error leyendo series:',e); }
+    }
+
+    // La solicitud solo se puede pasar a "aprobado" si sigue pendiente (si
+    // no, las reglas rechazarían toda la escritura).
+    let solicitudPendiente = false;
+    if(p.solicitudId){
+      try{
+        const sDoc = await db.collection('solicitudes_material').doc(p.solicitudId).get();
+        solicitudPendiente = sDoc.exists && sDoc.data().estado === 'pendiente';
+      }catch{}
+    }
+
+    const batch = db.batch();
+    batch.set(ref, salidaData);
+    for(const m of (p.items||[])){
+      batch.update(db.collection('kardex').doc('inventario').collection('items').doc(m.itemId),
+        {stock: firebase.firestore.FieldValue.increment(-(Number(m.cantidad)||0))});
+    }
+    if(solicitudPendiente){
+      batch.update(db.collection('solicitudes_material').doc(p.solicitudId), {estado:'aprobado',salidaId:ref.id});
+    }
+    batch.delete(db.collection('despachos_pendientes').doc(id));
+    // Un batch admite 500 operaciones: las series van en el mismo si caben;
+    // si son demasiadas, las que sobran van después (como antes).
+    const libres = 480 - (p.items||[]).length - 3;
+    const marcaSerie = {estado:'despachado',salidaId:ref.id,fechaSalida:now,usuarioDespacho:p.usuarioResponsable||nombreTec||''};
+    seriesRefs.slice(0, Math.max(0, libres)).forEach(r=>batch.update(r, marcaSerie));
+    await batch.commit();
+
+    const resto = seriesRefs.slice(Math.max(0, libres));
+    for(let i=0;i<resto.length;i+=400){
+      try{
+        const b2 = db.batch();
+        resto.slice(i,i+400).forEach(r=>b2.update(r, marcaSerie));
+        await b2.commit();
       }catch(e){ console.warn('[home] Error marcando series:',e); }
     }
-
-    // 4. Marcar solicitud como aprobada (si venía de una)
-    if(p.solicitudId){
-      try{ await db.collection('solicitudes_material').doc(p.solicitudId)
-        .update({estado:'aprobado',salidaId:ref.id}); }catch(e){}
-    }
-
-    // 5. Borrar el pendiente
-    await db.collection('despachos_pendientes').doc(id).delete();
 
     // 6. Actualizar UI
     __pendientesTec = __pendientesTec.filter(x=>x.id!==id);
