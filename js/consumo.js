@@ -88,6 +88,8 @@ export async function abrirConsumoOrden({ orden, modulo, session, db, onSuccess 
     .sort((a, b) => safeStr(a.item.name).localeCompare(safeStr(b.item.name)));
 
   // Estado
+  // En Cambios ya no se pregunta por DELSUR (no lo actualizan); en OTC sigue.
+  const preguntaDelsur = modulo !== 'cambios';
   let actualizadoDelsur = null; // null = sin seleccionar
   let serialSeleccionado = null;
   let busqSerial = '';
@@ -96,7 +98,7 @@ export async function abrirConsumoOrden({ orden, modulo, session, db, onSuccess 
   function render() {
     const woLabel = safeStr(orden.wo || orden.WO);
     const totalMat = Object.values(cantidades).reduce((s,v) => s + v, 0);
-    const listo = actualizadoDelsur !== null
+    const listo = (!preguntaDelsur || actualizadoDelsur !== null)
       && (!necMedidor || serialSeleccionado)
       && totalMat > 0;
 
@@ -118,8 +120,8 @@ export async function abrirConsumoOrden({ orden, modulo, session, db, onSuccess 
 
         <div style="padding:16px 20px" class="flex-col gap-16">
 
-          <!-- ¿Actualizaste en DELSUR? -->
-          <div>
+          <!-- ¿Actualizaste en DELSUR? (no en Cambios) -->
+          ${preguntaDelsur ? `<div>
             <div class="form-label" style="margin-bottom:10px">¿Actualizaste en DELSUR?</div>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
               <button id="btn-si" style="height:48px;border-radius:12px;border:2px solid ${actualizadoDelsur===true?'#22c55e':'var(--border)'};background:${actualizadoDelsur===true?'rgba(34,197,94,.12)':'var(--glass)'};color:${actualizadoDelsur===true?'#22c55e':'var(--text-3)'};font-size:14px;font-weight:700;font-family:'Outfit',sans-serif;cursor:pointer;transition:all .15s">
@@ -129,7 +131,7 @@ export async function abrirConsumoOrden({ orden, modulo, session, db, onSuccess 
                 &#10007; No aún
               </button>
             </div>
-          </div>
+          </div>` : ''}
 
           <!-- Medidor (si aplica) -->
           ${necMedidor ? `
@@ -305,7 +307,7 @@ export async function abrirConsumoOrden({ orden, modulo, session, db, onSuccess 
         usuarioOperativo: destino,
         usuarioUid:       uid,
         items:            itemsConsumo,
-        actualizadoDelsur,
+        ...(preguntaDelsur ? { actualizadoDelsur } : {}),
         fecha:            now,
       });
 
@@ -326,8 +328,8 @@ export async function abrirConsumoOrden({ orden, modulo, session, db, onSuccess 
         estadoCampo:      'hecha',
         fechaHecha:       now,
         hechaPor:         session.displayName,
-        actualizadaDelsur: actualizadoDelsur,
       };
+      if (preguntaDelsur) ordenUpdate.actualizadaDelsur = actualizadoDelsur;
       // Si la orden trae parejaDelDia (de cambios.js), guardarlo en el mismo batch
       if (Array.isArray(orden.parejaDelDia) && orden.parejaDelDia.length) {
         ordenUpdate.parejaDelDia = orden.parejaDelDia;

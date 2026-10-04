@@ -297,8 +297,8 @@ function renderShell(container) {
   document.getElementById('btn-confirmar-zona')?.addEventListener('click', confirmarZona);
   document.getElementById('btn-cancelar-zona')?.addEventListener('click', cancelarZona);
   document.getElementById('btn-confirmar-visita')?.addEventListener('click', confirmarVisita);
-  document.getElementById('btn-si-delsur')?.addEventListener('click', () => confirmarRealizada(true));
-  document.getElementById('btn-no-delsur')?.addEventListener('click', () => confirmarRealizada(false));
+  // (El botón de "Sí, realizada" usa onclick en su HTML; antes además tenía
+  //  addEventListener y guardaba la orden dos veces.)
 
   // Select chips
   setupSelectChips('zona-pareja-row');
@@ -865,7 +865,7 @@ function marcarHecha(id) {
   openSheet('sheet-realizada');
 }
 
-async function confirmarRealizada(actualizadaDelsur) {
+async function confirmarRealizada() {
   if (!selectedOrden_) return;
   const id = selectedOrden_.id;
   closeSheet('sheet-realizada');
@@ -892,15 +892,14 @@ async function confirmarRealizada(actualizadaDelsur) {
       estadoCampo:       'hecha',
       fechaHecha:        now,
       hechaPor:          session_.displayName,
-      actualizadaDelsur,
       parejaDelDia,
     });
     const o = ordenes_.find(x => x.id === id);
-    if (o) { o.estadoCampo = 'hecha'; o.actualizadaDelsur = actualizadaDelsur; o.parejaDelDia = parejaDelDia; }
+    if (o) { o.estadoCampo = 'hecha'; o.parejaDelDia = parejaDelDia; }
     plotMarkers();
     updateStatChip();
     window.dispatchEvent(new CustomEvent('cambios:updated'));
-    toast(actualizadaDelsur ? 'Realizada y actualizada en DELSUR' : 'Realizada — pendiente actualizar en DELSUR', 'ok');
+    toast('Orden realizada', 'ok');
   } catch (err) {
     console.error('[mapa] Error marcando hecha:', err);
     toast('Error al guardar', 'error');
@@ -1695,19 +1694,18 @@ function sheetsMapaHTML() {
     <div class="sheet-backdrop" id="sheet-realizada">
       <div class="sheet">
         <div class="sheet-handle"></div>
-        <div class="sheet-title">¿Ya actualizaste en DELSUR?</div>
+        <div class="sheet-title">¿Marcar como realizada?</div>
         <div class="sheet-body">
           <p style="font-size:13px;color:var(--text-3);margin-bottom:20px;line-height:1.6">
-            Confirma si ya ingresaste esta orden en el sistema de DELSUR.
+            La orden queda como realizada y pasa a confirmación.
           </p>
           <div style="display:flex;flex-direction:column;gap:8px">
-            <button class="btn-action cm" id="btn-si-delsur" onclick="window.__mapa.confirmarRealizada(true)">
+            <button class="btn-action cm" id="btn-confirmar-realizada" onclick="window.__mapa.confirmarRealizada()">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-              Sí, ya actualicé en DELSUR
+              Sí, marcar realizada
             </button>
-            <button class="btn-action outline" id="btn-no-delsur" onclick="window.__mapa.confirmarRealizada(false)">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-              No, lo actualizaré después
+            <button class="btn-action outline" onclick="document.getElementById('sheet-realizada').classList.remove('open')">
+              Cancelar
             </button>
           </div>
         </div>

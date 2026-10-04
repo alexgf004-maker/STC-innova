@@ -47,6 +47,7 @@ const ICO_CM = {
   chev:   '<polyline points="9 18 15 12 9 6"/>',
   buscar: '<circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>',
   dots:   '<circle cx="12" cy="5" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="12" cy="19" r="1.4"/>',
+  reloj:  '<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>',
 };
 const svgCm = (d, n = 16, extra = '') => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="${n}" height="${n}" ${extra}>${d}</svg>`;
 const esc = v => escapeHtml(v == null ? '' : String(v));
@@ -373,6 +374,16 @@ function renderShell() {
       </div>
     </div>
 
+    <!-- Sheet confirmar realizadas (por día o todas) -->
+    ${!isTecnico ? `
+    <div class="sheet-backdrop" id="sheet-cm-confirmar">
+      <div class="sheet" style="max-height:92vh">
+        <div class="sheet-handle"></div>
+        <div class="sheet-title" id="cm-conf-title">Por confirmar</div>
+        <div class="sheet-body" id="cm-conf-body" style="padding-bottom:16px"></div>
+      </div>
+    </div>` : ''}
+
     <!-- Sheet acciones del panel -->
     ${!isTecnico ? `
     <div class="sheet-backdrop" id="sheet-cm-acciones">
@@ -441,7 +452,7 @@ function renderShell() {
   });
 
   // Cerrar sheets
-  ['sheet-orden', 'sheet-cm-acciones', 'sheet-campo', 'sheet-import', 'sheet-lecturas', 'sheet-import-lecturas', 'sheet-buscar', 'sheet-ya-cambiadas', 'sheet-urgente', 'sheet-urgentes-import', 'sheet-mal-ubicadas'].forEach(id => {
+  ['sheet-orden', 'sheet-cm-acciones', 'sheet-cm-confirmar', 'sheet-campo', 'sheet-import', 'sheet-lecturas', 'sheet-import-lecturas', 'sheet-buscar', 'sheet-ya-cambiadas', 'sheet-urgente', 'sheet-urgentes-import', 'sheet-mal-ubicadas'].forEach(id => {
     const el = document.getElementById(id);
     if (!el) return;
     el.addEventListener('click', e => { if (e.target === el) closeSheet(id); });
@@ -489,7 +500,7 @@ function renderShell() {
   });
   document.getElementById('btn-confirmar-urgente')?.addEventListener('click', confirmarNuevaUrgente);
 
-  window.__cambios = { verOrden, verOrdenDesdeBuscar, marcarHecha, marcarVisita, actualizadaDelsur, aprobar, aprobarYaCambiado, rechazar, revertirYaCambiado, openCampo, openImport, openImportLecturas, openGestionarLecturas, openBuscar, openYaCambiadas, openMalUbicadas, corregirCoordenadas, revertirMalUbicado, openNuevaUrgente, openUrgentesImport, marcarUrgente, eliminarOrden, filtrarSinActualizar, buscarSinActualizar, toggleAcordeon, descargarHoy, descargarMensual, toggleMenuAcciones, irAOrdenes, setFiltroOrd, setParejaOrd, verMasOrd };
+  window.__cambios = { verOrden, verOrdenDesdeBuscar, marcarHecha, marcarVisita, actualizadaDelsur, aprobar, aprobarYaCambiado, rechazar, revertirYaCambiado, openCampo, openImport, openImportLecturas, openGestionarLecturas, openBuscar, openYaCambiadas, openMalUbicadas, corregirCoordenadas, revertirMalUbicado, openNuevaUrgente, openUrgentesImport, marcarUrgente, eliminarOrden, filtrarSinActualizar, buscarSinActualizar, toggleAcordeon, descargarHoy, descargarMensual, toggleMenuAcciones, irAOrdenes, setFiltroOrd, setParejaOrd, verMasOrd, abrirConfirmar, confirmarLote, verDesdeConfirmar };
 }
 
 // ── Cargar datos ──────────────────────────────────
@@ -593,7 +604,6 @@ function renderResumenTecnico() {
   const pendientes    = miLista.filter(o => !o.estadoCampo && !isBlocked(o));
   const urgentes      = pendientes.filter(o => o.urgente);
   const bloqueadas    = miLista.filter(o => !o.estadoCampo && isBlocked(o));
-  const sinActualizar = miLista.filter(o => (o.estadoCampo === 'hecha' || o.estadoCampo === 'aprobada') && !o.actualizadaDelsur);
   const META_DIARIA   = 15;
   const pct           = Math.min(100, Math.round((hechasHoy.length / META_DIARIA) * 100));
   const hoyLista = [...hechasHoy, ...visitasHoy].sort((a, b) =>
@@ -617,10 +627,9 @@ function renderResumenTecnico() {
         <div class="ds-m" style="cursor:pointer" onclick="window.__cambios.irAOrdenes('pendientes')"><div class="ds-num-md">${pendientes.length}</div><div class="ds-lbl-sm" style="margin-top:6px">Pendientes</div></div>
       </div>
 
-      ${urgentes.length || sinActualizar.length || bloqueadas.length ? `
+      ${urgentes.length || bloqueadas.length ? `
       <div class="cm-lista" style="margin-bottom:20px">
         ${urgentes.length ? filaAtencion('crit', ICO_CM.alerta, `${urgentes.length} urgente${urgentes.length > 1 ? 's' : ''} pendiente${urgentes.length > 1 ? 's' : ''}`, 'Hazlas primero', "window.__cambios.irAOrdenes('pendientes')") : ''}
-        ${sinActualizar.length ? filaAtencion('warn', ICO_CM.sync, `${sinActualizar.length} sin actualizar en DELSUR`, 'Toca para marcarlas', "window.__cambios.irAOrdenes('sinact')") : ''}
         ${bloqueadas.length ? filaAtencion('muted', ICO_CM.lock, `${bloqueadas.length} bloqueada${bloqueadas.length > 1 ? 's' : ''} por lectura`, 'No se pueden trabajar estos días', "window.__cambios.irAOrdenes('bloqueadas')") : ''}
       </div>` : ''}
 
@@ -685,7 +694,7 @@ function renderPanel() {
   const pendientes    = ordenes.filter(o => !o.estadoCampo);
   const yaCambiadas   = ordenes.filter(o => o.estadoCampo === 'ya_cambiado');
   const malUbicadas   = ordenes.filter(o => o.estadoCampo === 'mal_ubicado');
-  const sinActualizar = ordenes.filter(o => (o.estadoCampo === 'hecha' || o.estadoCampo === 'aprobada') && !o.actualizadaDelsur);
+  const bloqueadas    = ordenes.filter(o => !o.estadoCampo && isBlocked(o));
   const total         = ordenes.length;
   const pct           = total ? Math.round((aprobadas.length / total) * 100) : 0;
   const seg = n => total ? (n / total * 100).toFixed(2) : 0;
@@ -696,12 +705,19 @@ function renderPanel() {
   const totalHoy = enCampo.reduce((a, p) => a + hechasHoyDe(p), 0);
   const metaHoy  = enCampo.length * 15;
 
-  const revisar = [
-    porConfirmar.length  ? filaAtencion('warn',   ICO_CM.check,  `${porConfirmar.length} por confirmar`, 'Realizadas por los técnicos', "window.__cambios.irAOrdenes('porconfirmar')") : '',
-    yaCambiadas.length   ? filaAtencion('orange', ICO_CM.alerta, `${yaCambiadas.length} reportada${yaCambiadas.length > 1 ? 's' : ''} como ya cambiada${yaCambiadas.length > 1 ? 's' : ''}`, '¿Las hicimos nosotros o se revierten?', 'window.__cambios.openYaCambiadas()') : '',
-    malUbicadas.length   ? filaAtencion('violet', ICO_CM.pin,    `${malUbicadas.length} mal ubicada${malUbicadas.length > 1 ? 's' : ''}`, 'Corregir coordenadas', 'window.__cambios.openMalUbicadas()') : '',
-    sinActualizar.length ? filaAtencion('muted',  ICO_CM.sync,   `${sinActualizar.length} sin actualizar en DELSUR`, 'Las marca el técnico', "window.__cambios.irAOrdenes('sinact')") : '',
-  ].join('');
+  const tile = (cls, ico, n, titulo, sub, onclick) => `
+    <div class="hm-tile ${n ? '' : 'cm-tile-cero'}" onclick="${onclick}">
+      <div style="display:flex;align-items:center;justify-content:space-between;width:100%">
+        <div class="hm-ic ${cls}">${svgCm(ico, 20)}</div>
+        <span class="cm-tile-n">${n}</span>
+      </div>
+      <div style="min-width:0;width:100%">
+        <div class="hm-tile-t">${titulo}</div>
+        <div class="hm-tile-s">${sub}</div>
+      </div>
+    </div>`;
+
+  const parejasConOrdenes = PAREJAS.filter(p => ordenes.some(o => o.pareja === p));
 
   content.innerHTML = `
     <div class="anim-up">
@@ -741,8 +757,16 @@ function renderPanel() {
       </div>
 
       <div class="ds-sec">Para revisar</div>
-      <div class="cm-lista" style="margin-bottom:22px">
-        ${revisar || `<div class="cm-fila" style="cursor:default"><div class="cm-fila-ic ok">${svgCm(ICO_CM.check, 17)}</div><div style="flex:1"><div class="cm-fila-t">Todo al día</div><div class="cm-fila-s">Nada pendiente de revisar</div></div></div>`}
+      <div class="hm-grid" style="margin-bottom:22px">
+        ${tile('rc', ICO_CM.check,  porConfirmar.length, 'Por confirmar', 'Por día o todas', 'window.__cambios.abrirConfirmar()')}
+        ${tile('or', ICO_CM.alerta, yaCambiadas.length,  'Ya cambiadas', 'Reportadas en campo', 'window.__cambios.openYaCambiadas()')}
+        ${tile('am', ICO_CM.pin,    malUbicadas.length,  'Mal ubicadas', 'Corregir coordenadas', 'window.__cambios.openMalUbicadas()')}
+        ${tile('us', ICO_CM.reloj,  visitas.length,      'Visitas', 'Cliente ausente y otras', "window.__cambios.irAOrdenes('visitas')")}
+      </div>
+
+      <div class="ds-sec">Parejas</div>
+      <div class="hm-grid" style="margin-bottom:22px">
+        ${parejasConOrdenes.map(p => tarjetaPareja(p)).join('') || '<div class="ds-card" style="grid-column:1/-1;text-align:center;color:var(--text-3);font-size:13px">Sin órdenes asignadas a parejas</div>'}
       </div>
 
       <div class="ds-sec">Avance general</div>
@@ -764,20 +788,139 @@ function renderPanel() {
         </div>
       </div>
 
-      <div class="ds-sec">Por pareja</div>
-      <div class="flex-col gap-8" id="acordeon-parejas">
-        ${PAREJAS.map(p => renderAcordeonPareja(p)).join('')}
-      </div>
+      ${bloqueadas.length ? `
+      <div class="cm-lista" style="margin-top:12px">
+        ${filaAtencion('muted', ICO_CM.lock, `${bloqueadas.length} bloqueada${bloqueadas.length > 1 ? 's' : ''} por lectura`, 'No se pueden trabajar estos días', "window.__cambios.irAOrdenes('bloqueadas')")}
+      </div>` : ''}
     </div>
   `;
+}
 
-  // Inicializar búsquedas
-  PAREJAS.forEach(p => {
-    const inputId = `buscar-${p.replace(' ','-')}`;
-    document.getElementById(inputId)?.addEventListener('input', e => {
-      filtrarOrdenesPareja(p, e.target.value.trim());
-    });
-  });
+// Tarjeta de pareja (estilo inicio). Al tocarla se abren sus realizadas por confirmar.
+function tarjetaPareja(p) {
+  const c = PAREJA_COLORS[p] || PAREJA_COLORS['Pareja 1'];
+  const lista = ordenes.filter(o => o.pareja === p);
+  const aprob = lista.filter(o => o.estadoCampo === 'aprobada').length;
+  const porConf = lista.filter(o => o.estadoCampo === 'hecha').length;
+  const pct = lista.length ? Math.round(aprob / lista.length * 100) : 0;
+  const miembros = asignaciones_[p];
+  return `
+    <div class="hm-tile" onclick="window.__cambios.abrirConfirmar('${p}')">
+      <div style="display:flex;align-items:center;justify-content:space-between;width:100%">
+        <div class="cm-pav" style="background:linear-gradient(140deg, ${c.accent}, ${c.accent}88);box-shadow:0 8px 20px -8px ${c.accent}">${esc(p.replace('Pareja ', 'P'))}</div>
+        ${miembros ? '<span class="cm-pill ok">En campo</span>' : ''}
+      </div>
+      <div style="min-width:0;width:100%">
+        <div class="hm-tile-t">${esc(p)}</div>
+        <div class="hm-tile-s" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${miembros ? esc(miembros.join(' · ')) : 'Sin técnicos hoy'}</div>
+      </div>
+      <div style="width:100%">
+        <div style="display:flex;align-items:baseline;justify-content:space-between">
+          <span style="font-size:20px;font-weight:600">${pct}%</span>
+          <span style="font-size:11.5px;color:var(--text-3)">${aprob}/${lista.length}</span>
+        </div>
+        <div class="ds-bar" style="height:5px;margin-top:6px"><i style="width:${pct}%;background:${c.accent}"></i></div>
+      </div>
+      ${porConf ? `<span class="hm-pill warn">${porConf} por confirmar</span>` : '<span class="hm-pill ok">Al día</span>'}
+    </div>`;
+}
+
+// ── Confirmar realizadas: por día o todas ────────
+let confPareja_ = null, confGrupos_ = [];
+
+function abrirConfirmar(pareja = null) {
+  confPareja_ = pareja || null;
+  renderConfirmar();
+  openSheet('sheet-cm-confirmar');
+}
+
+function renderConfirmar() {
+  const body = document.getElementById('cm-conf-body');
+  if (!body) return;
+  const lista = ordenes
+    .filter(o => o.estadoCampo === 'hecha' && (!confPareja_ || o.pareja === confPareja_))
+    .sort((a, b) => (b.fechaHecha?.seconds || 0) - (a.fechaHecha?.seconds || 0));
+  confGrupos_ = agruparPorFecha(lista);
+  document.getElementById('cm-conf-title').textContent = 'Por confirmar' + (confPareja_ ? ' · ' + confPareja_ : '');
+  const visitas = confPareja_ ? ordenes.filter(o => o.pareja === confPareja_ && o.estadoCampo === 'visita') : [];
+
+  body.innerHTML = `
+    ${lista.length ? `
+    <div style="font-size:12.5px;color:var(--text-3);margin-bottom:12px">${lista.length} realizada${lista.length > 1 ? 's' : ''} esperando confirmación${confPareja_ ? '' : ' en todas las parejas'}.</div>
+    <button class="btn-action cm" style="margin-bottom:16px" onclick="window.__cambios.confirmarLote(-1)">
+      ${svgCm(ICO_CM.check, 16)} Confirmar todas (${lista.length})
+    </button>
+    <div class="flex-col" style="gap:16px">
+      ${confGrupos_.map(({ fecha, ordenes: grupo }, i) => `
+        <div>
+          <div class="cm-dia">
+            <div style="flex:1;min-width:0">
+              <div class="cm-dia-t">${fecha}</div>
+              <div class="cm-dia-s">${grupo.length} ${grupo.length > 1 ? 'órdenes' : 'orden'}</div>
+            </div>
+            <button class="cm-btn ok" onclick="window.__cambios.confirmarLote(${i})">${svgCm(ICO_CM.check, 14)} Confirmar día</button>
+          </div>
+          <div class="flex-col gap-6">
+            ${grupo.map(o => {
+              const c = PAREJA_COLORS[o.pareja] || PAREJA_COLORS['Pareja 1'];
+              return `
+              <div class="cm-verif">
+                <div style="flex:1;min-width:0;cursor:pointer" onclick="window.__cambios.verDesdeConfirmar('${o.id}')">
+                  <div style="display:flex;align-items:center;gap:6px">
+                    <span class="cm-wo">WO ${esc(o.wo || '—')}</span>
+                    ${!confPareja_ && o.pareja ? `<span class="cm-pareja" style="color:${c.accent};border-color:${c.border};background:${c.glass}">${esc(o.pareja.replace('Pareja ', 'P'))}</span>` : ''}
+                  </div>
+                  <div class="cm-cli">${esc(o.cliente || '—')}</div>
+                  <div class="cm-meta">${esc(o.hechaPor || '—')}</div>
+                </div>
+                <button class="cm-btn ok" onclick="window.__cambios.aprobar('${o.id}')">${svgCm(ICO_CM.check, 14)}</button>
+              </div>`;
+            }).join('')}
+          </div>
+        </div>`).join('')}
+    </div>` : `
+    <div style="text-align:center;padding:26px 10px">
+      <div class="hm-ic cm" style="margin:0 auto 12px">${svgCm(ICO_CM.check, 20)}</div>
+      <div style="font-size:15px;font-weight:600">Nada por confirmar</div>
+      <div style="font-size:12.5px;color:var(--text-3);margin-top:4px">${confPareja_ ? 'Esta pareja está al día.' : 'Todas las realizadas ya están confirmadas.'}</div>
+    </div>`}
+
+    ${visitas.length ? `
+    <div class="fecha-grupo-label" style="margin-top:18px">Visitas registradas (${visitas.length})</div>
+    <div class="flex-col gap-6">${visitas.map(o => renderOrdenVisitaPanel(o)).join('')}</div>` : ''}
+  `;
+}
+
+function verDesdeConfirmar(id) {
+  closeSheet('sheet-cm-confirmar');
+  setTimeout(() => verOrden(id), 150);
+}
+
+// Confirma un día (índice del grupo) o todas (-1) de la hoja abierta
+async function confirmarLote(i) {
+  const lista = i === -1 ? confGrupos_.flatMap(g => g.ordenes) : (confGrupos_[i]?.ordenes || []);
+  if (!lista.length) return;
+  const que = i === -1 ? `todas (${lista.length})` : `${lista.length} del día ${confGrupos_[i].fecha.replace(/^(Hoy|Ayer) · /, '').toLowerCase()}`;
+  if (!confirm(`¿Confirmar ${que}${confPareja_ ? ' de ' + confPareja_ : ''}?`)) return;
+  const now = firebase.firestore.Timestamp.now();
+  const datos = { estadoCampo: 'aprobada', aprobadoPor: session_.displayName, fechaAprobacion: now };
+  try {
+    for (let k = 0; k < lista.length; k += 400) {
+      const batch = db.batch();
+      lista.slice(k, k + 400).forEach(o => batch.update(db.collection('cambios_ordenes').doc(o.id), datos));
+      await batch.commit();
+    }
+    const ids = new Set(lista.map(o => o.id));
+    ordenes = ordenes.map(o => ids.has(o.id) ? { ...o, ...datos } : o);
+    cache.ordenes.data = ordenes; cache.ordenes.ts = Date.now();
+    toast(`${lista.length} orden${lista.length > 1 ? 'es' : ''} confirmada${lista.length > 1 ? 's' : ''}`, 'ok');
+    renderConfirmar();
+    renderTab();
+    recalcularStats().catch(() => {});
+  } catch (err) {
+    console.error('[cambios] Error confirmando en lote:', err);
+    toast('Error al confirmar: ' + err.message, 'error');
+  }
 }
 
 function renderAcordeonPareja(pareja) {
@@ -843,7 +986,7 @@ function renderOrdenVerificacion(o, c) {
       <div style="flex:1;min-width:0;cursor:pointer" onclick="window.__cambios.verOrden('${o.id}')">
         <div class="cm-wo">WO ${esc(o.wo || '—')}</div>
         <div class="cm-cli">${esc(o.cliente || '—')}</div>
-        <div class="cm-meta">${esc(o.hechaPor || '')}${o.actualizadaDelsur ? ' · <span style="color:#22c55e">DELSUR al día</span>' : ' · <span style="color:#fbbf24">falta DELSUR</span>'}</div>
+        <div class="cm-meta">${esc(o.hechaPor || '')}</div>
       </div>
       <button class="cm-btn ok" onclick="window.__cambios.aprobar('${o.id}')">${svgCm(ICO_CM.check, 14)} Confirmar</button>
     </div>
@@ -997,7 +1140,6 @@ function gruposOrdenes(lista) {
     g.push({ id: 'confirmadas',  t: 'Confirmadas',   arr: recientes(lista.filter(o => o.estadoCampo === 'aprobada')) });
   }
   g.push({ id: 'visitas',    t: 'Visitas',        arr: lista.filter(o => o.estadoCampo === 'visita') });
-  g.push({ id: 'sinact',     t: 'Sin actualizar', arr: recientes(lista.filter(o => realizada(o) && !o.actualizadaDelsur)) });
   g.push({ id: 'bloqueadas', t: 'Bloqueadas',     arr: lista.filter(o => !o.estadoCampo && isBlocked(o)) });
   return g;
 }
@@ -1016,7 +1158,6 @@ function renderOrdenes() {
   let mostrar = q
     ? lista.filter(o => [o.wo, o.nc, o.cliente, o.direccion].some(v => v && String(v).toLowerCase().includes(q)))
     : grupo.arr;
-  if (!q && filtroOrd_ === 'sinact') mostrar = aplicarFiltroFecha(mostrar);
   const visibles = mostrar.slice(0, limiteOrd_);
 
   content.innerHTML = `
@@ -1051,17 +1192,14 @@ function renderOrdenes() {
       </div>` : `
       <div style="font-size:12px;color:var(--text-3);margin:2px 2px 10px">${mostrar.length} resultado${mostrar.length !== 1 ? 's' : ''} en todas las órdenes</div>`}
 
-      ${!q && filtroOrd_ === 'sinact' && grupo.arr.length ? `
-      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
-        ${['todas','hoy','ayer','semana'].map(f => `
-          <button onclick="window.__cambios.filtrarSinActualizar('${f}')" class="select-chip${filtroSinActualizar_ === f ? ' active' : ''}" style="font-size:11px;padding:5px 12px">
-            ${{ todas: 'Todas', hoy: 'Hoy', ayer: 'Ayer', semana: 'Esta semana' }[f]}
-          </button>`).join('')}
-      </div>` : ''}
+      ${!q && filtroOrd_ === 'porconfirmar' && grupo.arr.length ? `
+      <button class="btn-action cm" style="margin-bottom:12px" onclick="window.__cambios.abrirConfirmar(${parejaFiltro_ !== 'todas' ? `'${parejaFiltro_}'` : ''})">
+        ${svgCm(ICO_CM.check, 16)} Confirmar por día o todas
+      </button>` : ''}
 
       ${visibles.length ? `
       <div class="flex-col gap-8">
-        ${visibles.map(o => tarjetaOrden(o, { mostrarEstado: !!q || ['sinact', 'realizadas'].includes(filtroOrd_) })).join('')}
+        ${visibles.map(o => tarjetaOrden(o, { mostrarEstado: !!q || filtroOrd_ === 'realizadas' })).join('')}
       </div>
       ${mostrar.length > visibles.length ? `
       <button class="cm-btn" style="width:100%;height:44px;margin-top:10px" onclick="window.__cambios.verMasOrd()">Ver ${Math.min(40, mostrar.length - visibles.length)} más (${mostrar.length - visibles.length} restantes)</button>` : ''}
@@ -1104,7 +1242,6 @@ function tarjetaOrden(o, { mostrarEstado = false, compacta = false } = {}) {
   const est = estadoOrden(o);
   const bloqueada = !o.estadoCampo && isBlocked(o);
   const realizada = o.estadoCampo === 'hecha' || o.estadoCampo === 'aprobada';
-  const sinAct = realizada && !o.actualizadaDelsur;
   const fecha = o.fechaHecha || o.fechaVisita;
   const fechaTxt = fecha?.toDate ? fecha.toDate().toLocaleString('es-SV', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
 
@@ -1121,7 +1258,7 @@ function tarjetaOrden(o, { mostrarEstado = false, compacta = false } = {}) {
             ? `<div class="cm-cli">Bloqueada por lectura · ${esc(o.unidadLectura || '—')}</div>`
             : `<div class="cm-cli">${esc(o.cliente || '—')}</div>
                ${compacta ? '' : `<div class="cm-meta">${esc(o.direccion || '')}</div>`}`}
-          ${(realizada || o.estadoCampo === 'visita') && fechaTxt ? `<div class="cm-meta">${fechaTxt}${o.estadoCampo === 'visita' && o.motivoVisita ? ' · ' + esc(o.motivoVisita) : ''}${realizada ? (o.actualizadaDelsur ? ' · <span style="color:#22c55e">DELSUR al día</span>' : ' · <span style="color:#fbbf24">falta DELSUR</span>') : ''}</div>` : ''}
+          ${(realizada || o.estadoCampo === 'visita') && fechaTxt ? `<div class="cm-meta">${fechaTxt}${o.estadoCampo === 'visita' && o.motivoVisita ? ' · ' + esc(o.motivoVisita) : ''}${realizada && o.hechaPor ? ' · ' + esc(o.hechaPor) : ''}</div>` : ''}
         </div>
         ${!isTecnico && o.pareja ? `<span class="cm-pareja" style="color:${c.accent};border-color:${c.border};background:${c.glass}">${esc(o.pareja.replace('Pareja ', 'P'))}</span>` : ''}
       </div>
@@ -1129,10 +1266,6 @@ function tarjetaOrden(o, { mostrarEstado = false, compacta = false } = {}) {
       <div class="cm-ord-acc">
         <button class="cm-btn ok" onclick="event.stopPropagation();window.__cambios.aprobar('${o.id}')">${svgCm(ICO_CM.check, 14)} Confirmar</button>
         <button class="cm-btn danger" onclick="event.stopPropagation();window.__cambios.rechazar('${o.id}')">Rechazar</button>
-      </div>` : ''}
-      ${isTecnico && sinAct && !compacta ? `
-      <div class="cm-ord-acc">
-        <button class="cm-btn warn" style="flex:1" onclick="event.stopPropagation();window.__cambios.actualizadaDelsur('${o.id}')">${svgCm(ICO_CM.sync, 14)} Ya actualicé en DELSUR</button>
       </div>` : ''}
     </div>
   `;
@@ -1163,7 +1296,6 @@ function verOrden(id) {
         ${!o.estadoCampo             ? `<div class="estado-badge muted">Pendiente</div>` : ''}
         ${o.urgente && !o.estadoCampo ? `<div class="estado-badge crit">Urgente</div>` : ''}
         ${blocked                    ? `<div class="estado-badge crit">Bloqueada</div>` : ''}
-        ${o.actualizadaDelsur        ? `<div class="estado-badge ok-outline">&#10003; Actualizada DELSUR</div>` : ''}
         ${o.pareja ? `<div class="estado-badge" style="color:${c.accent};border-color:${c.border};background:${c.glass}">${o.pareja}</div>` : ''}
       </div>
 
@@ -1220,11 +1352,6 @@ function verOrden(id) {
           <button class="btn-action outline" onclick="window.__cambios.marcarVisita('${o.id}')">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
             Registrar visita
-          </button>` : ''}
-        ${(o.estadoCampo === 'hecha' || o.estadoCampo === 'aprobada') && !o.actualizadaDelsur ? `
-          <button class="btn-action warn" onclick="window.__cambios.actualizadaDelsur('${o.id}')">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>
-            Ya actualicé en DELSUR
           </button>` : ''}
       </div>` : ''}
 
@@ -1340,21 +1467,9 @@ async function aprobar(id) {
     if (idx !== -1) ordenes[idx] = { ...ordenes[idx], estadoCampo: 'aprobada', aprobadoPor: session_.displayName };
     invalidateOrdenes();
 
-    // Quitar card del acordeón sin recargar todo el panel
-    const card = document.getElementById(`verif-${id}`);
-    if (card) {
-      card.style.transition = 'opacity .2s, transform .2s';
-      card.style.opacity = '0';
-      card.style.transform = 'translateX(20px)';
-      setTimeout(() => {
-        card.remove();
-        // Actualizar subtítulo del acordeón
-        renderPanel();
-      }, 200);
-    } else {
-      closeSheet('sheet-orden');
-      renderTab();
-    }
+    if (document.getElementById('sheet-cm-confirmar')?.classList.contains('open')) renderConfirmar();
+    else closeSheet('sheet-orden');
+    renderTab();
 
     toast('Orden confirmada', 'ok');
     recalcularStats().catch(()=>{});
@@ -2162,7 +2277,6 @@ function generarExcelOrdenes(lista, nombreArchivo) {
         'Pareja':            o.pareja        || 'Sin asignar',
         'Pareja del día':    (o.parejaDelDia || []).join(', ') || '—',
         'Fecha realizada':   fHechaStr,
-        'Actualizada DELSUR': o.actualizadaDelsur ? 'Sí' : 'No',
         'Estado':            o.estadoCampo === 'aprobada' ? 'Confirmada' : 'Realizada',
         'Aprobada por':      o.aprobadoPor   || '—',
         'Concepto':          o.concepto      || '—',
@@ -2175,7 +2289,7 @@ function generarExcelOrdenes(lista, nombreArchivo) {
   // Anchos de columna
   ws['!cols'] = [
     {wch:12}, {wch:35}, {wch:50}, {wch:12}, {wch:12},
-    {wch:30}, {wch:18}, {wch:16}, {wch:12}, {wch:20},
+    {wch:30}, {wch:18}, {wch:12}, {wch:20},
     {wch:30}, {wch:14},
   ];
 
