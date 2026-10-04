@@ -2519,3 +2519,26 @@ body[data-area="rc"] {           /* Reclamos SIGET: ámbar */
   --marca-sh: 0 12px 26px -12px rgba(245,158,11,.7); --marca-glow: rgba(245,158,11,.55);
   --tema-acento: #fbbf24;
 }
+
+/* ── Pestañas animadas (ver activarPestanasAnimadas en ui.js): píldora
+      elástica del color del área y contenido que entra deslizándose. ── */
+.tabs-anim { border-radius: 99px; padding: 4px; }
+.tabs-anim .cambios-tab, .tabs-anim .area-tab {
+  position: relative; z-index: 1; height: 36px; border-radius: 99px;
+  font-size: 12.5px; font-weight: 600; color: var(--text-3);
+  transition: color .3s;
+}
+.tabs-anim .cambios-tab.active, .tabs-anim .area-tab.active { background: transparent !important; color: #fff !important; }
+.tab-pildora {
+  position: absolute; top: 4px; bottom: 4px; left: 4px; right: 100%; z-index: 0;
+  border-radius: 99px; background: var(--marca); box-shadow: var(--marca-sh);
+  pointer-events: none; opacity: 0;
+}
+@keyframes pestanaDer { from { transform: translateX(36px); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes pestanaIzq { from { transform: translateX(-36px); opacity: 0; } to { transform: none; opacity: 1; } }
+.pestana-der { animation: pestanaDer .35s cubic-bezier(.2,.8,.2,1); }
+.pestana-izq { animation: pestanaIzq .35s cubic-bezier(.2,.8,.2,1); }
+@media (prefers-reduced-motion: reduce) {
+  .tab-pildora { transition: none !important; }
+  .pestana-der, .pestana-izq { animation: none; }
+}

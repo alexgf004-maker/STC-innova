@@ -4,7 +4,7 @@
  * Cada vista exporta init(container, session).
  */
 
-import { getNavIcon } from './ui.js';
+import { getNavIcon, activarPestanasAnimadas } from './ui.js';
 
 const NAV_CONFIGS = {
   admin: [
@@ -57,6 +57,7 @@ const navbar      = document.getElementById('navbar');
 export function initRouter(session) {
   currentSession = session;
   buildNavbar(session);
+  activarPestanasAnimadas(contentArea);
   navigateTo('home');
 }
 

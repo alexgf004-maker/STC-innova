@@ -89,3 +89,72 @@ export function getNavIcon(name) {
   };
   return icons[name] || icons.home;
 }
+
+// ── Pestañas animadas ─────────────────────────────
+// A toda barra de pestañas (.cambios-tabs / .area-tabs) se le agrega una
+// píldora del color del área que se estira hacia la pestaña nueva y luego
+// se encoge, como una gota; el contenido entra deslizándose de ese lado.
+// Las vistas no cambian: siguen poniendo y quitando la clase "active" y
+// aquí se observa ese cambio.
+const SEL_PESTANA = '.cambios-tab, .area-tab';
+const RE_CONTENIDO = /-(content|estado|resumen|lista)$/;
+
+function prepararBarra(bar) {
+  if (bar._pildora) return;
+  const ind = document.createElement('i');
+  ind.className = 'tab-pildora';
+  bar.appendChild(ind);
+  bar.classList.add('tabs-anim');
+  const st = bar._pildora = { ind, act: -1 };
+
+  const colocar = anim => {
+    const ps = [...bar.querySelectorAll(SEL_PESTANA)];
+    const i = ps.findIndex(p => p.classList.contains('active'));
+    if (i < 0) { ind.style.opacity = '0'; st.act = -1; return; }
+    const p = ps[i];
+    if (!p.offsetWidth) return;                         // barra oculta
+    const l = p.offsetLeft, r = bar.clientWidth - l - p.offsetWidth;
+    const mover = anim && st.act >= 0 && i !== st.act;
+    if (mover) {
+      // El borde que va adelante se mueve primero y el de atrás después.
+      const ida = i > st.act, rap = '.28s cubic-bezier(.4,0,.2,1)', len = '.42s cubic-bezier(.4,0,.2,1)';
+      ind.style.transition = ida ? `right ${rap}, left ${len} .12s` : `left ${rap}, right ${len} .12s`;
+      deslizarContenido(bar, ida);
+    } else {
+      ind.style.transition = 'none';
+    }
+    ind.style.left = l + 'px';
+    ind.style.right = r + 'px';
+    ind.style.opacity = '1';
+    st.act = i;
+  };
+
+  new MutationObserver(() => requestAnimationFrame(() => colocar(true)))
+    .observe(bar, { attributes: true, attributeFilter: ['class'], subtree: true });
+  if (window.ResizeObserver) new ResizeObserver(() => colocar(false)).observe(bar);
+  requestAnimationFrame(() => colocar(false));
+}
+
+function deslizarContenido(bar, ida) {
+  const cls = ida ? 'pestana-der' : 'pestana-izq';
+  for (let el = bar.nextElementSibling; el; el = el.nextElementSibling) {
+    if (!el.id || !RE_CONTENIDO.test(el.id)) continue;
+    el.classList.remove('pestana-der', 'pestana-izq');
+    void el.offsetWidth;
+    el.classList.add(cls);
+    el.addEventListener('animationend', () => el.classList.remove(cls), { once: true });
+  }
+}
+
+export function activarPestanasAnimadas(raiz) {
+  if (!raiz) return;
+  let pendiente = false;
+  const buscar = () => {
+    pendiente = false;
+    raiz.querySelectorAll('.cambios-tabs:not(.tabs-anim), .area-tabs:not(.tabs-anim)').forEach(prepararBarra);
+  };
+  new MutationObserver(() => {
+    if (!pendiente) { pendiente = true; requestAnimationFrame(buscar); }
+  }).observe(raiz, { childList: true, subtree: true });
+  buscar();
+}
