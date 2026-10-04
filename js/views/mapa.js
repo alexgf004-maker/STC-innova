@@ -124,7 +124,7 @@ function renderShell(container) {
           </svg>
           Asignar zona
         </button>
-        <button class="mapa-btn" id="btn-marcar-azul" title="Marcar puntos con Excel" style="background:rgba(59,130,246,.2);border-color:rgba(59,130,246,.4);color:#60a5fa">
+        <button class="mapa-btn" id="btn-marcar-azul" title="Marcar puntos con Excel" style="background:rgba(13,22,38,.92);border:1px solid rgba(130,165,225,.2);color:#60a5fa;box-shadow:0 10px 24px -12px rgba(0,0,0,.8)">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
             <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
           </svg>
@@ -150,7 +150,7 @@ function renderShell(container) {
       </div>
 
       <!-- Buscador por WO, NC o serie de medidor (oculto hasta tocar la lupa) -->
-      <div id="buscar-orden-box" style="display:none;position:absolute;top:64px;left:12px;right:12px;z-index:1000;background:rgba(13,17,23,.96);border:1px solid rgba(45,212,191,.4);border-radius:12px;padding:10px">
+      <div id="buscar-orden-box" style="display:none;position:absolute;top:64px;left:12px;right:12px;z-index:1000;background:rgba(13,22,38,.97);border:1px solid rgba(130,165,225,.2);border-radius:12px;padding:10px">
         <div style="display:flex;gap:8px;align-items:center">
           <input id="input-buscar-orden" type="text" inputmode="numeric" placeholder="WO, NC o serie de medidor"
             style="flex:1;padding:9px 12px;border-radius:9px;border:1px solid var(--border);background:var(--glass);color:#f1f5f9;font-size:13px;font-family:inherit;outline:none"/>
@@ -164,14 +164,14 @@ function renderShell(container) {
       <button id="btn-generar-orden-mapa" onclick="window.__mapa.abrirGenerarOrden()"
         style="
           position:absolute;
-          bottom:24px;left:50%;transform:translateX(-50%);
+          bottom:calc(var(--nav-espacio, 0px) + 16px);left:50%;transform:translateX(-50%);
           z-index:800;
           display:flex;align-items:center;gap:8px;
           height:44px;padding:0 20px;
           border-radius:22px;
-          border:1px solid rgba(45,212,191,.4);
-          background:rgba(13,31,53,.92);
-          color:var(--cm-light);
+          border:none;
+          background:var(--marca);
+          color:#fff;
           font-size:13px;font-weight:600;
           font-family:'Outfit',sans-serif;
           cursor:pointer;
@@ -250,9 +250,12 @@ function renderShell(container) {
     wrapper.style.left   = sidebarW + 'px';
     wrapper.style.right  = '0px';
   } else {
-    // En móvil: navbar inferior
+    // En móvil el mapa llega hasta abajo y el menú flota encima (antes el
+    // mapa se cortaba arriba del menú y quedaba una franja vacía). Lo que va
+    // pegado abajo (leyenda, zoom, botones, panel) sube con --nav-espacio.
     if (topbar) wrapper.style.top    = topbar.offsetHeight + 'px';
-    if (navbar) wrapper.style.bottom = navbar.offsetHeight + 'px';
+    wrapper.style.bottom = '0px';
+    if (navbar) wrapper.style.setProperty('--nav-espacio', navbar.offsetHeight + 'px');
   }
 
 
@@ -526,6 +529,7 @@ function iniciarGeolocalizacion() {
 
 // ── Marcadores ────────────────────────────────────
 function plotMarkers() {
+  if (!map_) return;   // el primer onSnapshot puede llegar antes de crear el mapa
   markers_.forEach(m => map_.removeLayer(m));
   markers_ = [];
 

@@ -2329,3 +2329,39 @@ body {
 }
 .btn-marca:active, .btn-action.marca:active, .cm-btn.marca:active { filter: brightness(1.1); }
 .btn-marca:disabled, .bod-btn-main:disabled { opacity: .45; box-shadow: none; }
+
+/* ── Mapas: controles en azul marino; lo de abajo sube sobre el menú ── */
+.mapa-stat-chip, .mapa-btn-icon, .mapa-leyenda, .leaflet-control-zoom a {
+  background: rgba(13,22,38,.92) !important; border-color: rgba(130,165,225,.18) !important;
+  box-shadow: 0 10px 24px -12px rgba(0,0,0,.8);
+}
+.mapa-btn { background: var(--marca); border: none; color: #fff; box-shadow: var(--marca-sh); }
+.mapa-btn:active { background: var(--marca); filter: brightness(1.1); }
+.mapa-leyenda { bottom: calc(var(--nav-espacio, 0px) + 16px); }
+.leaflet-container .leaflet-bottom { bottom: var(--nav-espacio, 0px); }   /* más específico que leaflet.css */
+.mapa-panel {
+  background: #0d1728; border-top-color: rgba(130,165,225,.16);
+  padding-bottom: calc(var(--nav-espacio, 0px) + 16px);
+  max-height: calc(60% + var(--nav-espacio, 0px));
+}
+
+/* ── Barra de navegación (teléfono): azul marino del login + pestaña activa
+      con el degradado de la marca. En PC queda el menú lateral. ── */
+@media (max-width: 767px) {
+  .nav-pill {
+    background: rgba(13,22,38,.95);
+    border: 1px solid rgba(130,165,225,.16);
+    border-radius: 24px; padding: 7px; gap: 4px;
+    box-shadow: 0 22px 46px -16px rgba(0,0,0,.95), 0 0 0 1px rgba(0,0,0,.25);
+  }
+  .nav-item { height: 54px; border-radius: 17px; color: rgba(255,255,255,.45); }
+  .nav-item .nav-ico { width: 46px; height: 28px; border-radius: 14px; }
+  .nav-item.active { color: #fff; }
+  .nav-item.active .nav-ico { background: var(--marca); box-shadow: 0 8px 18px -6px rgba(34,211,238,.6); }
+  .nav-item.active .nav-ico svg { stroke: #fff; }
+  .nav-item.active .nav-lbl { font-weight: 600; }
+  .nav-item .nav-badge { box-shadow: 0 0 0 2px #0d1626; }
+}
+/* Que los botones de arriba del mapa no se salgan de la pantalla */
+.mapa-controls-top { right: 12px; flex-wrap: wrap; }
+.mapa-stat-chip { white-space: nowrap; }

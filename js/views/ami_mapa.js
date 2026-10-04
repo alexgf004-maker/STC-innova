@@ -188,7 +188,7 @@ function renderShell(container) {
       <button id="btn-generar-orden-mapa" onclick="window.__mapa.abrirGenerarOrden()"
         style="
           position:absolute;
-          bottom:24px;left:50%;transform:translateX(-50%);
+          bottom:calc(var(--nav-espacio, 0px) + 16px);left:50%;transform:translateX(-50%);
           z-index:800;
           display:flex;align-items:center;gap:8px;
           height:44px;padding:0 20px;
@@ -270,9 +270,12 @@ function renderShell(container) {
     wrapper.style.left   = sidebarW + 'px';
     wrapper.style.right  = '0px';
   } else {
-    // En móvil: navbar inferior
+    // En móvil el mapa llega hasta abajo y el menú flota encima (antes el
+    // mapa se cortaba arriba del menú y quedaba una franja vacía). Lo que va
+    // pegado abajo (leyenda, zoom, botones, panel) sube con --nav-espacio.
     if (topbar) wrapper.style.top    = topbar.offsetHeight + 'px';
-    if (navbar) wrapper.style.bottom = navbar.offsetHeight + 'px';
+    wrapper.style.bottom = '0px';
+    if (navbar) wrapper.style.setProperty('--nav-espacio', navbar.offsetHeight + 'px');
   }
 
 

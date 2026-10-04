@@ -52,7 +52,7 @@ export async function init(container, session) {
     st.id = 'crc-pulso-css';
     st.textContent = `
       @keyframes crc-pulso{0%{transform:scale(.8);opacity:.5}100%{transform:scale(1.8);opacity:0}}
-      .crc-hoja{position:fixed;left:0;right:0;bottom:0;z-index:1200;transform:translateY(calc(100% + 120px));transition:transform .25s ease;background:#0d1117;border-top:1px solid var(--border);border-radius:20px 20px 0 0;padding:18px 20px calc(var(--navbar-h,72px) + 26px);max-height:calc(85vh - var(--navbar-h,72px));overflow-y:auto}
+      .crc-hoja{position:fixed;left:0;right:0;bottom:0;z-index:1200;transform:translateY(calc(100% + 120px));transition:transform .25s ease;background:#0d1728;border-top:1px solid var(--border-md);border-radius:20px 20px 0 0;padding:18px 20px calc(var(--nav-espacio,0px) + 22px);max-height:85vh;overflow-y:auto}
       .crc-hoja.abierta{transform:translateY(0)}
       #crc-leaflet .leaflet-top.leaflet-left{display:none}
       #crc-leaflet .leaflet-control-attribution{display:none}
@@ -94,7 +94,7 @@ export async function init(container, session) {
       </div>
 
       <!-- Buscador (oculto hasta tocar la lupa) -->
-      <div id="crc-buscar-box" style="display:none;position:absolute;top:60px;left:12px;right:12px;z-index:1000;background:rgba(13,17,23,.96);border:1px solid rgba(239,68,68,.4);border-radius:12px;padding:10px;max-height:60%;overflow-y:auto">
+      <div id="crc-buscar-box" style="display:none;position:absolute;top:60px;left:12px;right:12px;z-index:1000;background:rgba(13,22,38,.97);border:1px solid rgba(239,68,68,.4);border-radius:12px;padding:10px;max-height:60%;overflow-y:auto">
         <div style="display:flex;gap:8px">
           <input id="crc-buscar-input" class="form-input" style="height:40px;font-size:14px" placeholder="NC, medidor o nombre" autocomplete="off"/>
           <button id="crc-buscar-cerrar" class="btn-action outline" style="width:auto;height:40px;padding:0 12px;font-size:12px">Cerrar</button>
@@ -105,8 +105,8 @@ export async function init(container, session) {
       <div id="crc-leyenda" class="mapa-leyenda" style="display:flex;flex-direction:column;gap:5px;pointer-events:none"></div>
 
       <!-- Controles al dibujar una zona (admin) -->
-      <div id="crc-zona-ctrl" style="position:absolute;bottom:20px;left:50%;transform:translateX(-50%);z-index:900;display:none;gap:8px">
-        <button id="crc-zona-cancelar" style="background:rgba(13,17,23,.92);color:var(--text-2);border:1px solid var(--border);border-radius:20px;padding:10px 18px;font-size:13px;font-weight:700;font-family:inherit;cursor:pointer;box-shadow:0 4px 20px rgba(0,0,0,.4)">Cancelar</button>
+      <div id="crc-zona-ctrl" style="position:absolute;bottom:calc(var(--nav-espacio, 0px) + 16px);left:50%;transform:translateX(-50%);z-index:900;display:none;gap:8px">
+        <button id="crc-zona-cancelar" style="background:rgba(13,22,38,.94);color:var(--text-2);border:1px solid var(--border);border-radius:20px;padding:10px 18px;font-size:13px;font-weight:700;font-family:inherit;cursor:pointer;box-shadow:0 4px 20px rgba(0,0,0,.4)">Cancelar</button>
         <button id="crc-cerrar-poli" style="display:none;background:#f87171;color:#0d1117;border:none;border-radius:20px;padding:10px 22px;font-size:13px;font-weight:800;font-family:inherit;cursor:pointer;box-shadow:0 4px 20px rgba(0,0,0,.4)">Cerrar zona</button>
       </div>
 
@@ -169,8 +169,12 @@ function ajustarTamano() {
     w.style.left = (navbar ? navbar.offsetWidth : 200) + 'px';
     w.style.right = '0px';
   } else {
+    // En móvil el mapa llega hasta abajo y el menú flota encima (antes el
+    // mapa se cortaba arriba del menú y quedaba una franja vacía). Lo que va
+    // pegado abajo (leyenda, zoom, botones, panel) sube con --nav-espacio.
     if (topbar) w.style.top = topbar.offsetHeight + 'px';
-    if (navbar) w.style.bottom = navbar.offsetHeight + 'px';
+    w.style.bottom = '0px';
+    if (navbar) w.style.setProperty('--nav-espacio', navbar.offsetHeight + 'px');
   }
 }
 
