@@ -2374,3 +2374,13 @@ body {
 /* Control de rotación por defecto de leaflet-rotate: se veía como un cuadro
    blanco detrás del contador. El técnico usa su propio botón de brújula. */
 .leaflet-control-rotate { display: none !important; }
+/* Menú de abajo con el mismo degradado que la barra de arriba: el
+   resplandor azul-celeste de la marca sobre el azul noche. */
+@media (max-width: 767px) {
+  .nav-pill {
+    background:
+      radial-gradient(75% 130% at 50% -25%, rgba(59,130,246,.30), rgba(34,211,238,.07) 55%, transparent 80%),
+      linear-gradient(180deg, #0b1528, #070d1a);
+    border-color: rgba(96,165,250,.20);
+  }
+}
