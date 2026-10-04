@@ -105,7 +105,11 @@ export async function navigateTo(tabId, _esRegreso) {
   // 'cambios' y 'caracterizacion' viven bajo la pestaña 'areas'
   // (admin/asistente no tienen pestaña propia de cada área).
   const bajoAreas = ['cambios','caracterizacion','caracterizacion_mapa','reclamos','ami','ami_mapa'];
-  const tabResaltado = bajoAreas.includes(tabId) ? 'areas' : tabId;
+  // Si la vista tiene su propia pestaña (el técnico sí tiene "Órdenes" y
+  // "Mapa"), se resalta esa; si no, la de Áreas. Antes al técnico no se le
+  // marcaba ninguna pestaña en Órdenes ni en Mapa.
+  const tienePestana = !!document.querySelector(`.nav-item[data-tab="${tabId}"]`);
+  const tabResaltado = !tienePestana && bajoAreas.includes(tabId) ? 'areas' : tabId;
   document.querySelectorAll('.nav-item').forEach(el => {
     el.classList.toggle('active', el.dataset.tab === tabResaltado);
   });
