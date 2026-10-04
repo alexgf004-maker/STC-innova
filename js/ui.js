@@ -119,7 +119,9 @@ function prepararBarra(bar) {
       // El borde que va adelante se mueve primero y el de atrás después.
       const ida = i > st.act, rap = '.28s cubic-bezier(.4,0,.2,1)', len = '.42s cubic-bezier(.4,0,.2,1)';
       ind.style.transition = ida ? `right ${rap}, left ${len} .12s` : `left ${rap}, right ${len} .12s`;
-      deslizarContenido(bar, ida);
+      // Al mapa no: va en position:fixed y, si se arma mientras el contenido
+      // está desplazado (transform), Leaflet mide mal y queda descuadrado.
+      if (p.dataset.tab !== 'mapa') deslizarContenido(bar, ida);
     } else {
       ind.style.transition = 'none';
     }
@@ -138,11 +140,12 @@ function prepararBarra(bar) {
 function deslizarContenido(bar, ida) {
   const cls = ida ? 'pestana-der' : 'pestana-izq';
   for (let el = bar.nextElementSibling; el; el = el.nextElementSibling) {
-    if (!el.id || !RE_CONTENIDO.test(el.id)) continue;
+    if (!el.id || !RE_CONTENIDO.test(el.id) || el.querySelector('.leaflet-container')) continue;
     el.classList.remove('pestana-der', 'pestana-izq');
     void el.offsetWidth;
     el.classList.add(cls);
-    el.addEventListener('animationend', () => el.classList.remove(cls), { once: true });
+    const fin = e => { if (e.target !== el) return; el.classList.remove(cls); el.removeEventListener('animationend', fin); };
+    el.addEventListener('animationend', fin);
   }
 }
 
