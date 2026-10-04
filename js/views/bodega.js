@@ -88,9 +88,6 @@ let allItems_    = [];
 let salidas_     = [];
 let despachosPendientes_ = [];  // despachos esperando aceptación del técnico
 let invFiltro_ = 'todos';       // inventario: todos | agotados | bajos
-let histLimite_ = 20, histBusq_ = '';     // historial: cuántas salidas y búsqueda
-let solFiltro_ = 'pendientes', solLimite_ = 20;   // solicitudes admin
-let recLimite_ = 10;                      // técnico: entregas recibidas visibles
 
 // Cantidad ya comprometida en despachos enviados que el técnico todavía no
 // acepta. En AMI/Caracterización/Reclamos el stock se descuenta recién al
@@ -120,7 +117,6 @@ export async function init(container, session) {
   areaFiltro_= area_ || localStorage.getItem('bod_area') || 'CAMBIOS';
   // El técnico arranca en su campaña asignada, pero puede moverse a cualquiera
   campanaTecnico_ = area_ || null;
-  histLimite_ = 20; histBusq_ = ''; solFiltro_ = 'pendientes'; solLimite_ = 20; recLimite_ = 10;
 
   const miMontaje = ++montadoId_;
   renderShell();
@@ -158,12 +154,9 @@ function renderShell() {
     : [{id:'inventario',label:'Inventario'},{id:'historial',label:'Historial'},{id:'solicitudes',label:'Solicitudes'}];
 
   container_.innerHTML = `
-    <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:14px">
-      <div style="flex:1;min-width:0">
-        <div style="font-size:24px;font-weight:600;letter-spacing:-.02em;line-height:1.15">Bodega</div>
-        <div style="font-size:12px;color:var(--text-3);margin-top:4px">${isTecnico ? 'Tu material y tus pedidos' : 'Inventario, despachos y solicitudes'}</div>
-      </div>
-      ${!isTecnico ? `<button class="cm-ico-btn" id="bod-menu" title="Acciones"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><circle cx="12" cy="5" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="12" cy="19" r="1.4"/></svg></button>` : ''}
+    <div style="margin-bottom:14px">
+      <div style="font-size:24px;font-weight:600;letter-spacing:-.02em;line-height:1.15">Bodega</div>
+      <div style="font-size:12px;color:var(--text-4);margin-top:4px">${isTecnico ? 'Tu material y tus pedidos' : 'Inventario, despachos y solicitudes'}</div>
     </div>
     ${!isTecnico ? `<div id="bod-campana-wrap">${campanaToggleHTML()}</div>` : ''}
     <div class="cambios-tabs">
@@ -190,31 +183,7 @@ function renderShell() {
     });
   });
 
-  container_.querySelector('#bod-menu')?.addEventListener('click', abrirAccionesBodega);
-
-  window.__bodega = { _irTab: irTab, setCampana, elegirCampanaTecnico, cambiarCampanaTecnico, abrirDespacho, abrirNuevoItem, abrirEntrada, abrirImportar, exportarInventario, aprobarSolicitud, rechazarSolicitud, verSeriales };
-}
-
-// Hoja de acciones (admin/asistente): lo que antes eran tres botones sueltos
-function abrirAccionesBodega() {
-  document.getElementById('bod-sheet-acc')?.remove();
-  const sh = document.createElement('div');
-  sh.className = 'sheet-backdrop open bod-scope';
-  sh.id = 'bod-sheet-acc';
-  const ic = d => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18">${d}</svg>`;
-  const it = (id, ico, t, sub) => `<button class="us-accion" data-a="${id}">${ic(ico)}<span style="flex:1;text-align:left"><span style="display:block">${t}</span><span class="us-accion-sub">${sub}</span></span></button>`;
-  const cc = CAMPANA_COLORS[areaFiltro_] || CAMPANA_COLORS.CAMBIOS;
-  sh.innerHTML = `<div class="sheet"><div class="sheet-handle"></div><div class="sheet-title">Bodega · ${cc.short || cc.label}</div><div class="sheet-body"><div class="flex-col gap-8">
-    ${it('nuevo', '<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>', 'Nuevo material', 'Agregar un material a esta campaña')}
-    ${it('importar', '<path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>', 'Importar inventario', 'Excel con materiales y existencias')}
-    ${it('exportar', '<path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>', 'Descargar existencias', 'Excel con el inventario actual')}
-  </div></div></div>`;
-  document.body.appendChild(sh);
-  sh.addEventListener('click', e => { if (e.target === sh) sh.remove(); });
-  sh.querySelectorAll('[data-a]').forEach(b => b.onclick = () => {
-    sh.remove();
-    ({ nuevo: () => abrirNuevoItem(), importar: abrirImportar, exportar: exportarInventario })[b.dataset.a]();
-  });
+  window.__bodega = { setCampana, elegirCampanaTecnico, cambiarCampanaTecnico, abrirDespacho, abrirNuevoItem, abrirEntrada, abrirImportar, exportarInventario, aprobarSolicitud, rechazarSolicitud, verSeriales };
 }
 
 // ── Cargar datos ──────────────────────────────────
@@ -251,7 +220,7 @@ async function loadData(miMontaje) {
         const pendSnap = await db.collection('despachos_pendientes').get();
         if (miMontaje !== undefined && !sigueActiva(miMontaje)) return;
         despachosPendientes_ = pendSnap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(b.fecha?.seconds||0)-(a.fecha?.seconds||0));
-        if (despachosPendientes_.length && (activeTab_==='historial' || activeTab_==='inventario')) renderTab();
+        if (despachosPendientes_.length && activeTab_==='historial') renderHistorial();
       } catch(e) {
         console.warn('[bodega] No se pudieron cargar despachos pendientes:',e);
       }
@@ -260,7 +229,7 @@ async function loadData(miMontaje) {
         const devSnap = await db.collection('devoluciones_pendientes').where('estado','==','pendiente').get();
         if (miMontaje !== undefined && !sigueActiva(miMontaje)) return;
         devolucionesPendientes_ = devSnap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(b.fecha?.seconds||0)-(a.fecha?.seconds||0));
-        if (devolucionesPendientes_.length && (activeTab_==='historial' || activeTab_==='inventario')) renderTab();
+        if (devolucionesPendientes_.length && activeTab_==='historial') renderHistorial();
       } catch(e) {
         console.warn('[bodega] No se pudieron cargar devoluciones pendientes:',e);
       }
@@ -397,7 +366,7 @@ function renderRecibido() {
       ${secConContador('Material recibido', misEntradas.length)}
       ${!misEntradas.length?`<div class="dev-module"><div class="dev-title">Sin entregas</div><p>Aquí aparecerá el material que bodega les despache, a ti o a tu pareja.</p></div>`:`
       <div class="flex-col gap-8">
-        ${misEntradas.slice(0, recLimite_).map(({s,firmo})=>{
+        ${misEntradas.map(({s,firmo})=>{
           const camp = s.area || 'CAMBIOS';
           const cc = CAMPANA_COLORS[camp] || CAMPANA_COLORS['CAMBIOS'];
           const totalItems = (s.items||[]).reduce((a,i)=>a+safeNum(i.cantidad),0);
@@ -433,10 +402,8 @@ function renderRecibido() {
             </div>
           </div>`;
         }).join('')}
-      </div>
-      ${misEntradas.length>recLimite_?`<button class="cm-btn" id="bod-rec-mas" style="width:100%;height:44px;margin-top:10px">Ver entregas anteriores (${misEntradas.length-recLimite_})</button>`:''}`}
+      </div>`}
     </div>`;
-  document.getElementById('bod-rec-mas')?.addEventListener('click',()=>{ recLimite_+=10; renderRecibido(); });
 }
 
 // ── Consumo (técnico registra lo que usó en una OT) ─
@@ -875,8 +842,10 @@ function renderInventario() {
     <div class="flex-col gap-12">
       <div class="anim-up" style="display:flex;gap:8px">
         <button class="bod-btn-main" onclick="window.__bodega.abrirDespacho()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><path d="M5 12h14M12 5l7 7-7 7"/></svg> Nueva salida</button>
+        <button class="bod-btn-ico" onclick="window.__bodega.abrirImportar()" title="Importar Excel"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg></button>
+        <button class="bod-btn-ico" onclick="window.__bodega.exportarInventario()" title="Descargar existencias"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></button>
+        <button class="bod-btn-ico" onclick="window.__bodega.abrirNuevoItem()" title="Nuevo material"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
       </div>
-      ${paraAtenderHTML()}
       <div class="ds-mini anim-up d1">
         ${stat('todos',items.length,'Materiales','var(--text)')}
         ${stat('agotados',agotados,'Agotados',agotados?'#ef4444':'var(--text-3)')}
@@ -925,40 +894,9 @@ function renderInventario() {
   pintar();
 }
 
-// Lo que bodega tiene que atender en esta campaña (solo si hay algo)
-function paraAtenderHTML() {
-  const sol = solicitudes_.filter(s => (s.area || 'CAMBIOS') === areaFiltro_ && (s.estado || 'pendiente') === 'pendiente').length;
-  const dev = devolucionesPendientes_.filter(d => (d.area || '') === areaFiltro_).length;
-  const pend = despachosPendientes_.filter(p => (p.area || '') === areaFiltro_).length;
-  if (!sol && !dev && !pend) return '';
-  const ic = d => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="17" height="17">${d}</svg>`;
-  const fila = (cls, ico, t, sub, tab) => `
-    <div class="cm-fila" onclick="window.__bodega._irTab('${tab}')">
-      <div class="cm-fila-ic ${cls}">${ic(ico)}</div>
-      <div style="flex:1;min-width:0"><div class="cm-fila-t">${t}</div><div class="cm-fila-s">${sub}</div></div>
-      ${ic('<polyline points="9 18 15 12 9 6"/>').replace('width="17"', 'width="16" style="color:var(--text-3);flex-shrink:0"')}
-    </div>`;
-  return `<div class="anim-up">
-    <div class="ds-sec">Para atender</div>
-    <div class="cm-lista">
-      ${sol ? fila('warn', '<path d="M6 8a6 6 0 0112 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 003.4 0"/>', `${sol} solicitud${sol > 1 ? 'es' : ''} de material`, 'Aprobar y despachar', 'solicitudes') : ''}
-      ${dev ? fila('ok', '<polyline points="9 10 4 15 9 20"/><path d="M20 4v7a4 4 0 01-4 4H4"/>', `${dev} devolución${dev > 1 ? 'es' : ''} por revisar`, 'Material que regresa a bodega', 'historial') : ''}
-      ${pend ? fila('muted', '<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>', `${pend} despacho${pend > 1 ? 's' : ''} esperando al técnico`, 'Aún no lo aceptan en su teléfono', 'historial') : ''}
-    </div>
-  </div>`;
-}
-
-function irTab(tab) {
-  activeTab_ = tab;
-  container_.querySelectorAll('.cambios-tab.bod').forEach(x => x.classList.toggle('active', x.dataset.tab === tab));
-  renderTab();
-  document.getElementById('content-area')?.scrollTo?.({ top: 0 });
-}
-
 function setCampana(area) {
   areaFiltro_ = area;
-  histLimite_ = 20; histBusq_ = ''; solLimite_ = 20;
-  try { localStorage.setItem('bod_area', area); } catch {}
+  localStorage.setItem('bod_area', area);
   // Actualizar el toggle visual
   const wrap = document.getElementById('bod-campana-wrap');
   if (wrap) wrap.innerHTML = campanaToggleHTML();
@@ -1036,10 +974,6 @@ function renderHistorial() {
     .sort((a,b)=>(b.fecha?.seconds||0)-(a.fecha?.seconds||0));
   const pendientes = despachosPendientes_.filter(p => (p.area||'') === areaFiltro_);
   const devoluciones = devolucionesPendientes_.filter(d => (d.area||'') === areaFiltro_);
-  const qH = histBusq_.trim().toLowerCase();
-  const filtradas = qH ? sorted.filter(s => [s.tecnicoNombre, s.usuarioResponsable, s.parejaAcompanante, s.placaVehiculo, ...(s.items||[]).map(i => i.nombre || i.name)]
-      .some(v => v && String(v).toLowerCase().includes(qH))) : sorted;
-  const visibles = filtradas.slice(0, histLimite_);
 
   const sec = (titulo, n) => `<div class="bod-sec"><div class="ds-sec">${titulo}</div><span class="bod-count">${n}</span></div>`;
   const lineas = (items, max) => `
@@ -1092,13 +1026,9 @@ function renderHistorial() {
       ${pendHTML}
       <div class="anim-up d1">
         ${sec('Salidas registradas', sorted.length)}
-        ${sorted.length>5?`<div class="buscar-wrap" style="margin-bottom:10px">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14" style="color:var(--text-4);flex-shrink:0"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-          <input class="buscar-input" id="bod-hist-buscar" placeholder="Buscar técnico, placa o material…" autocomplete="off" value="${escapeHtml(histBusq_)}"/>
-        </div>`:''}
-        ${!filtradas.length?`<div class="dev-module"><div class="dev-title">${sorted.length?'Sin resultados':'Sin salidas'}</div><p>${sorted.length?'Prueba con otro nombre.':'Las salidas de esta campaña aparecerán aquí.'}</p></div>`:`
+        ${!sorted.length?`<div class="dev-module"><div class="dev-title">Sin salidas</div><p>Las salidas de esta campaña aparecerán aquí.</p></div>`:`
         <div class="flex-col gap-8">
-          ${visibles.map(s=>`
+          ${sorted.map(s=>`
             <div class="ds-card">
               <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:10px">
                 <div style="min-width:0">
@@ -1112,21 +1042,9 @@ function renderHistorial() {
               </div>
               ${lineas(s.items, 3)}
             </div>`).join('')}
-        </div>
-        ${filtradas.length>visibles.length?`<button class="cm-btn" id="bod-hist-mas" style="width:100%;height:44px;margin-top:10px">Ver ${Math.min(20,filtradas.length-visibles.length)} más (${filtradas.length-visibles.length} restantes)</button>`:''}`}
+        </div>`}
       </div>
     </div>`;
-
-  const inpH = document.getElementById('bod-hist-buscar');
-  if (inpH) {
-    let tm = null;
-    inpH.oninput = () => { clearTimeout(tm); tm = setTimeout(() => {
-      histBusq_ = inpH.value; histLimite_ = 20;
-      const pos = inpH.selectionStart; renderHistorial();
-      const n = document.getElementById('bod-hist-buscar'); if (n) { n.focus(); try { n.setSelectionRange(pos, pos); } catch {} }
-    }, 250); };
-  }
-  document.getElementById('bod-hist-mas')?.addEventListener('click', () => { histLimite_ += 20; renderHistorial(); });
 
   window.__bodega._verMemo=(id)=>{const s=salidas_.find(x=>x.id===id);if(s)showMemo(s);};
   window.__bodega._devolucion=(id)=>{const s=salidas_.find(x=>x.id===id);if(s)abrirDevolucion(s);};
@@ -1476,20 +1394,12 @@ function renderSolicitudes() {
     </div>`;
   }
 
-  const verPend = solFiltro_ === 'pendientes';
-  const arr = verPend ? pendientes : resto.slice(0, solLimite_);
   content.innerHTML=`
     <div class="flex-col gap-12">
-      <div class="cm-tabs-est anim-up" style="margin-bottom:0">
-        <div class="cm-est ${verPend?'active':''} ${pendientes.length?'':'vacio'}" data-sf="pendientes">Pendientes<span>${pendientes.length}</span></div>
-        <div class="cm-est ${!verPend?'active':''} ${resto.length?'':'vacio'}" data-sf="respondidas">Respondidas<span>${resto.length}</span></div>
-      </div>
-      ${arr.length?`<div class="flex-col gap-8 anim-up d1">${arr.map(s=>cardSolicitud(s,verPend)).join('')}</div>`
-        :`<div class="dev-module anim-up d1"><div class="dev-title">${verPend?'Nada pendiente':'Sin solicitudes respondidas'}</div><p>${verPend?'Cuando un técnico pida material para esta campaña, aparecerá aquí.':'Las solicitudes aprobadas o rechazadas aparecerán aquí.'}</p></div>`}
-      ${!verPend && resto.length>arr.length?`<button class="cm-btn" id="bod-sol-mas" style="width:100%;height:44px">Ver ${Math.min(20,resto.length-arr.length)} más (${resto.length-arr.length} restantes)</button>`:''}
+      ${pendientes.length?`<div class="anim-up d1">${sec('Pendientes',pendientes.length)}<div class="flex-col gap-8">${pendientes.map(s=>cardSolicitud(s,true)).join('')}</div></div>`:''}
+      ${resto.length?`<div class="anim-up d2">${sec('Respondidas',resto.length)}<div class="flex-col gap-8">${resto.map(s=>cardSolicitud(s,false)).join('')}</div></div>`:''}
+      ${!solicCampana.length?`<div class="dev-module anim-up d1"><div class="dev-title">Sin solicitudes</div><p>Cuando un técnico pida material para esta campaña, aparecerá aquí.</p></div>`:''}
     </div>`;
-  content.querySelectorAll('[data-sf]').forEach(c=>c.onclick=()=>{ solFiltro_=c.dataset.sf; solLimite_=20; renderSolicitudes(); });
-  document.getElementById('bod-sol-mas')?.addEventListener('click',()=>{ solLimite_+=20; renderSolicitudes(); });
 }
 
 async function aprobarSolicitud(id) {

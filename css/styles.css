@@ -2414,3 +2414,24 @@ body {
 /* ── Bodega: pestañas de estado en violeta (color de bodega) ── */
 #bod-content .cm-est.active { color: #fff; background: #8b5cf6; border-color: #8b5cf6; box-shadow: 0 6px 16px -6px rgba(139,92,246,.75); }
 #bod-content .cm-est.active span { background: rgba(255,255,255,.2); color: #fff; }
+
+/* ── Bodega: estética del tema nuevo ──
+   Botones de guardar con el degradado de la marca (antes violeta apagado),
+   pantallas completas (Nueva salida) con el fondo y barras de la app, y
+   botones de ícono con relieve. La organización no cambia. */
+.btn-primary.bod { background: var(--marca); border: none; color: #fff; box-shadow: var(--marca-sh); }
+.bod-flow {
+  background:
+    radial-gradient(70% 30% at 50% -6%, rgba(59,130,246,.20), rgba(34,211,238,.05) 50%, transparent 75%),
+    #060c18;
+}
+.bod-flow-head {
+  background: linear-gradient(180deg, #0b1528, #08101f);
+  border-bottom-color: rgba(96,165,250,.14);
+}
+.bod-flow-foot {
+  background: linear-gradient(180deg, #0b1528, #070d1a);
+  border-top-color: rgba(96,165,250,.16);
+}
+.bod-btn-ico { box-shadow: var(--sh-card); }
+.bod-stat.sel { box-shadow: 0 0 0 1px var(--bod-border), var(--sh-card); }
