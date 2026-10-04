@@ -583,6 +583,9 @@ function plotMarkers() {
         : ESTADO_COLORS[orden.estadoCampo] || PAREJA_COLORS[orden.pareja] || PAREJA_COLORS[null];
       marker = L.circleMarker(latlng, {
         renderer:    lienzo_,
+        // Sin esto el toque sigue hasta el mapa, que cierra el panel en el
+        // mismo instante en que el punto lo abre (parecía que no respondía).
+        bubblingMouseEvents: false,
         radius:      hecha || bloqueada ? Math.max(2, r - 1) : r,
         fillColor:   color,
         fillOpacity: hecha ? 0.6 : bloqueada ? 0.55 : 1,
