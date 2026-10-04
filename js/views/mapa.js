@@ -71,6 +71,7 @@ export async function init(container, session) {
   // Cancelar listener anterior si el módulo se reinicia
   if (unsubscribe_) { unsubscribe_(); unsubscribe_ = null; }
   if (map_) { map_.remove(); map_ = null; markers_ = []; markersContiguos_ = []; }
+  lienzo_ = null;   // el lienzo de canvas pertenece al mapa anterior
 
   renderShell(container);
 
@@ -185,7 +186,8 @@ function renderShell(container) {
       </button>` : ''}
 
       <!-- Leyenda -->
-      <div class="mapa-leyenda" id="mapa-leyenda">
+      <div class="mapa-leyenda plegada" id="mapa-leyenda" onclick="this.classList.toggle('plegada')">
+        <div class="leyenda-tit"><span>Leyenda</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="12" height="12"><polyline points="18 15 12 9 6 15"/></svg></div>
         ${isTecnico ? '' : Object.entries(PAREJA_COLORS)
           .filter(([k]) => k !== 'null')
           .map(([p, c]) => `
@@ -420,6 +422,7 @@ function initMap() {
 
   // Redibujar etiquetas al cambiar zoom
   map_.on('zoomend', () => plotMarkers());
+  map_.on('moveend', () => { if (map_.getZoom() >= 16) plotMarkers(); });
 
   // Brújula — solo para técnicos
   if (conRotacion) {
@@ -528,113 +531,82 @@ function iniciarGeolocalizacion() {
 }
 
 // ── Marcadores ────────────────────────────────────
+// Los puntos normales se dibujan en canvas (L.circleMarker): son cientos y
+// así el mapa va fluido. Su tamaño depende del zoom: de lejos son puntitos
+// sin borde blanco (antes eran círculos grandes que se amontonaban en una
+// mancha); de cerca crecen y llevan borde. Solo los pocos especiales
+// (urgente, ya cambiado, mal ubicado) usan ícono HTML.
+let lienzo_ = null;
+function radioPorZoom(z) { return z <= 10 ? 3 : z <= 11 ? 4 : z <= 12 ? 5 : z <= 13 ? 6 : z <= 14 ? 7 : 8; }
+
 function plotMarkers() {
   if (!map_) return;   // el primer onSnapshot puede llegar antes de crear el mapa
   markers_.forEach(m => map_.removeLayer(m));
   markers_ = [];
+  if (!lienzo_) lienzo_ = L.canvas({ padding: 0.5 });
 
-  const mostrarLabels = map_.getZoom() >= 16;
+  const z = map_.getZoom();
+  const r = radioPorZoom(z);
+  const cerca = z >= 13;
+  const mostrarLabels = z >= 16;
+  const vista = mostrarLabels ? map_.getBounds().pad(0.2) : null;
   const visibles = ordenes_.filter(o => o.estadoCampo !== 'aprobada');
 
   visibles.forEach(orden => {
     if (!orden.latitud || !orden.longitud) return;
 
-    const bloqueada = !orden.estadoCampo && isBlocked_(orden);
-    const marcadoAzul = orden.marcadoAzul && !orden.estadoCampo;
-    const color = bloqueada
-      ? '#4b5563'
-      : marcadoAzul
-      ? '#3b82f6'
-      : ESTADO_COLORS[orden.estadoCampo] || PAREJA_COLORS[orden.pareja] || PAREJA_COLORS[null];
-    const size  = orden.estadoCampo === 'hecha' ? 10 : 14;
-    const wo    = orden.wo || '';
-
-    const labelHtml = mostrarLabels && wo && !bloqueada ? `
-      <div style="
-        position:absolute;
-        top:${size + 3}px;
-        left:50%;
-        transform:translateX(-50%);
-        white-space:nowrap;
-        font-size:9px;
-        font-weight:700;
-        font-family:'Outfit',sans-serif;
-        color:white;
-        text-shadow:0 1px 3px rgba(0,0,0,.9),0 0 6px rgba(0,0,0,.7);
-        pointer-events:none;
-        letter-spacing:.02em;
-      ">${wo}</div>` : '';
-
-    const yaCambiado  = orden.estadoCampo === 'ya_cambiado';
+    const bloqueada    = !orden.estadoCampo && isBlocked_(orden);
+    const marcadoAzul  = orden.marcadoAzul && !orden.estadoCampo;
+    const yaCambiado   = orden.estadoCampo === 'ya_cambiado';
     const esMalUbicado = orden.estadoCampo === 'mal_ubicado';
-    const esUrgente   = orden.urgente && !orden.estadoCampo && !esMalUbicado;
-    const icon = L.divIcon({
-      className: '',
-      html: bloqueada ? `
-        <div style="
-          width:22px;height:22px;
-          background:#1f2937;
-          border:2px solid #4b5563;
-          border-radius:6px;
-          display:flex;align-items:center;justify-content:center;
-          box-shadow:0 2px 6px rgba(0,0,0,.5);
-        ">
-          <svg viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="11" height="11">
-            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
-            <path d="M7 11V7a5 5 0 0110 0v4"/>
-          </svg>
-        </div>
-      ` : yaCambiado ? `
-        <div style="
-          width:22px;height:22px;
-          background:rgba(249,115,22,.15);
-          border:2px solid #f97316;
-          border-radius:6px;
-          display:flex;align-items:center;justify-content:center;
-          box-shadow:0 2px 6px rgba(0,0,0,.5);
-        ">
-          <svg viewBox="0 0 24 24" fill="none" stroke="#f97316" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="11" height="11">
-            <circle cx="12" cy="12" r="10"/>
-            <line x1="12" y1="8" x2="12" y2="12"/>
-            <line x1="12" y1="16" x2="12.01" y2="16"/>
-          </svg>
-        </div>
-      ` : esMalUbicado ? `
-        <div style="
-          width:22px;height:22px;
-          background:rgba(139,92,246,.15);
-          border:2px solid #8b5cf6;
-          border-radius:6px;
-          display:flex;align-items:center;justify-content:center;
-          box-shadow:0 2px 6px rgba(0,0,0,.5);
-          font-size:13px;font-weight:800;color:#8b5cf6;line-height:1;
-        ">?</div>
-      ` : esUrgente ? `
-        <div style="position:relative;width:20px;height:20px">
-          <div style="position:absolute;inset:0;background:rgba(239,68,68,.3);border-radius:50%;animation:pulso-urgente 1.5s ease-out infinite"></div>
-          <div style="position:absolute;inset:2px;background:#ef4444;border:2px solid rgba(255,255,255,.9);border-radius:50%;box-shadow:0 2px 8px rgba(239,68,68,.6)"></div>
-        </div>
-      ` : `
-        <div style="position:relative">
-          <div style="
-            width:${size}px;height:${size}px;
-            background:${color};
-            border:2px solid rgba(255,255,255,.8);
-            border-radius:50%;
-            box-shadow:0 2px 6px rgba(0,0,0,.4);
-            ${orden.estadoCampo === 'hecha' ? 'opacity:0.6' : ''}
-          "></div>
-          ${labelHtml}
-        </div>
-      `,
-      iconSize:   (bloqueada || yaCambiado || esMalUbicado) ? [22,22] : esUrgente ? [20,20] : [size, size],
-      iconAnchor: (bloqueada || yaCambiado || esMalUbicado) ? [11,11]  : esUrgente ? [10,10] : [size/2, size/2],
-    });
+    const esUrgente    = orden.urgente && !orden.estadoCampo && !esMalUbicado;
+    const latlng = [orden.latitud, orden.longitud];
+    let marker;
 
-    const marker = L.marker([orden.latitud, orden.longitud], { icon });
+    if (esUrgente || yaCambiado || esMalUbicado) {
+      const t = cerca ? 20 : 14;
+      const html = esUrgente ? `
+        <div style="position:relative;width:${t}px;height:${t}px">
+          <div style="position:absolute;inset:0;background:rgba(239,68,68,.35);border-radius:50%;animation:pulso-urgente 1.5s ease-out infinite"></div>
+          <div style="position:absolute;inset:${cerca ? 3 : 2}px;background:#ef4444;border:2px solid #fff;border-radius:50%;box-shadow:0 2px 8px rgba(239,68,68,.6)"></div>
+        </div>` : `
+        <div style="width:${t}px;height:${t}px;border-radius:${cerca ? 6 : 4}px;display:flex;align-items:center;justify-content:center;
+          background:${yaCambiado ? '#f97316' : '#8b5cf6'};border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.45);
+          font-size:${cerca ? 12 : 9}px;font-weight:800;color:#fff;line-height:1;font-family:'Outfit',sans-serif">${yaCambiado ? '!' : '?'}</div>`;
+      marker = L.marker(latlng, { icon: L.divIcon({ className: '', html, iconSize: [t, t], iconAnchor: [t / 2, t / 2] }), zIndexOffset: 500 });
+    } else {
+      const hecha  = orden.estadoCampo === 'hecha';
+      const visita = orden.estadoCampo === 'visita';
+      const color = bloqueada ? '#64748b'
+        : marcadoAzul ? '#3b82f6'
+        : visita ? '#0f172a'
+        : ESTADO_COLORS[orden.estadoCampo] || PAREJA_COLORS[orden.pareja] || PAREJA_COLORS[null];
+      marker = L.circleMarker(latlng, {
+        renderer:    lienzo_,
+        radius:      hecha || bloqueada ? Math.max(2, r - 1) : r,
+        fillColor:   color,
+        fillOpacity: hecha ? 0.6 : bloqueada ? 0.55 : 1,
+        color:       visita ? '#cbd5e1' : cerca ? '#ffffff' : 'rgba(5,10,20,.55)',
+        weight:      cerca ? 2 : 1,
+        opacity:     bloqueada ? 0.6 : 1,
+        dashArray:   bloqueada && cerca ? '3 3' : null,
+      });
+    }
     marker.on('click', () => verOrden(orden.id));
     marker.addTo(map_);
     markers_.push(marker);
+
+    // Etiqueta con la WO de cerca (solo las que están en pantalla)
+    if (mostrarLabels && orden.wo && !bloqueada && vista.contains(latlng)) {
+      const lbl = L.marker(latlng, {
+        interactive: false,
+        icon: L.divIcon({ className: '', iconSize: [0, 0], html: `
+          <div style="position:absolute;top:${r + 4}px;left:0;transform:translateX(-50%);white-space:nowrap;font-size:10px;font-weight:700;
+            font-family:'Outfit',sans-serif;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.95),0 0 6px rgba(0,0,0,.8);letter-spacing:.02em">${escapeHtml(orden.wo)}</div>` }),
+      });
+      lbl.addTo(map_);
+      markers_.push(lbl);
+    }
   });
 
   // Si el mapa pierde layers offline, re-añadir marcadores al recuperarse

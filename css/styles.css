@@ -2365,3 +2365,12 @@ body {
 /* Que los botones de arriba del mapa no se salgan de la pantalla */
 .mapa-controls-top { right: 12px; flex-wrap: wrap; }
 .mapa-stat-chip { white-space: nowrap; }
+/* Leyenda del mapa plegable (de inicio solo dice "Leyenda") */
+.mapa-leyenda { cursor: pointer; pointer-events: auto; }
+.leyenda-tit { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 11px; font-weight: 700; color: var(--text-2); }
+.mapa-leyenda:not(.plegada) .leyenda-tit { margin-bottom: 4px; }
+.mapa-leyenda:not(.plegada) .leyenda-tit svg { transform: rotate(180deg); }
+.mapa-leyenda.plegada .leyenda-item { display: none !important; }
+/* Control de rotación por defecto de leaflet-rotate: se veía como un cuadro
+   blanco detrás del contador. El técnico usa su propio botón de brújula. */
+.leaflet-control-rotate { display: none !important; }

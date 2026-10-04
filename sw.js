@@ -56,8 +56,14 @@ self.addEventListener('fetch', event => {
 
   // App propia → network-first (siempre descarga lo más nuevo)
   if (url.includes('alexgf004-maker.github.io/STC-innova')) {
+    // cache:'no-cache' = siempre pregunta al servidor si hay versión nueva
+    // (si no cambió, responde 304 y no se descarga de nuevo). Sin esto el
+    // navegador podía usar su copia hasta 10 min después de publicar.
+    const req = event.request.mode === 'navigate'
+      ? event.request
+      : new Request(event.request, { cache: 'no-cache' });
     event.respondWith(
-      fetch(event.request)
+      fetch(req)
         .then(response => {
           // Guardar copia fresca en caché
           const clone = response.clone();

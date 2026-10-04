@@ -209,7 +209,8 @@ function renderShell(container) {
       </button>` : ''}
 
       <!-- Leyenda -->
-      <div class="mapa-leyenda" id="mapa-leyenda" style="background:rgba(10,15,26,.92);border:1px solid rgba(255,255,255,.1);border-radius:12px;padding:10px 12px;backdrop-filter:blur(8px)">
+      <div class="mapa-leyenda plegada" id="mapa-leyenda" onclick="this.classList.toggle('plegada')" style="border-radius:12px;padding:10px 12px">
+        <div class="leyenda-tit"><span>Leyenda</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="12" height="12"><polyline points="18 15 12 9 6 15"/></svg></div>
         ${isTecnico ? '' : Object.entries(PAREJA_COLORS)
           .filter(([k]) => k !== 'null')
           .map(([p, c]) => `
