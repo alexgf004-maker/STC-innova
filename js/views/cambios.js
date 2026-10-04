@@ -11,7 +11,6 @@
 import { db } from '../firebase.js';
 import { leer, tecnicosActivos } from '../vivo.js';
 import { toast, escapeHtml } from '../ui.js';
-import { recalcularStats } from '../stats.js';
 
 // ── Caché ─────────────────────────────────────────
 const cache = {
@@ -875,7 +874,6 @@ async function confirmarLote(i) {
     toast(`${lista.length} orden${lista.length > 1 ? 'es' : ''} confirmada${lista.length > 1 ? 's' : ''}`, 'ok');
     renderConfirmar();
     renderTab();
-    recalcularStats().catch(() => {});
   } catch (err) {
     console.error('[cambios] Error confirmando en lote:', err);
     toast('Error al confirmar: ' + err.message, 'error');
@@ -1392,7 +1390,6 @@ async function marcarHecha(id) {
         if (idx !== -1) ordenes[idx] = { ...ordenes[idx], estadoCampo: 'hecha', actualizadaDelsur: actualizadoDelsur, parejaDelDia };
         invalidateOrdenes();
         renderTab();
-        recalcularStats().catch(()=>{});
       }
     });
   } catch(err) {
@@ -1434,7 +1431,6 @@ async function aprobar(id) {
     renderTab();
 
     toast('Orden confirmada', 'ok');
-    recalcularStats().catch(()=>{});
   } catch (err) {
     console.error('[cambios] Error aprobando:', err);
     toast('Error al confirmar', 'error');
@@ -1459,7 +1455,6 @@ async function aprobarYaCambiado(id) {
     } else {
       renderTab();
     }
-    recalcularStats().catch(() => {});
     toast('Orden confirmada y aprobada', 'ok');
   } catch(err) {
     toast('Error: ' + err.message, 'error');
@@ -1484,7 +1479,6 @@ async function revertirYaCambiado(id) {
     } else {
       renderTab();
     }
-    recalcularStats().catch(() => {});
     toast('Orden revertida a pendiente', 'ok');
   } catch(err) {
     toast('Error: ' + err.message, 'error');
@@ -1674,7 +1668,6 @@ async function eliminarOrden(id) {
     invalidateOrdenes();
     closeSheet('sheet-orden');
     renderTab();
-    recalcularStats().catch(() => {});
     toast('Orden eliminada', 'ok');
   } catch(err) {
     toast('Error al eliminar: ' + err.message, 'error');
@@ -1801,7 +1794,6 @@ async function confirmarNuevaUrgente() {
       invalidateOrdenes();
       closeSheet('sheet-urgente');
       renderTab();
-      recalcularStats().catch(() => {});
       toast(`Orden urgente WO ${wo} creada`, 'ok');
     }
   } catch(err) {
