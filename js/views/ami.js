@@ -72,85 +72,50 @@ function hechasHoyPorPareja(pareja) {
   }).length;
 }
 
-// Sección de metas: admin ve todas las parejas (editable), técnico ve la suya.
-function seccionMetas() {
-  const parejas = esAdmin_ ? parejasActivas_ : (pareja_ ? [pareja_] : []);
-  if (!parejas.length) {
-    return esAdmin_ ? `
-      <div style="text-align:center;padding:20px;border:1px dashed var(--border);border-radius:12px;background:var(--glass);font-size:12px;color:var(--text-4)">
-        Aún no hay parejas asignadas a AMI. Asigna técnicos en Usuarios para ver y definir sus metas.
-      </div>` : '';
-  }
-
-  const tarjeta = (p) => {
-    const meta = Number(metas_[p] || 0);
-    const hechas = hechasHoyPorPareja(p);
-    const pct = meta > 0 ? Math.min(100, Math.round((hechas / meta) * 100)) : 0;
-    const col = colorPareja(p);
-    const cumplida = meta > 0 && hechas >= meta;
-    const acc = cumplida ? '#22c55e' : col;
-    return `
-      <div class="ds-card" style="margin-bottom:10px;border-color:${cumplida?'rgba(34,197,94,.4)':'var(--border)'}">
-        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:10px">
-          <div style="display:flex;align-items:center;gap:7px;min-width:0">
-            <span style="width:9px;height:9px;border-radius:50%;background:${col};flex-shrink:0"></span>
-            <span style="font-size:13px;font-weight:600;color:${acc};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${p}</span>
-            ${cumplida ? '<span class="estado-badge ok" style="font-size:10px;flex-shrink:0">Meta &#10003;</span>' : ''}
-          </div>
-          ${esAdmin_ ? `
-            <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
-              <span style="font-size:11px;color:var(--text-4)">Meta</span>
-              <input type="number" min="0" class="ami-meta-input" data-pareja="${p}" value="${meta || ''}" placeholder="0"
-                style="width:52px;padding:5px 8px;border-radius:8px;border:1px solid var(--border);background:var(--glass);color:var(--text-1);font-size:13px;font-family:inherit;text-align:center;outline:none"/>
-            </div>` : `<span style="font-size:12px;color:var(--text-4);flex-shrink:0">Meta: ${meta || '—'}</span>`}
-        </div>
-        <div style="display:flex;align-items:baseline;gap:4px;margin-bottom:10px">
-          <span class="ds-num-md" style="color:${acc}">${hechas}</span>
-          <span style="font-size:11px;color:var(--text-4);font-weight:500">/ ${meta || '—'} hoy</span>
-        </div>
-        <div class="ds-bar"><i style="width:${pct}%;background:${acc}"></i></div>
-        <div style="margin-top:9px;font-size:11px;color:var(--text-3)">${meta > 0 ? pct + '% de la meta' : 'Sin meta definida'}</div>
-      </div>`;
-  };
-
-  // Total del equipo hoy: suma de lo hecho y de las metas de todas las parejas.
-  const totalHechas = parejas.reduce((s, p) => s + hechasHoyPorPareja(p), 0);
-  const totalMeta   = parejas.reduce((s, p) => s + Number(metas_[p] || 0), 0);
-  const pctEquipo   = totalMeta > 0 ? Math.min(100, Math.round((totalHechas / totalMeta) * 100)) : 0;
-  const cumplidaEq  = totalMeta > 0 && totalHechas >= totalMeta;
-  const accEq       = cumplidaEq ? '#22c55e' : '#a78bfa';
-
-  const tarjetaEquipo = esAdmin_ ? `
-    <div class="ds-card" style="margin-bottom:12px;border-color:${cumplidaEq?'rgba(34,197,94,.4)':'rgba(167,139,250,.35)'}">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-        <div style="font-size:13px;font-weight:600;color:${accEq}">Total del equipo hoy</div>
-        <div style="font-size:11px;color:var(--text-4)">${parejas.length} pareja${parejas.length!==1?'s':''}${cumplidaEq?' · META &#10003;':''}</div>
-      </div>
-      <div style="display:flex;align-items:baseline;gap:4px;margin-bottom:10px">
-        <span class="ds-num-md" style="color:${accEq}">${totalHechas}</span>
-        <span style="font-size:11px;color:var(--text-4);font-weight:500">/ ${totalMeta || '—'} hoy · todas las parejas</span>
-      </div>
-      <div class="ds-bar"><i style="width:${pctEquipo}%;background:${accEq}"></i></div>
-      <div style="margin-top:9px;font-size:11px;color:var(--text-3)">${totalMeta > 0 ? pctEquipo + '% de la meta del equipo' : 'Sin metas definidas'}</div>
-    </div>` : '';
-
-  return `
-    <div class="ds-sec">${esAdmin_ ? 'Metas del día por pareja' : 'Tu meta de hoy'}</div>
-    ${tarjetaEquipo}
-    ${parejas.map(tarjeta).join('')}
-    ${esAdmin_ ? `<div style="font-size:11px;color:var(--text-4);margin-top:2px">Escribe la meta de cada pareja. Se guarda sola y se mantiene hasta que la cambies.</div>` : ''}`;
-}
-
 // ── Estado del módulo ─────────────────────────────
 let container_, session_, role_, pareja_;
 let ordenes_ = [];
 let busquedaActuales_ = [];  // órdenes que salieron en la búsqueda por NC (para devolver)
 let condominios_ = [];       // órdenes de condominio (tipoSitio:'condominio'), aparte de la ruta diaria
-let activeTab_ = 'panel';   // 'panel' | 'ordenes' | 'mapa'
+let activeTab_ = 'panel';   // 'panel' | 'resumen' | 'ordenes' | 'mapa'
 let esAdmin_ = false;
 let metas_ = {};            // { "Pareja 1": 25, ... } — meta diaria por pareja
 let parejasActivas_ = [];   // parejas con al menos un técnico activo en AMI
-let revAbierto_ = { yc: false, mu: false };  // secciones de revisión (admin) expandidas
+let filtroOrd_ = 'pendientes', parejaF_ = 'todas', busq_ = '', limite_ = 40;
+let revTipo_ = 'yc';        // hoja de revisión abierta: 'yc' (ya cambiadas) | 'mu' (mal ubicadas)
+
+// ── Íconos y piezas ──
+const ICO_A = {
+  dots:   '<circle cx="12" cy="5" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="12" cy="19" r="1.4"/>',
+  buscar: '<circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>',
+  subir:  '<path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>',
+  bajar:  '<path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>',
+  check:  '<path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>',
+  alerta: '<circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>',
+  pin:    '<path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/>',
+  reloj:  '<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>',
+  edif:   '<rect x="4" y="2" width="16" height="20" rx="2"/><path d="M9 22v-4h6v4"/><path d="M8 6h.01M12 6h.01M16 6h.01M8 10h.01M12 10h.01M16 10h.01M8 14h.01M12 14h.01M16 14h.01"/>',
+  mapa:   '<polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/>',
+  chev:   '<polyline points="9 18 15 12 9 6"/>',
+};
+const svgA = (d, n = 16, extra = '') => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="${n}" height="${n}" ${extra}>${d}</svg>`;
+const escA = v => escapeHtml(v == null ? '' : String(v));
+function accionA(id, ico, txt, sub) {
+  return `<button class="us-accion" id="${id}">${svgA(ico, 18)}<span style="flex:1;text-align:left"><span style="display:block">${txt}</span><span class="us-accion-sub">${sub}</span></span></button>`;
+}
+function filaA(cls, ico, titulo, sub, accion) {
+  return `
+    <div class="cm-fila" data-accion="${accion}">
+      <div class="cm-fila-ic ${cls}">${svgA(ico, 17)}</div>
+      <div style="flex:1;min-width:0"><div class="cm-fila-t">${titulo}</div><div class="cm-fila-s">${sub}</div></div>
+      ${svgA(ICO_A.chev, 16, 'style="color:var(--text-3);flex-shrink:0"')}
+    </div>`;
+}
+const realizada = o => o.estadoCampo === 'hecha' || o.estadoCampo === 'aprobada';
+const fmtFA = (ts, conHora = true) => {
+  const d = ts?.toDate ? ts.toDate() : (ts ? new Date(ts) : null);
+  return d ? d.toLocaleString('es-SV', conHora ? { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' } : { day: 'numeric', month: 'short' }) : '';
+};
 
 // ── Entry point ───────────────────────────────────
 export async function init(container, session) {
@@ -160,29 +125,45 @@ export async function init(container, session) {
   esAdmin_   = role_ === 'admin' || role_ === 'asistente';
   pareja_    = session.asignacionActual?.destino || null;
   activeTab_ = esAdmin_ ? 'panel' : 'resumen';
+  filtroOrd_ = 'pendientes'; parejaF_ = 'todas'; busq_ = ''; limite_ = 40;
 
   renderShell();
   await cargarOrdenes();
   setTab(activeTab_);
 }
 
-// ── Cargar órdenes (lee la colección; aún puede estar vacía) ──
+// ── Cargar órdenes ────────────────────────────────
+// Admin: toda la colección. Técnico: SOLO las de su pareja (antes bajaba
+// la colección completa y filtraba en el teléfono).
 async function cargarOrdenes() {
   try {
-    // Cargar el padrón de NC ya cambiados (para marcar/esconder)
+    let todas = [];
+    if (esAdmin_) {
+      const snap = await db.collection(COLECCION).get();
+      todas = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    } else if (pareja_) {
+      const snap = await db.collection(COLECCION).where('pareja', '==', pareja_).get();
+      todas = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    }
+
+    // Padrón de NC ya cambiados (para marcar/esconder). El admin lo lee
+    // completo; el técnico solo pregunta por los NC de su ruta (el id del
+    // documento es el NC), de 30 en 30.
     let padron = new Set();
     try {
-      const pad = await db.collection('ami_cambiados').get();
-      padron = new Set(pad.docs.map(d => String(d.data().nc ?? d.id).trim()));
+      if (esAdmin_) {
+        const pad = await db.collection('ami_cambiados').get();
+        padron = new Set(pad.docs.map(d => String(d.data().nc ?? d.id).trim()));
+      } else {
+        const ncs = [...new Set(todas.map(o => String(o.nc ?? '').trim()).filter(Boolean))];
+        const docId = firebase.firestore.FieldPath.documentId();
+        for (let k = 0; k < ncs.length; k += 30) {
+          const pad = await db.collection('ami_cambiados').where(docId, 'in', ncs.slice(k, k + 30)).get();
+          pad.docs.forEach(d => padron.add(String(d.data().nc ?? d.id).trim()));
+        }
+      }
     } catch (e) { /* si no existe aún, padrón vacío */ }
 
-    const snap = await db.collection(COLECCION).get();
-    let todas = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-    // El técnico ve solo las órdenes de su pareja
-    if (!esAdmin_) {
-      todas = pareja_ ? todas.filter(o => o.pareja === pareja_) : [];
-    }
-    // Cruce con el padrón: marcar ya cambiadas; al técnico se le esconden
     todas.forEach(o => { o._yaCambiada = padron.has(String(o.nc ?? '').trim()); });
     if (!esAdmin_) todas = todas.filter(o => !o._yaCambiada);
     // Los condominios son una campaña de semanas con su propia vista: no se
@@ -190,54 +171,96 @@ async function cargarOrdenes() {
     condominios_ = todas.filter(o => o.tipoSitio === 'condominio');
     ordenes_ = todas.filter(o => o.tipoSitio !== 'condominio');
 
-    // Cargar metas diarias por pareja (persistentes: se mantienen hasta cambiarlas)
+    // Metas diarias por pareja (persistentes: se mantienen hasta cambiarlas)
     try {
       const cfg = await db.collection('ami_config').doc('metas').get();
       metas_ = cfg.exists ? (cfg.data().parejas || {}) : {};
     } catch (e) { metas_ = {}; }
 
-    // Parejas activas: las que tienen al menos un técnico activo asignado a AMI.
-    // Se muestran solo estas (no las 6 fijas) en metas y selectores.
-    try {
-      const us = await db.collection('users')
-        .where('asignacionActual.area', '==', AREA)
-        .where('active', '==', true).get();
-      const set = new Set();
-      us.docs.forEach(d => { const p = d.data().asignacionActual?.destino; if (p) set.add(p); });
-      // Ordenar por número de pareja
-      parejasActivas_ = [...set].sort((a, b) =>
-        (parseInt(String(a).replace(/\D/g,''),10)||0) - (parseInt(String(b).replace(/\D/g,''),10)||0));
-    } catch (e) { parejasActivas_ = []; }
+    // Parejas activas: las que tienen al menos un técnico activo en AMI
+    if (esAdmin_) {
+      try {
+        const us = await db.collection('users')
+          .where('asignacionActual.area', '==', AREA)
+          .where('active', '==', true).get();
+        const set = new Set();
+        us.docs.forEach(d => { const p = d.data().asignacionActual?.destino; if (p) set.add(p); });
+        parejasActivas_ = [...set].sort((a, b) =>
+          (parseInt(String(a).replace(/\D/g,''),10)||0) - (parseInt(String(b).replace(/\D/g,''),10)||0));
+      } catch (e) { parejasActivas_ = []; }
+    } else {
+      parejasActivas_ = pareja_ ? [pareja_] : [];
+    }
   } catch (err) {
-    // Si la colección aún no existe o no hay permisos, no rompemos el cascarón
     console.warn('[ami] No se pudieron cargar órdenes todavía:', err.message);
     ordenes_ = [];
   }
 }
 
-// ── Shell (pestañas + contenedor) ─────────────────
+// ── Shell (pestañas, acciones y hojas) ────────────
 function renderShell() {
   const tabs = esAdmin_
     ? [{ id: 'panel', label: 'Panel' }, { id: 'ordenes', label: 'Órdenes' }, { id: 'mapa', label: 'Mapa' }]
     : [{ id: 'resumen', label: 'Resumen' }, { id: 'ordenes', label: 'Órdenes' }];
 
   container_.innerHTML = `
-    <div style="max-width:1100px;margin:0 auto">
-      <div style="margin-bottom:18px">
-        <div style="font-size:24px;font-weight:600;letter-spacing:-.02em;line-height:1.15">Cambio de medidores AMI</div>
-        <div style="font-size:12px;color:var(--text-4);margin-top:4px">${esAdmin_ ? 'Medidores telegestionados · ruta del día' : 'Tu ruta del día'}</div>
+    <div class="ami-scope" style="max-width:1100px;margin:0 auto">
+      <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:16px">
+        <div style="flex:1;min-width:0">
+          <div style="font-size:24px;font-weight:600;letter-spacing:-.02em;line-height:1.15">AMI</div>
+          <div style="font-size:12px;color:var(--text-3);margin-top:4px">Cambio de medidores telegestionados${!esAdmin_ && pareja_ ? ' · ' + escA(pareja_) : ''}</div>
+        </div>
+        ${esAdmin_ ? `<button class="cm-ico-btn" id="ami-menu" title="Acciones">${svgA(ICO_A.dots, 18)}</button>` : ''}
       </div>
       <div class="area-tabs" style="margin-bottom:14px">
-        ${tabs.map((t, i) => `
-          <button class="area-tab ami-tab ${i === 0 ? 'active am' : ''}" data-tab="${t.id}">${t.label}</button>
-        `).join('')}
+        ${tabs.map(t => `<button class="area-tab ami-tab" data-tab="${t.id}">${t.label}</button>`).join('')}
       </div>
       <div id="ami-content"></div>
+
+      ${esAdmin_ ? `
+      <input type="file" id="ami-file-importar" accept=".xlsx,.xls" style="display:none"/>
+      <input type="file" id="ami-file-historial" accept=".xlsx,.xls" style="display:none"/>
+      <input type="file" id="ami-file-condominio" accept=".xlsx,.xls" style="display:none"/>
+      ${hoja('ami-sheet-acciones', 'Acciones de AMI', `<div class="flex-col gap-8">
+        ${accionA('ami-a-ruta', ICO_A.subir, 'Cargar ruta del día', 'Excel con NC, nombre, dirección y coordenadas')}
+        ${accionA('ami-a-condo', ICO_A.edif, 'Cargar condominio', 'Excel de un edificio, aparte de la ruta')}
+        ${accionA('ami-a-hist', ICO_A.reloj, 'Cargar historial', 'Trabajos anteriores y padrón de ya cambiados')}
+        <div class="cm-acc-sep">Reportes</div>
+        ${accionA('ami-a-excel', ICO_A.bajar, 'Excel del día', 'Trabajo, ruta y resumen del día que elijas')}
+      </div>`)}
+      ${hoja('ami-sheet-confirmar', 'Por confirmar', '', true)}
+      ${hoja('ami-sheet-rev', 'Revisar', '', true)}
+      ${hoja('ami-sheet-metas', 'Metas del día por pareja', '')}` : ''}
     </div>`;
 
-  container_.querySelectorAll('.ami-tab').forEach(tab => {
-    tab.onclick = () => setTab(tab.dataset.tab);
-  });
+  container_.querySelectorAll('.ami-tab').forEach(tab => { tab.onclick = () => setTab(tab.dataset.tab); });
+  if (!esAdmin_) return;
+
+  container_.querySelectorAll('.sheet-backdrop').forEach(sh => sh.addEventListener('click', e => { if (e.target === sh) sh.classList.remove('open'); }));
+  const abrirH = id => container_.querySelector('#' + id).classList.add('open');
+  const cerrarH = id => container_.querySelector('#' + id).classList.remove('open');
+  container_.querySelector('#ami-menu').onclick = () => abrirH('ami-sheet-acciones');
+  const fRuta = container_.querySelector('#ami-file-importar');
+  const fHist = container_.querySelector('#ami-file-historial');
+  const fCondo = container_.querySelector('#ami-file-condominio');
+  container_.querySelector('#ami-a-ruta').onclick = () => { cerrarH('ami-sheet-acciones'); fRuta.click(); };
+  container_.querySelector('#ami-a-condo').onclick = () => { cerrarH('ami-sheet-acciones'); fCondo.click(); };
+  container_.querySelector('#ami-a-hist').onclick = () => { cerrarH('ami-sheet-acciones'); fHist.click(); };
+  container_.querySelector('#ami-a-excel').onclick = () => { cerrarH('ami-sheet-acciones'); abrirExportarDia(); };
+  fRuta.onchange = (e) => importarRuta(e.target.files[0]);
+  fHist.onchange = (e) => importarHistorial(e.target.files[0]);
+  fCondo.onchange = (e) => { const f = e.target.files[0]; fCondo.value = ''; importarCondominio(f); };
+}
+
+function hoja(id, titulo, cuerpo, alta = false) {
+  return `
+    <div class="sheet-backdrop" id="${id}">
+      <div class="sheet" ${alta ? 'style="max-height:92vh"' : ''}>
+        <div class="sheet-handle"></div>
+        <div class="sheet-title" id="${id}-title">${titulo}</div>
+        <div class="sheet-body" id="${id}-body" style="padding-bottom:16px">${cuerpo}</div>
+      </div>
+    </div>`;
 }
 
 function setTab(tab) {
@@ -250,7 +273,6 @@ function setTab(tab) {
   const cont = container_.querySelector('#ami-content');
   if (!cont) return;
   if (tab === 'mapa') {
-    // Montar el mapa real (mismo módulo que usa el técnico)
     cont.innerHTML = '';
     import('./ami_mapa.js')
       .then(mod => mod.init(cont, session_))
@@ -259,94 +281,21 @@ function setTab(tab) {
         console.warn('[ami] Error cargando ami_mapa:', err.message);
       });
   }
-  else if (tab === 'ordenes') {
-    cont.innerHTML = renderOrdenes();
-    const inp = cont.querySelector('#ami-buscar-hist');
-    if (inp) {
-      let t = null;
-      inp.oninput = () => {
-        clearTimeout(t);
-        const val = inp.value;
-        t = setTimeout(() => buscarHistorial(val), 350);
-      };
-    }
-    // Botones de confirmar (una y por pareja) — solo admin
-    cont.querySelectorAll('.ami-confirmar-una').forEach(b => {
-      b.onclick = () => confirmarOrdenes([b.dataset.id]);
-    });
-    cont.querySelectorAll('#ami-lista-ordenes .ami-devolver').forEach(b => {
-      b.onclick = async () => {
-        const o = ordenes_.find(x => x.id === b.dataset.id);
-        if (o && await devolverAPendiente(o, session_)) setTab('ordenes');
-      };
-    });
-    cont.querySelectorAll('.ami-confirmar-pareja').forEach(b => {
-      b.onclick = () => {
-        const p = b.dataset.pareja;
-        const ids = ordenes_.filter(o => o.estadoCampo === 'hecha' && (o.pareja || 'Sin pareja') === p).map(o => o.id);
-        confirmarOrdenes(ids, p);
-      };
-    });
-  }
-  else {
-    cont.innerHTML = renderPanel();
-    // Enganchar el botón de importar ruta (solo admin)
-    const btn = cont.querySelector('#ami-btn-importar');
-    const file = cont.querySelector('#ami-file-importar');
-    if (btn && file) {
-      btn.onclick = () => file.click();
-      file.onchange = (e) => importarRuta(e.target.files[0]);
-    }
-    cont.querySelectorAll('.ami-condo-abrir').forEach(el => el.onclick = async () => {
-      const mod = await import('./ami_condominio.js');
-      mod.abrirVistaCondominio({
-        key: el.dataset.key, session: session_, parejas: parejasActivas_,
-        obtener: () => condominios_,
-        // Si se eliminó la carga, recargar órdenes; si no, basta repintar
-        // (asignar y confirmar ya actualizan los objetos en memoria).
-        alCerrar: async ({ eliminado } = {}) => {
-          if (eliminado) await cargarOrdenes();
-          if (activeTab_ === 'panel') setTab('panel');
-        },
-      });
-    });
-    cont.querySelector('#ami-btn-exportar')?.addEventListener('click', abrirExportarDia);
-    const btnC = cont.querySelector('#ami-btn-condominio');
-    const fileC = cont.querySelector('#ami-file-condominio');
-    if (btnC && fileC) {
-      btnC.onclick = () => fileC.click();
-      fileC.onchange = (e) => { const f = e.target.files[0]; fileC.value = ''; importarCondominio(f); };
-    }
-    const btnH = cont.querySelector('#ami-btn-historial');
-    const fileH = cont.querySelector('#ami-file-historial');
-    if (btnH && fileH) {
-      btnH.onclick = () => fileH.click();
-      fileH.onchange = (e) => importarHistorial(e.target.files[0]);
-    }
-    // Inputs de meta por pareja (solo admin): guardar al cambiar
-    cont.querySelectorAll('.ami-meta-input').forEach(inp => {
-      inp.onchange = () => guardarMeta(inp.dataset.pareja, inp.value);
-    });
-    // Revisión admin: toggles y acciones de ya-cambiadas / mal-ubicadas
-    cont.querySelectorAll('.ami-rev-toggle').forEach(t => {
-      t.onclick = () => {
-        const rev = t.dataset.rev;
-        revAbierto_[rev] = !revAbierto_[rev];
-        const list = cont.querySelector(rev === 'yc' ? '#ami-yc-list' : '#ami-mu-list');
-        if (list) list.style.display = revAbierto_[rev] ? '' : 'none';
-        const chev = t.querySelector('.ami-rev-chev');
-        if (chev) chev.style.transform = revAbierto_[rev] ? 'rotate(90deg)' : '';
-      };
-    });
-    cont.querySelectorAll('.ami-yc-aprobar').forEach(b => b.onclick = () => aprobarYaCambiadoAdmin(b.dataset.id));
-    cont.querySelectorAll('.ami-yc-revertir').forEach(b => b.onclick = () => revertirYaCambiadoAdmin(b.dataset.id));
-    cont.querySelectorAll('.ami-mu-guardar').forEach(b => b.onclick = () => corregirCoordenadasAdmin(b.dataset.id));
-    cont.querySelectorAll('.ami-mu-revertir').forEach(b => b.onclick = () => revertirMalUbicadoAdmin(b.dataset.id));
-  }
+  else if (tab === 'ordenes') renderOrdenes(cont);
+  else if (tab === 'resumen') renderResumenTec(cont);
+  else renderPanel(cont);
 }
 
-// Confirmar que una orden reportada "ya cambiada" la hicimos nosotros →
-// pasa a aprobada (como en Cambios). El comentario/quién reportó queda en el doc.
+// Repinta la pestaña actual y las hojas abiertas (después de una acción)
+function refrescar() {
+  if (activeTab_ !== 'mapa') setTab(activeTab_);
+  if (container_.querySelector('#ami-sheet-confirmar')?.classList.contains('open')) pintarConfirmar();
+  if (container_.querySelector('#ami-sheet-rev')?.classList.contains('open')) pintarRevision();
+}
+
+function irAOrdenes(filtro) { filtroOrd_ = filtro; busq_ = ''; limite_ = 40; setTab('ordenes'); }
+
+// ── Revisión admin: "ya cambiadas" y "mal ubicadas" ──
 async function aprobarYaCambiadoAdmin(id) {
   if (!confirm('¿Confirmar que esta orden la hicimos nosotros? Pasará a aprobada y quedará registrada.')) return;
   try {
@@ -357,8 +306,7 @@ async function aprobarYaCambiadoAdmin(id) {
     });
     const o = ordenes_.find(x => x.id === id);
     if (o) { o.estadoCampo = 'aprobada'; o.aprobadoPor = session_.displayName; }
-    revAbierto_.yc = true;
-    setTab('panel');
+    refrescar();
     window.dispatchEvent(new CustomEvent('ami:updated'));
     toast('Orden confirmada como hecha por nosotros', 'ok');
   } catch (err) { toast('Error: ' + err.message, 'error'); }
@@ -372,8 +320,7 @@ async function revertirYaCambiadoAdmin(id) {
     });
     const o = ordenes_.find(x => x.id === id);
     if (o) { o.estadoCampo = null; o.yaCambiadoPor = null; }
-    revAbierto_.yc = true;
-    setTab('panel');
+    refrescar();
     window.dispatchEvent(new CustomEvent('ami:updated'));
     toast('Orden revertida a pendiente', 'ok');
   } catch (err) { toast('Error: ' + err.message, 'error'); }
@@ -389,8 +336,7 @@ async function corregirCoordenadasAdmin(id) {
     });
     const o = ordenes_.find(x => x.id === id);
     if (o) { o.latitud = lat; o.longitud = lng; o.estadoCampo = null; }
-    revAbierto_.mu = true;
-    setTab('panel');
+    refrescar();
     window.dispatchEvent(new CustomEvent('ami:updated'));
     toast('Coordenadas actualizadas', 'ok');
   } catch (err) { toast('Error: ' + err.message, 'error'); }
@@ -404,8 +350,7 @@ async function revertirMalUbicadoAdmin(id) {
     });
     const o = ordenes_.find(x => x.id === id);
     if (o) o.estadoCampo = null;
-    revAbierto_.mu = true;
-    setTab('panel');
+    refrescar();
     window.dispatchEvent(new CustomEvent('ami:updated'));
     toast('Orden revertida a pendiente', 'ok');
   } catch (err) { toast('Error: ' + err.message, 'error'); }
@@ -417,255 +362,338 @@ async function guardarMeta(pareja, valor) {
   metas_[pareja] = isNaN(n) || n < 0 ? 0 : n;
   try {
     await db.collection('ami_config').doc('metas').set({ parejas: metas_ }, { merge: true });
-    // Repintar el panel para actualizar barras/porcentajes
-    const cont = container_.querySelector('#ami-content');
-    if (cont && activeTab_ !== 'ordenes' && activeTab_ !== 'mapa') {
-      setTab(activeTab_);
-    }
+    if (activeTab_ !== 'ordenes' && activeTab_ !== 'mapa') setTab(activeTab_);
   } catch (err) {
     toast('No se pudo guardar la meta: ' + err.message, 'error');
   }
 }
 
-// ── Revisión admin: reportadas "ya cambiadas" y "mal ubicadas" ──
-// Los técnicos las marcan desde el mapa (estadoCampo 'ya_cambiado' /
-// 'mal_ubicado'). Aquí el admin las revisa: confirma si la hicimos nosotros
-// (pasa a aprobada) o revierte a pendiente; y corrige coordenadas.
-function renderRevisiones() {
-  if (!esAdmin_) return '';
-  const yc = ordenes_.filter(o => o.estadoCampo === 'ya_cambiado');
-  const mu = ordenes_.filter(o => o.estadoCampo === 'mal_ubicado');
-  if (!yc.length && !mu.length) return '';
+function abrirRevision(tipo) {
+  revTipo_ = tipo;
+  pintarRevision();
+  container_.querySelector('#ami-sheet-rev')?.classList.add('open');
+}
 
-  const fmtF = (ts, conHora) => {
-    const d = ts?.toDate ? ts.toDate() : (ts ? new Date(ts) : null);
-    return d ? d.toLocaleDateString('es-SV', conHora ? { day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' } : { day:'numeric', month:'short' }) : '—';
-  };
-  const chevron = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><polyline points="9 18 15 12 9 6"/></svg>`;
-
+function pintarRevision() {
+  const body = container_.querySelector('#ami-sheet-rev-body');
+  if (!body) return;
+  const yc = revTipo_ === 'yc';
+  const arr = ordenes_.filter(o => o.estadoCampo === (yc ? 'ya_cambiado' : 'mal_ubicado'));
+  container_.querySelector('#ami-sheet-rev-title').textContent = yc ? 'Reportadas como ya cambiadas' : 'Mal ubicadas';
   const ycCard = (o) => `
-    <div style="padding:14px;background:var(--glass);border:1px solid rgba(249,115,22,.25);border-radius:14px" class="flex-col gap-8">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
-        <div style="min-width:0">
-          <div style="font-size:13px;font-weight:700">NC ${o.nc || '—'}</div>
-          <div style="font-size:11px;color:var(--text-3)">${o.cliente || '—'}</div>
-        </div>
-        <div style="font-size:10px;color:var(--text-4);text-align:right;flex-shrink:0">${fmtF(o.yaCambiadoEn, true)}<br>${o.yaCambiadoPor || '—'}</div>
+    <div class="cm-verif" style="flex-direction:column;align-items:stretch;gap:8px">
+      <div style="display:flex;justify-content:space-between;gap:10px">
+        <div style="min-width:0"><div class="cm-wo">NC ${escA(o.nc || '—')}</div><div class="cm-cli">${escA(o.cliente || '—')}</div></div>
+        <div class="cm-meta" style="text-align:right;flex-shrink:0">${fmtFA(o.yaCambiadoEn)}<br>${escA(o.yaCambiadoPor || '—')}</div>
       </div>
-      ${o.yaCambiadoComentario ? `<div style="font-size:12px;color:var(--text-3);padding:8px 10px;background:rgba(255,255,255,.04);border-radius:8px">${escapeHtml(o.yaCambiadoComentario)}</div>` : ''}
+      ${o.yaCambiadoComentario ? `<div style="font-size:12px;color:var(--text-2);padding:8px 10px;background:rgba(255,255,255,.04);border-radius:8px">${escA(o.yaCambiadoComentario)}</div>` : ''}
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-        <button class="ami-yc-aprobar" data-id="${o.id}" style="height:40px;border-radius:10px;border:1px solid rgba(34,197,94,.3);background:transparent;color:#22c55e;font-size:12px;font-weight:600;font-family:inherit;cursor:pointer">Lo hicimos nosotros</button>
-        <button class="ami-yc-revertir" data-id="${o.id}" style="height:40px;border-radius:10px;border:1px solid var(--border);background:transparent;color:var(--text-3);font-size:12px;font-weight:600;font-family:inherit;cursor:pointer">Revertir</button>
+        <button class="cm-btn ok ami-yc-aprobar" data-id="${o.id}">Lo hicimos nosotros</button>
+        <button class="cm-btn ami-yc-revertir" data-id="${o.id}">Revertir</button>
       </div>
     </div>`;
-
   const muCard = (o) => `
-    <div style="padding:14px;background:var(--glass);border:1px solid rgba(139,92,246,.25);border-radius:14px" class="flex-col gap-8">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
-        <div style="min-width:0">
-          <div style="font-size:13px;font-weight:700">NC ${o.nc || '—'}</div>
-          <div style="font-size:11px;color:var(--text-3)">${o.cliente || '—'}</div>
-          <div style="font-size:11px;color:var(--text-4)">${o.direccion || '—'}</div>
-        </div>
-        <div style="font-size:10px;color:var(--text-4);text-align:right;flex-shrink:0">${fmtF(o.malUbicadoEn, false)}<br>${o.malUbicadoPor || '—'}</div>
+    <div class="cm-verif" style="flex-direction:column;align-items:stretch;gap:8px">
+      <div style="display:flex;justify-content:space-between;gap:10px">
+        <div style="min-width:0"><div class="cm-wo">NC ${escA(o.nc || '—')}</div><div class="cm-cli">${escA(o.cliente || '—')}</div><div class="cm-meta">${escA(o.direccion || '')}</div></div>
+        <div class="cm-meta" style="text-align:right;flex-shrink:0">${fmtFA(o.malUbicadoEn, false)}<br>${escA(o.malUbicadoPor || '—')}</div>
       </div>
-      <div style="font-size:11px;color:var(--text-4)">Coordenadas actuales: ${o.latitud || '—'}, ${o.longitud || '—'}</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
-        <input id="ami-lat-${o.id}" type="number" step="any" placeholder="Nueva latitud" value="${o.latitud || ''}" style="padding:8px 10px;border-radius:8px;border:1px solid var(--border);background:var(--glass);color:var(--text-1);font-size:12px;font-family:inherit;outline:none"/>
-        <input id="ami-lng-${o.id}" type="number" step="any" placeholder="Nueva longitud" value="${o.longitud || ''}" style="padding:8px 10px;border-radius:8px;border:1px solid var(--border);background:var(--glass);color:var(--text-1);font-size:12px;font-family:inherit;outline:none"/>
+        <input class="form-input" id="ami-lat-${o.id}" type="number" step="any" placeholder="Latitud" value="${escA(o.latitud || '')}" style="font-size:13px;padding:9px 10px"/>
+        <input class="form-input" id="ami-lng-${o.id}" type="number" step="any" placeholder="Longitud" value="${escA(o.longitud || '')}" style="font-size:13px;padding:9px 10px"/>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-        <button class="ami-mu-guardar" data-id="${o.id}" style="height:38px;border-radius:10px;border:1px solid rgba(139,92,246,.4);background:rgba(139,92,246,.1);color:#a78bfa;font-size:12px;font-weight:600;font-family:inherit;cursor:pointer">Guardar coordenadas</button>
-        <button class="ami-mu-revertir" data-id="${o.id}" style="height:38px;border-radius:10px;border:1px solid var(--border);background:transparent;color:var(--text-3);font-size:12px;font-weight:600;font-family:inherit;cursor:pointer">Revertir a pendiente</button>
+        <button class="cm-btn ok ami-mu-guardar" data-id="${o.id}">Guardar coordenadas</button>
+        <button class="cm-btn ami-mu-revertir" data-id="${o.id}">Revertir a pendiente</button>
       </div>
     </div>`;
-
-  return `
-    ${yc.length ? `
-    <div style="margin-bottom:12px">
-      <div class="ami-rev-toggle" data-rev="yc" style="padding:14px 16px;background:rgba(249,115,22,.1);border:1px solid rgba(249,115,22,.35);border-radius:14px;display:flex;align-items:center;gap:12px;cursor:pointer">
-        <div style="width:36px;height:36px;flex-shrink:0;background:rgba(249,115,22,.15);border-radius:10px;display:flex;align-items:center;justify-content:center">
-          <svg viewBox="0 0 24 24" fill="none" stroke="#fb923c" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-        </div>
-        <div style="flex:1;min-width:0">
-          <div style="font-size:13px;font-weight:600;color:#fb923c">${yc.length} orden${yc.length>1?'es':''} reportada${yc.length>1?'s':''} como ya cambiada${yc.length>1?'s':''}</div>
-          <div style="font-size:11px;color:var(--text-4);margin-top:2px">Toca para revisar y marcar si la hicimos</div>
-        </div>
-        <span class="ami-rev-chev" style="display:flex;transition:transform .2s;${revAbierto_.yc?'transform:rotate(90deg)':''}">${chevron}</span>
-      </div>
-      <div id="ami-yc-list" style="margin-top:8px;${revAbierto_.yc?'':'display:none'}" class="flex-col gap-8">${yc.map(ycCard).join('')}</div>
-    </div>` : ''}
-    ${mu.length ? `
-    <div style="margin-bottom:12px">
-      <div class="ami-rev-toggle" data-rev="mu" style="padding:14px 16px;background:rgba(139,92,246,.1);border:1px solid rgba(139,92,246,.35);border-radius:14px;display:flex;align-items:center;gap:12px;cursor:pointer">
-        <div style="width:36px;height:36px;flex-shrink:0;background:rgba(139,92,246,.15);border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:800;color:#8b5cf6">?</div>
-        <div style="flex:1;min-width:0">
-          <div style="font-size:13px;font-weight:600;color:#8b5cf6">${mu.length} orden${mu.length>1?'es':''} mal ubicada${mu.length>1?'s':''}</div>
-          <div style="font-size:11px;color:var(--text-4);margin-top:2px">Toca para corregir coordenadas o revertir</div>
-        </div>
-        <span class="ami-rev-chev" style="display:flex;transition:transform .2s;${revAbierto_.mu?'transform:rotate(90deg)':''}">${chevron}</span>
-      </div>
-      <div id="ami-mu-list" style="margin-top:8px;${revAbierto_.mu?'':'display:none'}" class="flex-col gap-8">${mu.map(muCard).join('')}</div>
-    </div>` : ''}`;
+  body.innerHTML = arr.length
+    ? `<div style="font-size:12.5px;color:var(--text-3);margin-bottom:12px">${yc ? 'Confirma si las hicimos nosotros o devuélvelas a pendiente.' : 'Corrige las coordenadas o devuélvelas a pendiente.'}</div>
+       <div class="flex-col gap-8">${arr.map(yc ? ycCard : muCard).join('')}</div>`
+    : `<div style="text-align:center;padding:24px;color:var(--text-3);font-size:13px">Nada pendiente de revisar.</div>`;
+  body.querySelectorAll('.ami-yc-aprobar').forEach(b => b.onclick = () => aprobarYaCambiadoAdmin(b.dataset.id));
+  body.querySelectorAll('.ami-yc-revertir').forEach(b => b.onclick = () => revertirYaCambiadoAdmin(b.dataset.id));
+  body.querySelectorAll('.ami-mu-guardar').forEach(b => b.onclick = () => corregirCoordenadasAdmin(b.dataset.id));
+  body.querySelectorAll('.ami-mu-revertir').forEach(b => b.onclick = () => revertirMalUbicadoAdmin(b.dataset.id));
 }
 
-// ── Panel (resumen del área) ──────────────────────
-function renderPanel() {
+function abrirMetas() {
+  const body = container_.querySelector('#ami-sheet-metas-body');
+  if (!body) return;
+  body.innerHTML = parejasActivas_.length ? `
+    <div style="font-size:12.5px;color:var(--text-3);margin-bottom:12px">Cuántos cambios debe hacer cada pareja al día. Se guarda solo y se mantiene hasta que lo cambies.</div>
+    <div class="flex-col gap-8">
+      ${parejasActivas_.map(p => `
+        <div class="cm-verif">
+          <span class="cm-par-dot" style="background:${colorPareja(p)}"></span>
+          <div style="flex:1;font-size:14px;font-weight:600">${escA(p)}</div>
+          <input type="number" min="0" inputmode="numeric" class="form-input ami-meta-input" data-pareja="${escA(p)}" value="${Number(metas_[p] || 0) || ''}" placeholder="0" style="width:76px;text-align:center;font-size:15px;padding:9px"/>
+        </div>`).join('')}
+    </div>` : `<div style="text-align:center;padding:24px;color:var(--text-3);font-size:13px">No hay parejas asignadas a AMI. Asígnalas en Usuarios.</div>`;
+  body.querySelectorAll('.ami-meta-input').forEach(inp => { inp.onchange = () => guardarMeta(inp.dataset.pareja, inp.value); });
+  container_.querySelector('#ami-sheet-metas')?.classList.add('open');
+}
+
+// ── Panel (admin) ─────────────────────────────────
+function renderPanel(cont) {
   const total = ordenes_.length;
-  const hechas = ordenes_.filter(o => o.estadoCampo === 'hecha' || o.estadoCampo === 'aprobada').length;
-  const pend = ordenes_.filter(o => !o.estadoCampo && !o._yaCambiada).length;
-  const residuos = ordenes_.filter(esResiduo).length;
-  const yaCambiadas = ordenes_.filter(o => o._yaCambiada).length;
-  const pct = total ? Math.round((hechas / total) * 100) : 0;
+  const confirmadas = ordenes_.filter(o => o.estadoCampo === 'aprobada').length;
+  const porConfirmar = ordenes_.filter(o => o.estadoCampo === 'hecha');
+  const visitas = ordenes_.filter(o => o.estadoCampo === 'visita').length;
+  const pendientes = ordenes_.filter(o => !o.estadoCampo && !o._yaCambiada).length;
+  const arrastradas = ordenes_.filter(o => esResiduo(o) && !o.estadoCampo && !o._yaCambiada).length;
+  const padron = ordenes_.filter(o => o._yaCambiada).length;
+  const yc = ordenes_.filter(o => o.estadoCampo === 'ya_cambiado').length;
+  const mu = ordenes_.filter(o => o.estadoCampo === 'mal_ubicado').length;
+  const parejas = parejasActivas_;
+  const totalHoy = parejas.reduce((s, p) => s + hechasHoyPorPareja(p), 0);
+  const totalMeta = parejas.reduce((s, p) => s + Number(metas_[p] || 0), 0);
+  const seg = n => total ? (n / total * 100).toFixed(2) : 0;
 
-  return `
-    ${esAdmin_ ? `
-    <div style="display:flex;gap:8px;margin-bottom:16px">
-      <button id="ami-btn-importar" class="btn-marca" style="flex:1;display:flex;align-items:center;justify-content:center;gap:8px;padding:12px;border-radius:12px;font-size:13px;cursor:pointer;font-family:inherit">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-        Cargar ruta (Excel)
-      </button>
-      <button id="ami-btn-historial" title="Cargar historial (Excel)" style="width:48px;flex-shrink:0;display:flex;align-items:center;justify-content:center;border-radius:12px;border:1px solid rgba(22,163,74,.35);background:rgba(22,163,74,.1);color:#16a34a;cursor:pointer;font-family:inherit">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="17" height="17"><path d="M12 8v4l3 3"/><circle cx="12" cy="12" r="9"/></svg>
-      </button>
-      <button id="ami-btn-condominio" title="Cargar condominio (Excel)" style="width:48px;flex-shrink:0;display:flex;align-items:center;justify-content:center;border-radius:12px;border:1px solid ${ACCENT_BORDER};background:${ACCENT_GLASS};color:${ACCENT};cursor:pointer;font-family:inherit">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="17" height="17"><rect x="4" y="2" width="16" height="20" rx="2"/><path d="M9 22v-4h6v4"/><path d="M8 6h.01M12 6h.01M16 6h.01M8 10h.01M12 10h.01M16 10h.01M8 14h.01M12 14h.01M16 14h.01"/></svg>
-      </button>
-      <button id="ami-btn-exportar" title="Extraer Excel del día" style="width:48px;flex-shrink:0;display:flex;align-items:center;justify-content:center;border-radius:12px;border:1px solid var(--border);background:var(--glass);color:var(--text-2);cursor:pointer;font-family:inherit">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="17" height="17"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-      </button>
-      <input type="file" id="ami-file-importar" accept=".xlsx,.xls" style="display:none"/>
-      <input type="file" id="ami-file-historial" accept=".xlsx,.xls" style="display:none"/>
-      <input type="file" id="ami-file-condominio" accept=".xlsx,.xls" style="display:none"/>
-    </div>` : ''}
+  const revisar = [
+    porConfirmar.length ? filaA('warn', ICO_A.check, `${porConfirmar.length} por confirmar`, 'Confirmar por día o todas', 'confirmar') : '',
+    yc ? filaA('orange', ICO_A.alerta, `${yc} reportada${yc > 1 ? 's' : ''} como ya cambiada${yc > 1 ? 's' : ''}`, '¿Las hicimos nosotros o se revierten?', 'yc') : '',
+    mu ? filaA('violet', ICO_A.pin, `${mu} mal ubicada${mu > 1 ? 's' : ''}`, 'Corregir coordenadas', 'mu') : '',
+    arrastradas ? filaA('muted', ICO_A.reloj, `${arrastradas} arrastrada${arrastradas > 1 ? 's' : ''}`, 'Pendientes de rutas anteriores', 'arrastradas') : '',
+  ].join('');
 
-    ${renderRevisiones()}
-    ${esAdmin_ ? renderResumenCondominios() : ''}
+  cont.innerHTML = `
+    <div class="ds-pcard am" style="margin-bottom:22px">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start">
+        <div class="ds-pcard-lbl">Cambios hoy</div>
+        <div class="ds-pcard-badge" id="ami-metas-btn" style="cursor:pointer">Metas</div>
+      </div>
+      <div style="font-size:38px;font-weight:500;letter-spacing:-.02em;line-height:1;color:#fff;margin-top:6px">${totalHoy}${totalMeta ? `<span style="font-size:18px;color:rgba(255,255,255,.7)"> / ${totalMeta}</span>` : ''}</div>
+      <div style="font-size:12px;color:rgba(255,255,255,.85);margin-top:8px">${parejas.length ? `${parejas.length} pareja${parejas.length > 1 ? 's' : ''} en campo${totalMeta ? '' : ' · toca "Metas" para definirlas'}` : 'No hay parejas asignadas a AMI hoy'}</div>
+      ${parejas.length ? `
+      <div style="height:1px;background:rgba(255,255,255,.2);margin:14px 0 12px"></div>
+      <div class="flex-col" style="gap:12px">
+        ${parejas.map(p => {
+          const n = hechasHoyPorPareja(p); const meta = Number(metas_[p] || 0);
+          return `
+          <div>
+            <div style="display:flex;align-items:baseline;gap:8px">
+              <span style="font-size:13px;font-weight:600;color:#fff;flex:1">${escA(p)}</span>
+              <span style="font-size:14px;font-weight:700;color:#fff">${n}<span style="font-size:11px;font-weight:500;color:rgba(255,255,255,.7)"> / ${meta || '—'}</span></span>
+            </div>
+            <div class="ds-bar on-grad" style="margin-top:6px;height:5px"><i style="width:${meta ? Math.min(100, Math.round(n / meta * 100)) : 0}%;background:#fff"></i></div>
+          </div>`;
+        }).join('')}
+      </div>` : ''}
+    </div>
 
-    ${total === 0
-      ? `<div class="dev-module">
-          <div class="dev-title">Aún no hay órdenes cargadas</div>
-          <p>Cuando se cargue el listado de órdenes de AMI, aquí verás el avance por cuadrilla y el estado del día, igual que en Cambios.</p>
-        </div>`
-      : `
-      <div class="ds-card" style="margin-bottom:16px">
-        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:12px">
-          <div style="font-size:14px;font-weight:600">Avance del día</div>
-          <div style="font-size:12px;color:var(--text-4)">${hechas} de ${total} · ${pct}%</div>
-        </div>
-        <div class="ds-bar"><i class="am" style="width:${pct}%"></i></div>
-        <div style="margin-top:12px;display:flex;flex-wrap:wrap;gap:10px 14px;font-size:11px;color:var(--text-3)">
-          <span style="display:flex;align-items:center;gap:6px"><span style="width:7px;height:7px;border-radius:50%;background:var(--text-4)"></span>${pend} pendientes</span>
-          <span style="display:flex;align-items:center;gap:6px"><span style="width:7px;height:7px;border-radius:50%;background:#22c55e"></span>${hechas} hechas</span>
-          ${residuos ? `<span style="display:flex;align-items:center;gap:6px"><span style="width:7px;height:7px;border-radius:50%;background:#f59e0b"></span>${residuos} arrastradas</span>` : ''}
-          ${yaCambiadas ? `<span style="display:flex;align-items:center;gap:6px"><span style="width:7px;height:7px;border-radius:50%;background:#16a34a"></span>${yaCambiadas} ya cambiadas</span>` : ''}
-        </div>
-      </div>`}
-    ${seccionMetas()}`;
+    <div class="ds-sec">Para revisar</div>
+    <div class="cm-lista" style="margin-bottom:22px">
+      ${revisar || `<div class="cm-fila" style="cursor:default"><div class="cm-fila-ic ok">${svgA(ICO_A.check, 17)}</div><div style="flex:1"><div class="cm-fila-t">Todo al día</div><div class="cm-fila-s">Nada pendiente de revisar</div></div></div>`}
+    </div>
+
+    ${condominios_.length ? `<div style="margin-bottom:22px">${renderResumenCondominios()}</div>` : ''}
+
+    <div class="ds-sec">Avance de la ruta</div>
+    ${total ? `
+    <div class="ds-card">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:12px">
+        <div class="ds-num-md">${confirmadas + porConfirmar.length}<span style="font-size:14px;font-weight:500;color:var(--text-3)"> / ${total} realizadas</span></div>
+        <div style="font-size:15px;font-weight:600;color:var(--am-light)">${Math.round((confirmadas + porConfirmar.length) / total * 100)}%</div>
+      </div>
+      <div class="cm-seg">
+        <i style="width:${seg(confirmadas)}%;background:#22c55e"></i>
+        <i style="width:${seg(porConfirmar.length)}%;background:#fbbf24"></i>
+        <i style="width:${seg(visitas)}%;background:#94a3b8"></i>
+      </div>
+      <div class="cm-leyenda">
+        <span><b style="background:#22c55e"></b>${confirmadas} confirmadas</span>
+        <span><b style="background:#fbbf24"></b>${porConfirmar.length} por confirmar</span>
+        <span><b style="background:#94a3b8"></b>${visitas} visitas</span>
+        <span><b style="background:rgba(255,255,255,.15)"></b>${pendientes} pendientes</span>
+        ${padron ? `<span><b style="background:#16a34a"></b>${padron} ya en el padrón</span>` : ''}
+      </div>
+    </div>` : `<div class="dev-module"><div class="dev-title">Aún no hay ruta cargada</div><p>Usa los tres puntos de arriba, "Cargar ruta del día", para subir el Excel.</p></div>`}`;
+
+  cont.querySelector('#ami-metas-btn').onclick = abrirMetas;
+  cont.querySelectorAll('[data-accion]').forEach(f => f.onclick = () => {
+    const a = f.dataset.accion;
+    if (a === 'confirmar') abrirConfirmar();
+    else if (a === 'yc' || a === 'mu') abrirRevision(a);
+    else if (a === 'arrastradas') irAOrdenes('pendientes');
+  });
+  cont.querySelectorAll('.ami-condo-abrir').forEach(el => el.onclick = async () => {
+    const mod = await import('./ami_condominio.js');
+    mod.abrirVistaCondominio({
+      key: el.dataset.key, session: session_, parejas: parejasActivas_,
+      obtener: () => condominios_,
+      alCerrar: async ({ eliminado } = {}) => {
+        if (eliminado) await cargarOrdenes();
+        if (activeTab_ === 'panel') setTab('panel');
+      },
+    });
+  });
 }
 
-// ── Órdenes (lista) ───────────────────────────────
-function renderOrdenes() {
-  const buscador = esAdmin_ ? `
-    <div style="margin-bottom:12px">
-      <div class="buscar-wrap" style="margin-bottom:4px">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14" style="color:var(--text-4);flex-shrink:0"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-        <input class="buscar-input" id="ami-buscar-hist" type="text" inputmode="numeric" placeholder="Buscar NC (órdenes actuales e historial)…"/>
+// ── Resumen (técnico) ─────────────────────────────
+function renderResumenTec(cont) {
+  if (!pareja_) {
+    cont.innerHTML = `<div class="dev-module"><div class="dev-title">Sin pareja asignada</div><p>Pide que te asignen a una pareja de AMI.</p></div>`;
+    return;
+  }
+  const hoy = claveDiaAMI(firebase.firestore.Timestamp.now());
+  const meta = Number(metas_[pareja_] || 0);
+  const n = hechasHoyPorPareja(pareja_);
+  const pendientes = ordenes_.filter(o => !o.estadoCampo).length;
+  const arrastradas = ordenes_.filter(o => esResiduo(o) && !o.estadoCampo).length;
+  const visitasHoy = ordenes_.filter(o => o.estadoCampo === 'visita' && claveDiaAMI(o.fechaVisita) === hoy).length;
+  const hoyLista = [...ordenes_, ...condominios_]
+    .filter(o => (realizada(o) && claveDiaAMI(o.fechaHecha) === hoy) || (o.estadoCampo === 'visita' && claveDiaAMI(o.fechaVisita) === hoy))
+    .sort((a, b) => ((b.fechaHecha || b.fechaVisita)?.seconds || 0) - ((a.fechaHecha || a.fechaVisita)?.seconds || 0));
+
+  cont.innerHTML = `
+    <div class="ds-pcard am" style="margin-bottom:14px">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start">
+        <div class="ds-pcard-lbl">Meta del día</div>
+        <div class="ds-pcard-badge">${escA(pareja_)}</div>
       </div>
-      <div style="font-size:11px;color:var(--text-4)">Escribe un NC para ver qué se hizo. Deja vacío para ver las órdenes de la ruta.</div>
+      <div style="font-size:38px;font-weight:500;letter-spacing:-.02em;line-height:1;color:#fff;margin-top:6px">${n}<span style="font-size:18px;color:rgba(255,255,255,.7)"> / ${meta || '—'}</span></div>
+      <div class="ds-bar on-grad" style="margin-top:14px"><i style="width:${meta ? Math.min(100, Math.round(n / meta * 100)) : 0}%;background:#fff"></i></div>
+      <div style="font-size:12px;color:rgba(255,255,255,.85);margin-top:9px">${meta ? (n >= meta ? 'Meta alcanzada' : `Faltan ${meta - n} para la meta`) : 'Sin meta definida · cambios de hoy'}</div>
     </div>
-    <div id="ami-hist-resultados"></div>` : '';
 
-  const listaOrdenes = () => {
-    if (!ordenes_.length) {
-      return `<div class="dev-module">
-        <div class="dev-title">Sin órdenes por ahora</div>
-        <p>El listado de órdenes AMI se cargará más adelante. Cada orden se identificará por su NC (estos medidores no traen WO).</p>
-      </div>`;
-    }
-    const residuos = ordenes_.filter(esResiduo);
-    // "Hechas, por confirmar": marcadas 'hecha' por el técnico, aún no aprobadas
-    const porConfirmar = ordenes_.filter(o => o.estadoCampo === 'hecha');
-    const resto = ordenes_.filter(o => !esResiduo(o) && o.estadoCampo !== 'hecha');
+    <button class="btn-action marca" id="ami-abrir-mapa" style="margin-bottom:14px">${svgA(ICO_A.mapa, 16)} Abrir el mapa</button>
 
-    const tarjeta = (o) => {
-      const dias = diasArrastrada(o);
-      const residuo = esResiduo(o);
-      return `
-        <div class="orden-card stacked" style="border-left:3px solid ${o._yaCambiada ? '#16a34a' : residuo ? '#f59e0b' : ACCENT}">
-          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-            <div class="orden-wo" style="color:${ACCENT}">NC ${o.nc || '—'}</div>
-            ${o.cliente ? `<div class="orden-cliente" style="flex:1;min-width:120px">${o.cliente}</div>` : '<div style="flex:1"></div>'}
-            ${o._yaCambiada ? `<span class="estado-badge ok" style="background:rgba(22,163,74,.15);border-color:rgba(22,163,74,.4);color:#16a34a">Ya cambiada</span>` : ''}
-            ${residuo && !o._yaCambiada ? `<span class="estado-badge warn">Arrastrada &middot; ${dias} d&iacute;a${dias>1?'s':''}</span>` : ''}
-            <div class="estado-badge ${o.estadoCampo === 'hecha' || o.estadoCampo === 'aprobada' ? 'ok' : 'muted'}">${o.estadoCampo || 'pendiente'}</div>
-          </div>
-          ${o.direccion ? `<div class="orden-dir" style="margin-top:6px">${o.direccion}</div>` : ''}
-          ${esAdmin_ && puedeDevolverse(o) ? `<div><button class="ami-devolver" data-id="${o.id}" style="margin-top:8px;padding:8px 12px;border-radius:10px;border:1px solid rgba(251,191,36,.35);background:rgba(251,191,36,.08);color:#fbbf24;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">Devolver a pendiente</button></div>` : ''}
-        </div>`;
-    };
+    <div class="ds-mini" style="margin-bottom:20px">
+      <div class="ds-m" data-ir="pendientes" style="cursor:pointer"><div class="ds-num-md">${pendientes}</div><div class="ds-lbl-sm" style="margin-top:6px">Pendientes</div></div>
+      <div class="ds-m" data-ir="pendientes" style="cursor:pointer"><div class="ds-num-md" style="color:${arrastradas ? '#f59e0b' : 'var(--text-3)'}">${arrastradas}</div><div class="ds-lbl-sm" style="margin-top:6px">Arrastradas</div></div>
+      <div class="ds-m"><div class="ds-num-md" style="color:#fbbf24">${visitasHoy}</div><div class="ds-lbl-sm" style="margin-top:6px">Visitas hoy</div></div>
+    </div>
 
-    // Tarjeta especial para "por confirmar": incluye botón Confirmar (admin)
-    const tarjetaConfirmar = (o) => `
-      <div class="orden-card stacked" style="border-left:3px solid #22c55e">
-        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-          <div class="orden-wo" style="color:${ACCENT}">NC ${o.nc || '—'}</div>
-          ${o.cliente ? `<div class="orden-cliente" style="flex:1;min-width:120px">${o.cliente}</div>` : '<div style="flex:1"></div>'}
-          ${o.pareja ? `<span class="estado-badge muted">${o.pareja}</span>` : ''}
-          <span class="estado-badge ok">Realizada</span>
-        </div>
-        ${o.hechaPor ? `<div style="font-size:11px;color:var(--text-4);margin-top:4px">Marcó: ${o.hechaPor}</div>` : ''}
-        <div style="display:flex;gap:8px">
-          <button class="ami-confirmar-una" data-id="${o.id}" style="flex:1;margin-top:8px;padding:8px;border-radius:10px;border:1px solid rgba(34,197,94,.4);background:rgba(34,197,94,.12);color:#22c55e;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">Confirmar</button>
-          <button class="ami-devolver" data-id="${o.id}" style="margin-top:8px;padding:8px 12px;border-radius:10px;border:1px solid rgba(251,191,36,.35);background:rgba(251,191,36,.08);color:#fbbf24;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">Devolver a pendiente</button>
-        </div>
-      </div>`;
+    <div class="ds-sec">Hoy</div>
+    ${hoyLista.length ? `<div class="flex-col gap-8">${hoyLista.map(o => tarjetaAmi(o, { estado: true })).join('')}</div>`
+      : `<div class="ds-card" style="text-align:center;padding:22px 16px;color:var(--text-3);font-size:13px">Aún no hay cambios ni visitas hoy.</div>`}`;
+  cont.querySelector('#ami-abrir-mapa').onclick = () => window.__router.navigateTo('ami_mapa');
+  cont.querySelectorAll('[data-ir]').forEach(m => m.onclick = () => irAOrdenes(m.dataset.ir));
+}
 
-    const seccion = (titulo, arr, color) => arr.length ? `
-      <div style="display:flex;align-items:center;gap:8px;margin:14px 0 8px">
-        <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:${color}">${titulo}</div>
-        <div style="flex:1;height:1px;background:var(--border)"></div>
-        <div style="font-size:11px;color:var(--text-4)">${arr.length}</div>
-      </div>
-      <div style="display:flex;flex-direction:column;gap:8px">${arr.map(tarjeta).join('')}</div>` : '';
+// ── Órdenes ───────────────────────────────────────
+function gruposAmi(lista) {
+  const reciente = arr => arr.sort((a, b) => (b.fechaHecha?.seconds || 0) - (a.fechaHecha?.seconds || 0));
+  const g = [{ id: 'pendientes', t: 'Pendientes',
+    arr: lista.filter(o => !o.estadoCampo && !o._yaCambiada).sort((a, b) => diasArrastrada(b) - diasArrastrada(a)) }];
+  if (esAdmin_) {
+    g.push({ id: 'porconfirmar', t: 'Por confirmar', arr: reciente(lista.filter(o => o.estadoCampo === 'hecha')) });
+    g.push({ id: 'confirmadas',  t: 'Confirmadas',   arr: reciente(lista.filter(o => o.estadoCampo === 'aprobada')) });
+  } else {
+    g.push({ id: 'hechas', t: 'Hechas', arr: reciente(lista.filter(realizada)) });
+  }
+  g.push({ id: 'visitas', t: 'Visitas', arr: lista.filter(o => o.estadoCampo === 'visita') });
+  if (esAdmin_) g.push({ id: 'padron', t: 'En el padrón', arr: lista.filter(o => o._yaCambiada && !o.estadoCampo) });
+  return g;
+}
 
-    // Sección "por confirmar" agrupada por pareja, con botón de confirmar en lote
-    let seccionPorConfirmar = '';
-    if (esAdmin_ && porConfirmar.length) {
-      const porPareja = {};
-      porConfirmar.forEach(o => { const p = o.pareja || 'Sin pareja'; (porPareja[p] = porPareja[p] || []).push(o); });
-      seccionPorConfirmar = `
-        <div style="display:flex;align-items:center;gap:8px;margin:14px 0 8px">
-          <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:#22c55e">Hechas, por confirmar</div>
-          <div style="flex:1;height:1px;background:var(--border)"></div>
-          <div style="font-size:11px;color:var(--text-4)">${porConfirmar.length}</div>
-        </div>`;
-      Object.keys(porPareja).sort().forEach(p => {
-        const arr = porPareja[p];
-        seccionPorConfirmar += `
-          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin:8px 0 6px">
-            <div style="font-size:12px;font-weight:700;color:var(--text-3)">${p} · ${arr.length}</div>
-            <button class="ami-confirmar-pareja" data-pareja="${p}" style="padding:6px 12px;border-radius:8px;border:1px solid rgba(34,197,94,.4);background:rgba(34,197,94,.12);color:#22c55e;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit">Confirmar todas</button>
-          </div>
-          <div style="display:flex;flex-direction:column;gap:8px">${arr.map(tarjetaConfirmar).join('')}</div>`;
-      });
-    }
+function renderOrdenes(cont) {
+  let lista = ordenes_;
+  if (esAdmin_ && parejaF_ !== 'todas') lista = lista.filter(o => parejaF_ === 'sin' ? !o.pareja : o.pareja === parejaF_);
+  const grupos = gruposAmi(lista);
+  if (!grupos.some(g => g.id === filtroOrd_)) filtroOrd_ = 'pendientes';
+  const grupo = grupos.find(g => g.id === filtroOrd_);
+  const q = busq_.trim().toLowerCase();
+  const mostrar = q
+    ? [...ordenes_, ...condominios_].filter(o => [o.nc, o.cliente, o.medidor, o.direccion].some(v => v && String(v).toLowerCase().includes(q)))
+    : grupo.arr;
+  const vis = mostrar.slice(0, limite_);
+  const parejasL = [...new Set(ordenes_.map(o => o.pareja).filter(Boolean))].sort((a, b) => (parseInt(String(a).replace(/\D/g,''),10)||0) - (parseInt(String(b).replace(/\D/g,''),10)||0));
 
-    return seccionPorConfirmar
-         + seccion('Arrastradas (rutas anteriores)', residuos, '#f59e0b')
-         + seccion('Ruta actual', resto, ACCENT);
+  cont.innerHTML = `
+    <div class="buscar-wrap" style="margin-bottom:12px">
+      ${svgA(ICO_A.buscar, 14, 'style="color:var(--text-4);flex-shrink:0"')}
+      <input class="buscar-input" id="ami-buscar" placeholder="Buscar NC, cliente o medidor…" autocomplete="off" spellcheck="false" value="${escA(busq_)}"/>
+    </div>
+    ${!q && esAdmin_ && parejasL.length ? `
+    <div class="filter-row" style="margin-bottom:8px">
+      ${['todas', ...parejasL, 'sin'].map(p => `<div class="filter-chip ${parejaF_ === p ? 'active' : ''}" data-pareja="${escA(p)}">${p === 'todas' ? 'Todas las parejas' : p === 'sin' ? 'Sin asignar' : escA(p)}</div>`).join('')}
+    </div>` : ''}
+    ${!q ? `
+    <div class="cm-tabs-est">
+      ${grupos.map(g => `<div class="cm-est ${g.id === filtroOrd_ ? 'active' : ''} ${g.arr.length ? '' : 'vacio'}" data-est="${g.id}">${g.t}<span>${g.arr.length}</span></div>`).join('')}
+    </div>` : `<div style="font-size:12px;color:var(--text-3);margin:2px 2px 10px">${mostrar.length} resultado${mostrar.length !== 1 ? 's' : ''} en la ruta y condominios</div>`}
+    ${!q && esAdmin_ && filtroOrd_ === 'porconfirmar' && grupo.arr.length ? `
+    <button class="btn-action marca" id="ami-conf-btn" style="margin-bottom:12px">${svgA(ICO_A.check, 16)} Confirmar por día o todas</button>` : ''}
+    ${vis.length ? `<div class="crc-grid">${vis.map(o => tarjetaAmi(o, { estado: !!q || ['hechas', 'confirmadas'].includes(filtroOrd_) })).join('')}</div>
+      ${mostrar.length > vis.length ? `<button class="cm-btn" id="ami-ver-mas" style="width:100%;height:44px;margin-top:10px">Ver ${Math.min(40, mostrar.length - vis.length)} más (${mostrar.length - vis.length} restantes)</button>` : ''}`
+      : `<div class="ds-card" style="text-align:center;padding:24px 16px;color:var(--text-3);font-size:13px">${q ? 'Nada coincide en la ruta actual.' : ordenes_.length ? `No hay órdenes en "${grupo.t}".` : 'Aún no hay ruta cargada.'}</div>`}
+    <div id="ami-hist-resultados"></div>`;
+
+  const inp = cont.querySelector('#ami-buscar');
+  let tm = null;
+  inp.oninput = () => {
+    clearTimeout(tm);
+    tm = setTimeout(() => {
+      busq_ = inp.value; limite_ = 40;
+      const pos = inp.selectionStart;
+      renderOrdenes(cont);
+      const n = cont.querySelector('#ami-buscar');
+      if (n) { n.focus(); try { n.setSelectionRange(pos, pos); } catch {} }
+    }, 250);
   };
+  cont.querySelectorAll('[data-pareja]').forEach(c => c.onclick = () => { parejaF_ = c.dataset.pareja; limite_ = 40; renderOrdenes(cont); });
+  cont.querySelectorAll('[data-est]').forEach(c => c.onclick = () => { filtroOrd_ = c.dataset.est; limite_ = 40; renderOrdenes(cont); });
+  cont.querySelector('#ami-ver-mas')?.addEventListener('click', () => { limite_ += 40; renderOrdenes(cont); });
+  cont.querySelector('#ami-conf-btn')?.addEventListener('click', abrirConfirmar);
+  engancharTarjetasAmi(cont, () => renderOrdenes(cont));
+  // Historial: solo el admin y cuando escribe un NC completo (consulta filtrada)
+  if (esAdmin_ && /^\d{6,}$/.test(busq_.trim())) buscarHistorial(busq_.trim());
+}
 
-  return buscador + `<div id="ami-lista-ordenes">${listaOrdenes()}</div>`;
+function tarjetaAmi(o, { estado = false } = {}) {
+  const dias = diasArrastrada(o);
+  const arrastrada = esResiduo(o) && !o.estadoCampo;
+  const est = o.estadoCampo === 'aprobada' ? ['ok', 'Confirmada']
+    : o.estadoCampo === 'hecha' ? (esAdmin_ ? ['warn', 'Por confirmar'] : ['ok', 'Hecha'])
+    : o.estadoCampo === 'visita' ? ['warn', 'Visita']
+    : o.estadoCampo === 'ya_cambiado' ? ['orange', 'Ya cambiado']
+    : o.estadoCampo === 'mal_ubicado' ? ['violet', 'Mal ubicado']
+    : ['muted', 'Pendiente'];
+  const fecha = o.fechaHecha || o.fechaVisita;
+  const meta = [
+    realizada(o) && o.hechaPor ? escA(o.hechaPor) : '',
+    o.estadoCampo === 'visita' && o.motivoVisita ? escA(o.motivoVisita) : '',
+    (realizada(o) || o.estadoCampo === 'visita') && fecha ? fmtFA(fecha) : '',
+    esAdmin_ ? (o.pareja ? escA(o.pareja) : '<span style="color:#fbbf24">Sin asignar</span>') : '',
+  ].filter(Boolean).join(' · ');
+  return `
+    <div class="cm-ord" style="cursor:default${arrastrada ? ';box-shadow:inset 3px 0 0 #f59e0b, var(--sh-card)' : ''}">
+      <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+        <span class="cm-wo">NC ${escA(o.nc || '—')}</span>
+        ${arrastrada ? `<span class="cm-pill warn">Arrastrada · ${dias} día${dias > 1 ? 's' : ''}</span>` : ''}
+        ${o.tipoSitio === 'condominio' ? `<span class="cm-pill violet">${escA(o.edificio || 'Condominio')}</span>` : ''}
+        ${o._yaCambiada ? '<span class="cm-pill ok">En el padrón</span>' : ''}
+        ${estado ? `<span class="cm-pill ${est[0]}">${est[1]}</span>` : ''}
+      </div>
+      ${o.cliente ? `<div class="cm-cli">${escA(o.cliente)}</div>` : ''}
+      ${o.tipoSitio === 'condominio' ? `<div class="cm-cli">${escA([o.nivel, o.etiqueta, o.medidor ? 'Medidor ' + o.medidor : ''].filter(Boolean).join(' · '))}</div>` : ''}
+      ${o.direccion ? `<div class="cm-meta">${escA(o.direccion)}</div>` : ''}
+      ${meta ? `<div class="cm-meta">${meta}</div>` : ''}
+      ${esAdmin_ && (o.estadoCampo === 'hecha' || puedeDevolverse(o)) ? `
+      <div class="cm-ord-acc">
+        ${o.estadoCampo === 'hecha' ? `<button class="cm-btn ok" data-confirmar="${o.id}">${svgA(ICO_A.check, 14)} Confirmar</button>` : ''}
+        ${puedeDevolverse(o) ? `<button class="cm-btn" data-devolver="${o.id}" style="${o.estadoCampo === 'hecha' ? '' : 'flex:1'}">Devolver a pendiente</button>` : ''}
+      </div>` : ''}
+    </div>`;
+}
+
+function engancharTarjetasAmi(cont, repintar) {
+  cont.querySelectorAll('[data-confirmar]').forEach(b => b.onclick = () => confirmarOrdenes([b.dataset.confirmar]));
+  cont.querySelectorAll('[data-devolver]').forEach(b => b.onclick = async () => {
+    const o = [...ordenes_, ...condominios_].find(x => x.id === b.dataset.devolver);
+    if (o && await devolverAPendiente(o, session_)) repintar();
+  });
 }
 
 // Confirmar (aprobar) órdenes hechas — una o varias en lote. Solo admin.
-async function confirmarOrdenes(ids, etiquetaPareja) {
-  if (!ids || !ids.length) { toast('No hay órdenes por confirmar', 'warn'); return; }
+async function confirmarOrdenes(ids, etiqueta) {
+  if (!ids || !ids.length) { toast('No hay órdenes por confirmar', 'warn'); return false; }
   const msg = ids.length === 1
     ? '¿Confirmar esta orden como aprobada?'
-    : `¿Confirmar ${ids.length} órdenes${etiquetaPareja ? ' de ' + etiquetaPareja : ''}?`;
-  if (!confirm(msg)) return;
+    : `¿Confirmar ${ids.length} órdenes${etiqueta ? ' ' + etiqueta : ''}?`;
+  if (!confirm(msg)) return false;
   try {
     const ahora = firebase.firestore.Timestamp.now();
     for (let i = 0; i < ids.length; i += 400) {
@@ -679,127 +707,97 @@ async function confirmarOrdenes(ids, etiquetaPareja) {
       });
       await batch.commit();
     }
-    // Actualizar en memoria
-    ids.forEach(id => { const o = ordenes_.find(x => x.id === id); if (o) o.estadoCampo = 'aprobada'; });
+    ids.forEach(id => { const o = [...ordenes_, ...condominios_].find(x => x.id === id); if (o) { o.estadoCampo = 'aprobada'; o.aprobadoPor = session_.displayName; } });
     toast(ids.length === 1 ? 'Orden confirmada' : `${ids.length} órdenes confirmadas`, 'ok');
-    setTab('ordenes');   // repintar
+    refrescar();
     window.dispatchEvent(new CustomEvent('ami:updated'));
+    return true;
   } catch (err) {
     toast('Error al confirmar: ' + err.message, 'error');
+    return false;
   }
 }
 
-// Busca en el historial (ami_historial) por NC y pinta los resultados.
+// ── Confirmar por día o todas ──
+let confGruposAmi_ = [];
+function abrirConfirmar() {
+  pintarConfirmar();
+  container_.querySelector('#ami-sheet-confirmar')?.classList.add('open');
+}
+function pintarConfirmar() {
+  const body = container_.querySelector('#ami-sheet-confirmar-body');
+  if (!body) return;
+  const pareja = parejaF_ !== 'todas' && parejaF_ !== 'sin' ? parejaF_ : null;
+  const lista = ordenes_.filter(o => o.estadoCampo === 'hecha' && (!pareja || o.pareja === pareja))
+    .sort((a, b) => (b.fechaHecha?.seconds || 0) - (a.fechaHecha?.seconds || 0));
+  const porDia = {};
+  lista.forEach(o => { const k = claveDiaAMI(o.fechaHecha) || 'sin-fecha'; (porDia[k] = porDia[k] || []).push(o); });
+  const hoy = claveDiaAMI(new Date()), ayerD = new Date(); ayerD.setDate(ayerD.getDate() - 1);
+  const ayer = claveDiaAMI(ayerD);
+  const etiqueta = k => {
+    if (k === 'sin-fecha') return 'Sin fecha';
+    const [y, m, d] = k.split('-').map(Number);
+    const t = new Date(y, m - 1, d).toLocaleDateString('es-SV', { weekday: 'long', day: 'numeric', month: 'short' });
+    return (k === hoy ? 'Hoy · ' : k === ayer ? 'Ayer · ' : '') + t.charAt(0).toUpperCase() + t.slice(1);
+  };
+  confGruposAmi_ = Object.keys(porDia).sort().reverse().map(k => ({ fecha: etiqueta(k), ordenes: porDia[k] }));
+  container_.querySelector('#ami-sheet-confirmar-title').textContent = 'Por confirmar' + (pareja ? ' · ' + pareja : '');
+
+  body.innerHTML = lista.length ? `
+    <div style="font-size:12.5px;color:var(--text-3);margin-bottom:12px">${lista.length} realizada${lista.length > 1 ? 's' : ''} esperando confirmación${pareja ? '' : ' en todas las parejas'}.</div>
+    <button class="btn-action marca" style="margin-bottom:16px" data-lote="-1">${svgA(ICO_A.check, 16)} Confirmar todas (${lista.length})</button>
+    <div class="flex-col" style="gap:16px">
+      ${confGruposAmi_.map((g, i) => `
+        <div>
+          <div class="cm-dia">
+            <div style="flex:1;min-width:0"><div class="cm-dia-t">${g.fecha}</div><div class="cm-dia-s">${g.ordenes.length} ${g.ordenes.length > 1 ? 'órdenes' : 'orden'}</div></div>
+            <button class="cm-btn ok" data-lote="${i}">${svgA(ICO_A.check, 14)} Confirmar día</button>
+          </div>
+          <div class="flex-col gap-6">
+            ${g.ordenes.map(o => `
+              <div class="cm-verif">
+                <div style="flex:1;min-width:0">
+                  <div class="cm-wo" style="font-size:13.5px">NC ${escA(o.nc || '—')}</div>
+                  <div class="cm-cli">${escA(o.cliente || '—')}${!pareja && o.pareja ? ' · ' + escA(o.pareja) : ''}</div>
+                  <div class="cm-meta">${escA(o.hechaPor || '—')}</div>
+                </div>
+                <button class="cm-btn ok" data-uno="${o.id}">${svgA(ICO_A.check, 14)}</button>
+              </div>`).join('')}
+          </div>
+        </div>`).join('')}
+    </div>` : `
+    <div style="text-align:center;padding:26px 10px">
+      <div class="hm-ic am" style="margin:0 auto 12px">${svgA(ICO_A.check, 20)}</div>
+      <div style="font-size:15px;font-weight:600">Nada por confirmar</div>
+      <div style="font-size:12.5px;color:var(--text-3);margin-top:4px">Todas las realizadas ya están confirmadas.</div>
+    </div>`;
+  body.querySelectorAll('[data-lote]').forEach(b => b.onclick = () => {
+    const i = parseInt(b.dataset.lote, 10);
+    const arr = i === -1 ? confGruposAmi_.flatMap(g => g.ordenes) : confGruposAmi_[i].ordenes;
+    const etq = (i === -1 ? '' : 'del ' + confGruposAmi_[i].fecha.replace(/^(Hoy|Ayer) · /, '').toLowerCase()) + (pareja ? ' de ' + pareja : '');
+    confirmarOrdenes(arr.map(o => o.id), etq);
+  });
+  body.querySelectorAll('[data-uno]').forEach(b => b.onclick = () => confirmarOrdenes([b.dataset.uno]));
+}
+
+// Historial por NC (ami_historial, consulta filtrada por NC exacto)
 async function buscarHistorial(nc) {
   const cont = container_.querySelector('#ami-hist-resultados');
-  const lista = container_.querySelector('#ami-lista-ordenes');
   if (!cont) return;
-  nc = String(nc || '').trim();
-
-  if (!nc) {
-    cont.innerHTML = '';
-    if (lista) lista.style.display = '';
-    return;
-  }
-  if (lista) lista.style.display = 'none';
-  cont.innerHTML = `<div style="text-align:center;padding:20px;color:var(--text-4);font-size:12px">Buscando…</div>`;
-
-  const fmt = (ts) => { const d = ts?.toDate ? ts.toDate() : (ts ? new Date(ts) : null); return d ? d.toLocaleString('es-SV', {day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}) : ''; };
-  const fila = (etq, val) => val ? `<div style="display:flex;justify-content:space-between;gap:12px;font-size:12px;margin-bottom:3px"><span style="color:var(--text-4)">${etq}</span><span style="color:var(--text-2);text-align:right">${val}</span></div>` : '';
-  const estadoTxt = (o) => o.estadoCampo === 'aprobada' ? 'Aprobada'
-    : o.estadoCampo === 'hecha' ? 'Realizada'
-    : o.estadoCampo === 'visita' ? 'Visita'
-    : o.estadoCampo === 'ya_cambiado' ? 'Ya cambiado'
-    : o.estadoCampo === 'mal_ubicado' ? 'Mal ubicado'
-    : 'Pendiente';
-
-  let html = '';
-
-  // 1) Órdenes ACTUALES con ese NC (búsqueda parcial por si escribe de más/menos)
-  try {
-    const snapO = await db.collection(COLECCION).get();
-    const actuales = snapO.docs.map(d => ({ id: d.id, ...d.data() }))
-      .filter(o => String(o.nc ?? '').includes(nc));
-    busquedaActuales_ = actuales;
-    if (actuales.length) {
-      html += `
-        <div style="display:flex;align-items:center;gap:8px;margin:4px 0 10px">
-          <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:${ACCENT}">Órdenes actuales</div>
-          <div style="flex:1;height:1px;background:var(--border)"></div>
-          <div style="font-size:11px;color:var(--text-4)">${actuales.length}</div>
-        </div>
-        <div style="display:flex;flex-direction:column;gap:8px">
-          ${actuales.map(o => {
-            const cuadrilla = Array.isArray(o.parejaDelDia) && o.parejaDelDia.length ? o.parejaDelDia.join(', ') : '';
-            const hecha = o.estadoCampo === 'hecha';
-            return `
-            <div class="orden-card stacked" style="border-left:3px solid ${o.estadoCampo === 'aprobada' || o.estadoCampo === 'hecha' ? '#22c55e' : ACCENT}">
-              <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:4px">
-                <div class="orden-wo" style="color:${ACCENT}">NC ${o.nc || '—'}</div>
-                <div style="flex:1"></div>
-                <span class="estado-badge ${o.estadoCampo === 'aprobada' || o.estadoCampo === 'hecha' ? 'ok' : 'muted'}">${estadoTxt(o)}</span>
-              </div>
-              <div style="background:var(--glass);border-radius:8px;padding:8px 10px">
-                ${fila('Cliente', o.cliente)}
-                ${fila('Medidor', o.medidor)}
-                ${fila('Pareja', o.pareja)}
-                ${fila('Marcó', o.hechaPor)}
-                ${cuadrilla ? fila('Cuadrilla', cuadrilla) : ''}
-                ${fila('Cuándo', fmt(o.fechaHecha))}
-                ${o.estadoCampo === 'aprobada' ? fila('Confirmó', `${o.aprobadoPor || ''}${o.fechaAprobacion ? ' · ' + fmt(o.fechaAprobacion) : ''}`) : ''}
-              </div>
-              ${o.motivoDevolucion || o.devueltaPor ? `<div style="font-size:11px;color:#fbbf24;margin-top:6px">Devuelta por ${escapeHtml(o.devueltaPor || '')}${o.motivoDevolucion ? ': ' + escapeHtml(o.motivoDevolucion) : ''}</div>` : ''}
-              <div style="display:flex;gap:8px">
-                ${hecha ? `<button class="ami-buscar-confirmar" data-id="${o.id}" style="flex:1;margin-top:8px;padding:8px;border-radius:10px;border:1px solid rgba(34,197,94,.4);background:rgba(34,197,94,.12);color:#22c55e;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">Confirmar</button>` : ''}
-                ${esAdmin_ && puedeDevolverse(o) ? `<button class="ami-devolver" data-id="${o.id}" style="margin-top:8px;padding:8px 12px;border-radius:10px;border:1px solid rgba(251,191,36,.35);background:rgba(251,191,36,.08);color:#fbbf24;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">Devolver a pendiente</button>` : ''}
-              </div>
-            </div>`;
-          }).join('')}
-        </div>`;
-    }
-  } catch (e) { /* seguimos con historial */ }
-
-  // 2) Historial (trabajos hechos antes)
   try {
     const snapH = await db.collection('ami_historial').where('nc', '==', nc).get();
-    if (!snapH.empty) {
-      const regs = snapH.docs.map(d => d.data()).sort((a,b) => String(b.fecha||'').localeCompare(String(a.fecha||'')));
-      html += `
-        <div style="display:flex;align-items:center;gap:8px;margin:14px 0 10px">
-          <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:#16a34a">Historial</div>
-          <div style="flex:1;height:1px;background:var(--border)"></div>
-          <div style="font-size:11px;color:var(--text-4)">${regs.length}</div>
-        </div>
-        <div style="display:flex;flex-direction:column;gap:8px">
-          ${regs.map(r => `
-            <div class="orden-card stacked" style="border-left:3px solid #16a34a">
-              <div style="background:var(--glass);border-radius:8px;padding:8px 10px">
-                ${fila('Trabajo', r.trabajo)}
-                ${fila('Medidor nuevo', r.medidorNuevo)}
-                ${fila('Pareja', r.pareja)}
-                ${fila('Fecha', r.fecha)}
-              </div>
-            </div>`).join('')}
-        </div>`;
-    }
-  } catch (e) { /* nada */ }
-
-  cont.innerHTML = html || `<div style="text-align:center;padding:24px;color:var(--text-4);font-size:13px">Sin resultados para NC ${nc}</div>`;
-
-  // Enganchar botones confirmar de los resultados
-  cont.querySelectorAll('.ami-buscar-confirmar').forEach(b => {
-    b.onclick = () => confirmarOrdenes([b.dataset.id]);
-  });
-  cont.querySelectorAll('.ami-devolver').forEach(b => {
-    b.onclick = async () => {
-      const o = busquedaActuales_.find(x => x.id === b.dataset.id);
-      if (o && await devolverAPendiente(o, session_)) {
-        const enLista = ordenes_.find(x => x.id === o.id);
-        if (enLista) Object.assign(enLista, o);
-        buscarHistorial(nc);
-      }
-    };
-  });
+    if (snapH.empty || busq_.trim() !== nc) return;
+    const regs = snapH.docs.map(d => d.data()).sort((a, b) => String(b.fecha || '').localeCompare(String(a.fecha || '')));
+    cont.innerHTML = `
+      <div class="ds-sec" style="margin-top:18px">Historial del NC <span style="color:var(--text-3);font-weight:500">· ${regs.length}</span></div>
+      <div class="flex-col gap-8">
+        ${regs.map(r => `
+          <div class="cm-ord" style="cursor:default;box-shadow:inset 3px 0 0 #16a34a, var(--sh-card)">
+            <div class="cm-wo" style="font-size:13.5px">${escA(r.trabajo || 'Trabajo')}</div>
+            <div class="cm-meta">${[r.medidorNuevo ? 'Medidor nuevo ' + escA(r.medidorNuevo) : '', escA(r.pareja || ''), escA(r.fecha || '')].filter(Boolean).join(' · ')}</div>
+          </div>`).join('')}
+      </div>`;
+  } catch (e) { /* sin historial */ }
 }
 
 // ── Importar ruta diaria (Excel) ──────────────────
