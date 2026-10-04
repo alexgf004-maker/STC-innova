@@ -35,10 +35,53 @@ const PAREJA_COLORS = {
   'Pareja 4': { accent: '#fbbf24', glass: 'rgba(245,158,11,.12)', border: 'rgba(245,158,11,.25)' },
 };
 
+const ICO_CM = {
+  subir:  '<path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>',
+  bajar:  '<path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>',
+  alerta: '<circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>',
+  cal:    '<rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>',
+  check:  '<path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>',
+  pin:    '<path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/>',
+  sync:   '<polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>',
+  lock:   '<rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/>',
+  chev:   '<polyline points="9 18 15 12 9 6"/>',
+  buscar: '<circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>',
+  dots:   '<circle cx="12" cy="5" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="12" cy="19" r="1.4"/>',
+};
+const svgCm = (d, n = 16, extra = '') => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="${n}" height="${n}" ${extra}>${d}</svg>`;
+const esc = v => escapeHtml(v == null ? '' : String(v));
+function accionCm(fn, ico, txt, sub, cls = '') {
+  return `<button class="us-accion ${cls}" onclick="document.getElementById('sheet-cm-acciones').classList.remove('open');window.__cambios.${fn}()">${svgCm(ico, 18)}<span style="flex:1;text-align:left"><span style="display:block">${txt}</span><span class="us-accion-sub">${sub}</span></span></button>`;
+}
+function esDeHoy(ts) {
+  const f = ts?.toDate ? ts.toDate() : null;
+  if (!f) return false;
+  const h = new Date(); h.setHours(0, 0, 0, 0);
+  return f >= h;
+}
+function fechaHoyTxt() {
+  const t = new Date().toLocaleDateString('es-SV', { weekday: 'long', day: 'numeric', month: 'long' });
+  return t.charAt(0).toUpperCase() + t.slice(1);
+}
+// Estado legible de una orden (para las pastillas)
+function estadoOrden(o) {
+  if (o.estadoCampo === 'aprobada')    return { t: 'Confirmada',  c: 'ok' };
+  if (o.estadoCampo === 'hecha')       return { t: role_ === 'tecnico' ? 'Realizada' : 'Por confirmar', c: role_ === 'tecnico' ? 'ok' : 'warn' };
+  if (o.estadoCampo === 'visita')      return { t: 'Visita',      c: 'warn' };
+  if (o.estadoCampo === 'ya_cambiado') return { t: 'Ya cambiado', c: 'orange' };
+  if (o.estadoCampo === 'mal_ubicado') return { t: 'Mal ubicado', c: 'violet' };
+  if (isBlocked(o))                    return { t: 'Bloqueada',   c: 'muted' };
+  return { t: 'Pendiente', c: 'muted' };
+}
+
 let container_, session_, role_, pareja_;
 let ordenes = [], calendario = [];
 let asignaciones_ = {};   // { 'Pareja 1': ['Juan','Pedro'], ... } — solo parejas con técnicos en campo hoy
 let filtroSinActualizar_ = 'todas';
+let filtroOrd_ = 'pendientes';   // pestaña Órdenes: qué grupo se ve
+let parejaFiltro_ = 'todas';     // pestaña Órdenes (admin): qué pareja
+let busqOrd_ = '';               // pestaña Órdenes: texto de búsqueda
+let limiteOrd_ = 40;             // cuántas tarjetas se pintan (el resto con "Ver más")
 let activeTab = 'panel'; // 'panel' | 'ordenes'
 let selectedOrden = null;
 
@@ -49,16 +92,27 @@ export async function init(container, session) {
   role_      = session.role;
   pareja_    = session.asignacionActual?.destino || null;
   activeTab  = role_ === 'tecnico' ? 'resumen' : 'panel';
+  filtroOrd_ = 'pendientes'; parejaFiltro_ = 'todas'; busqOrd_ = ''; limiteOrd_ = 40;
 
   renderShell();
   await Promise.all([loadCalendario(), loadOrdenes(), loadAsignaciones()]);
 
-  // Escuchar actualizaciones desde el mapa
-  window.addEventListener('cambios:updated', () => {
-    invalidateOrdenes();
-    loadOrdenes();
-  });
+  // Escuchar actualizaciones desde el mapa. Se registra UNA sola vez:
+  // antes se sumaba un listener cada vez que se entraba a Cambios y cada
+  // confirmación volvía a leer la colección completa varias veces.
+  if (!escuchandoMapa_) {
+    escuchandoMapa_ = true;
+    window.addEventListener('cambios:updated', () => {
+      invalidateOrdenes();
+      if (!document.getElementById('cambios-content')) return;   // no está en Cambios
+      // Dentro de la pestaña Mapa no se repinta (reiniciaría el mapa);
+      // se recarga al volver a otra pestaña.
+      if (activeTab === 'mapa') { recargarAlSalirMapa_ = true; return; }
+      loadOrdenes();
+    });
+  }
 }
+let escuchandoMapa_ = false, recargarAlSalirMapa_ = false;
 
 // ── Asignaciones activas (qué técnicos andan en qué pareja hoy) ──
 async function loadAsignaciones() {
@@ -319,6 +373,28 @@ function renderShell() {
       </div>
     </div>
 
+    <!-- Sheet acciones del panel -->
+    ${!isTecnico ? `
+    <div class="sheet-backdrop" id="sheet-cm-acciones">
+      <div class="sheet">
+        <div class="sheet-handle"></div>
+        <div class="sheet-title">Acciones de Cambios</div>
+        <div class="sheet-body">
+          <div class="flex-col gap-8">
+            ${accionCm('openImport', ICO_CM.subir, 'Importar órdenes', 'Excel de DELSUR o formato simple')}
+            ${accionCm('openNuevaUrgente', ICO_CM.alerta, 'Nueva orden urgente', 'Una WO a mano', 'danger')}
+            ${accionCm('openUrgentesImport', ICO_CM.subir, 'Órdenes urgentes', 'Varias WO desde Excel', 'danger')}
+            <div class="cm-acc-sep">Calendario de lecturas</div>
+            ${accionCm('openGestionarLecturas', ICO_CM.cal, 'Gestionar calendario', 'Fechas de lectura por MRU')}
+            ${accionCm('openImportLecturas', ICO_CM.subir, 'Importar calendario', 'Excel con MRU y fecha')}
+            <div class="cm-acc-sep">Reportes</div>
+            ${accionCm('descargarHoy', ICO_CM.bajar, 'Reporte de hoy', 'Excel con lo realizado hoy')}
+            ${accionCm('descargarMensual', ICO_CM.bajar, 'Reporte del mes', 'Excel con lo realizado este mes')}
+          </div>
+        </div>
+      </div>
+    </div>` : ''}
+
     <!-- Sheet buscador de órdenes -->
     <div class="sheet-backdrop" id="sheet-buscar">
       <div class="sheet" style="max-height:90vh">
@@ -359,12 +435,13 @@ function renderShell() {
       document.querySelectorAll('.cambios-tab').forEach(t => t.classList.remove('active'));
       tab.classList.add('active');
       activeTab = tab.dataset.tab;
-      renderTab();
+      if (recargarAlSalirMapa_ && activeTab !== 'mapa') { recargarAlSalirMapa_ = false; loadOrdenes(); }
+      else renderTab();
     });
   });
 
   // Cerrar sheets
-  ['sheet-orden', 'sheet-campo', 'sheet-import', 'sheet-lecturas', 'sheet-import-lecturas', 'sheet-buscar', 'sheet-ya-cambiadas', 'sheet-urgente', 'sheet-urgentes-import', 'sheet-mal-ubicadas'].forEach(id => {
+  ['sheet-orden', 'sheet-cm-acciones', 'sheet-campo', 'sheet-import', 'sheet-lecturas', 'sheet-import-lecturas', 'sheet-buscar', 'sheet-ya-cambiadas', 'sheet-urgente', 'sheet-urgentes-import', 'sheet-mal-ubicadas'].forEach(id => {
     const el = document.getElementById(id);
     if (!el) return;
     el.addEventListener('click', e => { if (e.target === el) closeSheet(id); });
@@ -412,7 +489,7 @@ function renderShell() {
   });
   document.getElementById('btn-confirmar-urgente')?.addEventListener('click', confirmarNuevaUrgente);
 
-  window.__cambios = { verOrden, verOrdenDesdeBuscar, marcarHecha, marcarVisita, actualizadaDelsur, aprobar, aprobarYaCambiado, rechazar, revertirYaCambiado, openCampo, openImport, openImportLecturas, openGestionarLecturas, openBuscar, openYaCambiadas, openMalUbicadas, corregirCoordenadas, revertirMalUbicado, openNuevaUrgente, openUrgentesImport, marcarUrgente, eliminarOrden, filtrarSinActualizar, buscarSinActualizar, toggleAcordeon, descargarHoy, descargarMensual, toggleMenuAcciones };
+  window.__cambios = { verOrden, verOrdenDesdeBuscar, marcarHecha, marcarVisita, actualizadaDelsur, aprobar, aprobarYaCambiado, rechazar, revertirYaCambiado, openCampo, openImport, openImportLecturas, openGestionarLecturas, openBuscar, openYaCambiadas, openMalUbicadas, corregirCoordenadas, revertirMalUbicado, openNuevaUrgente, openUrgentesImport, marcarUrgente, eliminarOrden, filtrarSinActualizar, buscarSinActualizar, toggleAcordeon, descargarHoy, descargarMensual, toggleMenuAcciones, irAOrdenes, setFiltroOrd, setParejaOrd, verMasOrd };
 }
 
 // ── Cargar datos ──────────────────────────────────
@@ -510,121 +587,72 @@ function renderResumenTecnico() {
     loadOrdenes();
     return;
   }
-  const miLista   = ordenes.filter(o => o.pareja === pareja_);
-  const hoy       = new Date(); hoy.setHours(0,0,0,0);
-
-  const hechasHoy = miLista.filter(o => {
-    if (o.estadoCampo !== 'hecha' && o.estadoCampo !== 'aprobada') return false;
-    const f = o.fechaHecha?.toDate ? o.fechaHecha.toDate() : null;
-    return f && f >= hoy;
-  });
-  const visitasHoy = miLista.filter(o => {
-    if (o.estadoCampo !== 'visita') return false;
-    const f = o.fechaVisita?.toDate ? o.fechaVisita.toDate() : null;
-    return f && f >= hoy;
-  });
+  const miLista       = ordenes.filter(o => o.pareja === pareja_);
+  const hechasHoy     = miLista.filter(o => (o.estadoCampo === 'hecha' || o.estadoCampo === 'aprobada') && esDeHoy(o.fechaHecha));
+  const visitasHoy    = miLista.filter(o => o.estadoCampo === 'visita' && esDeHoy(o.fechaVisita));
   const pendientes    = miLista.filter(o => !o.estadoCampo && !isBlocked(o));
+  const urgentes      = pendientes.filter(o => o.urgente);
   const bloqueadas    = miLista.filter(o => !o.estadoCampo && isBlocked(o));
   const sinActualizar = miLista.filter(o => (o.estadoCampo === 'hecha' || o.estadoCampo === 'aprobada') && !o.actualizadaDelsur);
   const META_DIARIA   = 15;
-  const total         = miLista.length;
   const pct           = Math.min(100, Math.round((hechasHoy.length / META_DIARIA) * 100));
-  const fechaLabel    = new Date().toLocaleDateString('es-SV', { weekday:'long', day:'numeric', month:'long' });
+  const hoyLista = [...hechasHoy, ...visitasHoy].sort((a, b) =>
+    ((b.fechaHecha || b.fechaVisita)?.seconds || 0) - ((a.fechaHecha || a.fechaVisita)?.seconds || 0));
 
   content.innerHTML = `
-    <div class="flex-col gap-12">
-
-      <div class="panel-header anim-up">
-        <div>
-          <div class="section-title">Mi resumen</div>
-          <div class="section-sub">${pareja_ || 'Cambios'} · ${fechaLabel.charAt(0).toUpperCase() + fechaLabel.slice(1)}</div>
+    <div class="anim-up">
+      <div class="ds-pcard cm" style="margin-bottom:16px">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start">
+          <div class="ds-pcard-lbl">Meta del día</div>
+          <div class="ds-pcard-badge">${esc(pareja_ || 'Cambios')}</div>
         </div>
+        <div style="font-size:38px;font-weight:500;letter-spacing:-.02em;line-height:1;color:#fff;margin-top:6px">${hechasHoy.length}<span style="font-size:18px;color:rgba(255,255,255,.7)"> / ${META_DIARIA}</span></div>
+        <div class="ds-bar on-grad" style="margin-top:14px"><i style="width:${pct}%;background:#fff"></i></div>
+        <div style="font-size:12px;color:rgba(255,255,255,.8);margin-top:9px">${hechasHoy.length >= META_DIARIA ? 'Meta alcanzada' : `Faltan ${META_DIARIA - hechasHoy.length} para la meta`} · ${fechaHoyTxt()}</div>
       </div>
 
-      <div class="progress-card anim-up d1">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-          <div style="font-size:13px;font-weight:700">Meta diaria</div>
-          <div style="font-size:24px;font-weight:800;color:var(--cm-light)">${hechasHoy.length}<span style="font-size:14px;color:var(--text-4);font-weight:500"> / ${META_DIARIA}</span></div>
-        </div>
-        <div class="progress-bar-bg">
-          <div class="progress-bar-fill cm" style="width:${pct}%"></div>
-        </div>
-        <div style="font-size:11px;color:var(--text-4);margin-top:6px">
-          ${hechasHoy.length >= META_DIARIA
-            ? 'Meta alcanzada'
-            : `${META_DIARIA - hechasHoy.length} cambios para llegar a la meta`}
-        </div>
+      <div class="ds-mini" style="margin-bottom:16px">
+        <div class="ds-m"><div class="ds-num-md" style="color:#22c55e">${hechasHoy.length}</div><div class="ds-lbl-sm" style="margin-top:6px">Hechas hoy</div></div>
+        <div class="ds-m"><div class="ds-num-md" style="color:#fbbf24">${visitasHoy.length}</div><div class="ds-lbl-sm" style="margin-top:6px">Visitas hoy</div></div>
+        <div class="ds-m" style="cursor:pointer" onclick="window.__cambios.irAOrdenes('pendientes')"><div class="ds-num-md">${pendientes.length}</div><div class="ds-lbl-sm" style="margin-top:6px">Pendientes</div></div>
       </div>
 
-      <div class="stat-row anim-up d2">
-        <div class="stat-chip cm-accent">
-          <div class="val">${hechasHoy.length}</div>
-          <div class="lbl">Hechas hoy</div>
-        </div>
-        <div class="stat-chip cm-accent">
-          <div class="val">${visitasHoy.length}</div>
-          <div class="lbl">Visitas hoy</div>
-        </div>
-        <div class="stat-chip">
-          <div class="val">${pendientes.length}</div>
-          <div class="lbl">Pendientes</div>
-        </div>
-        <div class="stat-chip ${bloqueadas.length ? 'warn-accent' : ''}">
-          <div class="val">${bloqueadas.length}</div>
-          <div class="lbl">Bloqueadas</div>
-        </div>
-      </div>
-
-      ${hechasHoy.length ? `
-      <div class="section-label anim-up d3">Realizadas hoy</div>
-      <div class="flex-col gap-6 anim-up d3">
-        ${hechasHoy.map(o => '<div class="orden-visita-panel" onclick="window.__cambios.verOrden(\'' + o.id + '\')" style="cursor:pointer"><div class="status-dot" style="background:' + (o.actualizadaDelsur ? '#22c55e' : '#f59e0b') + '"></div><div style="flex:1;min-width:0"><div style="font-size:12px;font-weight:700">WO ' + (o.wo || '—') + '</div><div style="font-size:10px;color:var(--text-3)">' + (o.cliente || '—') + ' · ' + (o.direccion || '') + '</div></div><div style="font-size:10px;font-weight:600;color:' + (o.actualizadaDelsur ? '#22c55e' : '#f59e0b') + ';flex-shrink:0">' + (o.actualizadaDelsur ? '&#10003; Actualizada' : 'Sin actualizar') + '</div></div>').join('')}
+      ${urgentes.length || sinActualizar.length || bloqueadas.length ? `
+      <div class="cm-lista" style="margin-bottom:20px">
+        ${urgentes.length ? filaAtencion('crit', ICO_CM.alerta, `${urgentes.length} urgente${urgentes.length > 1 ? 's' : ''} pendiente${urgentes.length > 1 ? 's' : ''}`, 'Hazlas primero', "window.__cambios.irAOrdenes('pendientes')") : ''}
+        ${sinActualizar.length ? filaAtencion('warn', ICO_CM.sync, `${sinActualizar.length} sin actualizar en DELSUR`, 'Toca para marcarlas', "window.__cambios.irAOrdenes('sinact')") : ''}
+        ${bloqueadas.length ? filaAtencion('muted', ICO_CM.lock, `${bloqueadas.length} bloqueada${bloqueadas.length > 1 ? 's' : ''} por lectura`, 'No se pueden trabajar estos días', "window.__cambios.irAOrdenes('bloqueadas')") : ''}
       </div>` : ''}
 
-      ${visitasHoy.length ? `
-      <div class="section-label anim-up d3">Visitas hoy</div>
-      <div class="flex-col gap-6 anim-up d3">
-        ${visitasHoy.map(o => '<div class="orden-visita-panel" onclick="window.__cambios.verOrden(\'' + o.id + '\')" style="cursor:pointer"><div class="status-dot" style="background:#6b7280"></div><div style="flex:1;min-width:0"><div style="font-size:12px;font-weight:700">WO ' + (o.wo || '—') + '</div><div style="font-size:10px;color:var(--text-3)">' + (o.cliente || '—') + ' · ' + escapeHtml(o.motivoVisita || '') + '</div></div><div style="font-size:10px;font-weight:600;color:#6b7280;flex-shrink:0">Visita</div></div>').join('')}
-      </div>` : ''}
+      <div class="ds-sec">Hoy</div>
+      ${hoyLista.length ? `
+      <div class="flex-col gap-8">
+        ${hoyLista.map(o => tarjetaOrden(o, { compacta: true })).join('')}
+      </div>` : `
+      <div class="ds-card" style="text-align:center;padding:22px 16px;color:var(--text-3);font-size:13px">
+        Aún no hay cambios ni visitas hoy.
+      </div>`}
 
-      ${sinActualizar.length ? `
-      <div class="anim-up d3" id="sin-act-wrap" style="background:rgba(245,158,11,.05);border:1px solid rgba(245,158,11,.2);border-radius:12px;overflow:hidden">
-        <div id="sin-act-head" style="display:flex;align-items:center;gap:10px;padding:11px 13px;cursor:pointer">
-          <div class="status-dot warn" style="flex-shrink:0"></div>
-          <div style="flex:1;font-size:12px;font-weight:700;color:#fbbf24">${sinActualizar.length} sin actualizar en DELSUR</div>
-          <svg id="sin-act-chev" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="14" height="14" style="flex-shrink:0;transition:transform .2s"><polyline points="9 18 15 12 9 6"/></svg>
-        </div>
-        <div id="sin-act-body" style="display:none;padding:0 13px 11px">
-          ${sinActualizar.map(o => '<div class="orden-visita-panel" onclick="window.__cambios.verOrden(\'' + o.id + '\')" style="margin-top:6px;cursor:pointer"><div class="status-dot warn"></div><div><div style="font-size:12px;font-weight:700">WO ' + (o.wo || '—') + '</div><div style="font-size:10px;color:var(--text-3)">' + (o.cliente || '—') + '</div></div></div>').join('')}
-        </div>
-      </div>` : ''}
-
-      ${bloqueadas.length ? `
-      <div class="otc-alert-card warn-soft anim-up d3">
-        <div class="otc-alert-header">${bloqueadas.length} bloqueadas por lectura</div>
-        ${bloqueadas.map(o => '<div class="orden-visita-panel" style="margin-top:6px"><div class="status-dot muted"></div><div><div style="font-size:12px;font-weight:700">WO ' + (o.wo || '—') + '</div><div style="font-size:10px;color:var(--text-4)">' + (o.unidadLectura || '—') + '</div></div></div>').join('')}
-      </div>` : ''}
-
-      ${!total ? `
-      <div class="dev-module anim-up d2">
+      ${!miLista.length ? `
+      <div class="dev-module" style="margin-top:16px">
         <div class="dev-title">Sin órdenes asignadas</div>
-        <p>No tienes órdenes para ${pareja_ || 'hoy'}.</p>
+        <p>No tienes órdenes para ${esc(pareja_ || 'hoy')}.</p>
       </div>` : ''}
-
     </div>
   `;
+}
 
-  // Acordeón de "sin actualizar"
-  const saHead = document.getElementById('sin-act-head');
-  const saBody = document.getElementById('sin-act-body');
-  const saChev = document.getElementById('sin-act-chev');
-  if (saHead && saBody) {
-    saHead.addEventListener('click', () => {
-      const abierto = saBody.style.display === 'block';
-      saBody.style.display = abierto ? 'none' : 'block';
-      if (saChev) saChev.style.transform = abierto ? '' : 'rotate(90deg)';
-    });
-  }
+// Fila de la lista "Para revisar" / avisos
+function filaAtencion(cls, ico, titulo, sub, onclick) {
+  return `
+    <div class="cm-fila" onclick="${onclick}">
+      <div class="cm-fila-ic ${cls}">${svgCm(ico, 17)}</div>
+      <div style="flex:1;min-width:0">
+        <div class="cm-fila-t">${titulo}</div>
+        <div class="cm-fila-s">${sub}</div>
+      </div>
+      ${svgCm(ICO_CM.chev, 16, 'style="color:var(--text-3);flex-shrink:0"')}
+    </div>`;
 }
 
 // ── Mapa dentro de Cambios ────────────────────────
@@ -649,171 +677,97 @@ async function renderMapaTab() {
 // ── PANEL (admin/asistente) ───────────────────────
 function renderPanel() {
   const content = document.getElementById('cambios-content');
+  if (!content) return;
 
-  // Stats globales
-  const todasHechas    = ordenes.filter(o => o.estadoCampo === 'hecha');
-  const todasVisitas   = ordenes.filter(o => o.estadoCampo === 'visita');
-  const todasAprobadas = ordenes.filter(o => o.estadoCampo === 'aprobada');
-  const pendientes     = ordenes.filter(o => !o.estadoCampo);
-  const yaCambiadas    = ordenes.filter(o => o.estadoCampo === 'ya_cambiado');
-  const malUbicadas    = ordenes.filter(o => o.estadoCampo === 'mal_ubicado');
-  const total          = ordenes.length;
-  const pct = total ? Math.round((todasAprobadas.length / total) * 100) : 0;
+  const porConfirmar  = ordenes.filter(o => o.estadoCampo === 'hecha');
+  const visitas       = ordenes.filter(o => o.estadoCampo === 'visita');
+  const aprobadas     = ordenes.filter(o => o.estadoCampo === 'aprobada');
+  const pendientes    = ordenes.filter(o => !o.estadoCampo);
+  const yaCambiadas   = ordenes.filter(o => o.estadoCampo === 'ya_cambiado');
+  const malUbicadas   = ordenes.filter(o => o.estadoCampo === 'mal_ubicado');
+  const sinActualizar = ordenes.filter(o => (o.estadoCampo === 'hecha' || o.estadoCampo === 'aprobada') && !o.actualizadaDelsur);
+  const total         = ordenes.length;
+  const pct           = total ? Math.round((aprobadas.length / total) * 100) : 0;
+  const seg = n => total ? (n / total * 100).toFixed(2) : 0;
 
-  // Fecha de hoy (para el desglose por pareja)
-  const hoy0 = new Date(); hoy0.setHours(0,0,0,0);
-  const fechaHoyLbl = new Date().toLocaleDateString('es-SV', { weekday:'long', day:'numeric', month:'long' });
+  // Hechas hoy por pareja en campo
+  const enCampo = Object.keys(asignaciones_).sort();
+  const hechasHoyDe = p => ordenes.filter(o => o.pareja === p && (o.estadoCampo === 'hecha' || o.estadoCampo === 'aprobada') && esDeHoy(o.fechaHecha)).length;
+  const totalHoy = enCampo.reduce((a, p) => a + hechasHoyDe(p), 0);
+  const metaHoy  = enCampo.length * 15;
+
+  const revisar = [
+    porConfirmar.length  ? filaAtencion('warn',   ICO_CM.check,  `${porConfirmar.length} por confirmar`, 'Realizadas por los técnicos', "window.__cambios.irAOrdenes('porconfirmar')") : '',
+    yaCambiadas.length   ? filaAtencion('orange', ICO_CM.alerta, `${yaCambiadas.length} reportada${yaCambiadas.length > 1 ? 's' : ''} como ya cambiada${yaCambiadas.length > 1 ? 's' : ''}`, '¿Las hicimos nosotros o se revierten?', 'window.__cambios.openYaCambiadas()') : '',
+    malUbicadas.length   ? filaAtencion('violet', ICO_CM.pin,    `${malUbicadas.length} mal ubicada${malUbicadas.length > 1 ? 's' : ''}`, 'Corregir coordenadas', 'window.__cambios.openMalUbicadas()') : '',
+    sinActualizar.length ? filaAtencion('muted',  ICO_CM.sync,   `${sinActualizar.length} sin actualizar en DELSUR`, 'Las marca el técnico', "window.__cambios.irAOrdenes('sinact')") : '',
+  ].join('');
 
   content.innerHTML = `
-    <div class="flex-col gap-12">
-
-      <!-- Header -->
-      <div class="panel-header anim-up">
-        <div>
-          <div class="section-title">Panel Cambios</div>
-          <div class="section-sub">${todasAprobadas.length} confirmadas · ${todasHechas.length} por verificar · ${pendientes.length} pendientes</div>
+    <div class="anim-up">
+      <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:16px">
+        <div style="flex:1;min-width:0">
+          <div style="font-size:24px;font-weight:600;letter-spacing:-.02em;line-height:1.15">Cambios</div>
+          <div style="font-size:12px;color:var(--text-3);margin-top:4px">Cambio de medidores · ${total} órdenes</div>
         </div>
-        <div style="display:flex;gap:6px;align-items:center">
-          <button class="icon-btn" onclick="window.__cambios.openBuscar()" title="Buscar orden">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-          </button>
-          <button class="icon-btn" onclick="window.__cambios.toggleMenuAcciones()" title="Acciones" id="btn-menu-acciones">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
-              <circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/>
-            </svg>
-          </button>
-        </div>
+        <button class="cm-ico-btn" onclick="window.__cambios.openBuscar()" title="Buscar orden">${svgCm(ICO_CM.buscar, 17)}</button>
+        <button class="cm-ico-btn" onclick="window.__cambios.toggleMenuAcciones()" title="Acciones">${svgCm(ICO_CM.dots, 18)}</button>
       </div>
 
-      <!-- Cambios hechos HOY por pareja en campo -->
-      ${(() => {
-        const enCampo = Object.keys(asignaciones_).sort();
-        if (!enCampo.length) return `
-          <div class="anim-up" style="padding:14px 16px;background:var(--glass);border:1px solid var(--border);border-radius:14px">
-            <div style="font-size:12px;font-weight:700;color:var(--text-3)">Sin parejas asignadas hoy</div>
-            <div style="font-size:11px;color:var(--text-4);margin-top:3px">Asigna técnicos a una pareja para ver su avance del día.</div>
-          </div>`;
-        const hechasHoyDe = (p) => ordenes.filter(o => {
-          if (o.pareja !== p) return false;
-          if (o.estadoCampo !== 'hecha' && o.estadoCampo !== 'aprobada') return false;
-          const f = o.fechaHecha?.toDate ? o.fechaHecha.toDate() : null;
-          return f && f >= hoy0;
-        }).length;
-        const totalCampo = enCampo.reduce((a,p)=>a+hechasHoyDe(p),0);
-        return `
-        <div class="anim-up" style="padding:16px;background:linear-gradient(150deg,rgba(45,212,191,.10),rgba(45,212,191,.02));border:1px solid rgba(45,212,191,.28);border-radius:16px">
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+      <div class="ds-pcard cm" style="margin-bottom:22px">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start">
+          <div class="ds-pcard-lbl">Cambios hechos hoy</div>
+          <div class="ds-pcard-badge">${new Date().toLocaleDateString('es-SV', { day: 'numeric', month: 'short' })}</div>
+        </div>
+        <div style="font-size:38px;font-weight:500;letter-spacing:-.02em;line-height:1;color:#fff;margin-top:6px">${totalHoy}${metaHoy ? `<span style="font-size:18px;color:rgba(255,255,255,.7)"> / ${metaHoy}</span>` : ''}</div>
+        <div style="font-size:12px;color:rgba(255,255,255,.8);margin-top:8px">${enCampo.length ? `${enCampo.length} pareja${enCampo.length > 1 ? 's' : ''} en campo · meta 15 por pareja` : 'No hay parejas asignadas a Cambios hoy'}</div>
+        ${enCampo.length ? `
+        <div style="height:1px;background:rgba(255,255,255,.18);margin:14px 0 12px"></div>
+        <div class="flex-col" style="gap:12px">
+          ${enCampo.map(p => {
+            const n = hechasHoyDe(p);
+            return `
             <div>
-              <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--text-3)">Cambios hechos hoy</div>
-              <div style="font-size:10px;color:var(--text-4);margin-top:2px">${fechaHoyLbl.charAt(0).toUpperCase() + fechaHoyLbl.slice(1)}</div>
-            </div>
-            <div style="display:flex;align-items:baseline;gap:5px;background:rgba(45,212,191,.14);border:1px solid rgba(45,212,191,.3);padding:5px 12px;border-radius:20px">
-              <span style="font-size:17px;font-weight:900;color:var(--cm-light)">${totalCampo}</span>
-              <span style="font-size:10px;color:var(--text-4);font-weight:600">total</span>
-            </div>
-          </div>
-          <div class="flex-col gap-6">
-            ${enCampo.map(p => {
-              const c = PAREJA_COLORS[p] || PAREJA_COLORS['Pareja 1'];
-              const n = hechasHoyDe(p);
-              const miembros = (asignaciones_[p] || []).join(' · ');
-              const barra = Math.min(100, Math.round((n / 15) * 100));
-              return `
-              <div style="background:${c.glass};border:1px solid ${c.border};border-radius:12px;padding:10px 12px">
-                <div style="display:flex;align-items:center;gap:10px">
-                  <div style="flex:1;min-width:0">
-                    <div style="font-size:13px;font-weight:800;color:${c.accent}">${p}</div>
-                    <div style="font-size:10px;color:var(--text-4);margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${miembros || 'Sin técnicos'}</div>
-                  </div>
-                  <div style="text-align:right;flex-shrink:0;line-height:1">
-                    <div style="font-size:26px;font-weight:900;color:${c.accent}">${n}</div>
-                    <div style="font-size:9px;color:var(--text-4);font-weight:600">hoy</div>
-                  </div>
-                </div>
-                <div class="progress-bar-bg" style="margin-top:8px;height:4px">
-                  <div class="progress-bar-fill" style="width:${barra}%;background:${c.accent}"></div>
-                </div>
-              </div>`;
-            }).join('')}
-          </div>
-        </div>`;
-      })()}
+              <div style="display:flex;align-items:baseline;gap:8px">
+                <span style="font-size:13px;font-weight:600;color:#fff">${esc(p)}</span>
+                <span style="font-size:11.5px;color:rgba(255,255,255,.7);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc((asignaciones_[p] || []).join(' · '))}</span>
+                <span style="font-size:14px;font-weight:700;color:#fff">${n}<span style="font-size:11px;font-weight:500;color:rgba(255,255,255,.7)"> / 15</span></span>
+              </div>
+              <div class="ds-bar on-grad" style="margin-top:6px;height:5px"><i style="width:${Math.min(100, Math.round(n / 15 * 100))}%;background:#fff"></i></div>
+            </div>`;
+          }).join('')}
+        </div>` : `
+        <div style="margin-top:12px"><span class="ds-pcard-badge" style="cursor:pointer" onclick="window.__router?.navigateTo('usuarios')">Asignar técnicos</span></div>`}
+      </div>
 
-      ${yaCambiadas.length ? `
-      <div onclick="window.__cambios.openYaCambiadas()" style="padding:14px 16px;background:rgba(249,115,22,.1);border:1px solid rgba(249,115,22,.35);border-radius:14px;display:flex;align-items:center;gap:12px;cursor:pointer" class="anim-up">
-        <div style="width:36px;height:36px;flex-shrink:0;background:rgba(249,115,22,.15);border-radius:10px;display:flex;align-items:center;justify-content:center">
-          <svg viewBox="0 0 24 24" fill="none" stroke="#fb923c" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-        </div>
-        <div style="flex:1">
-          <div style="font-size:13px;font-weight:700;color:#fb923c">${yaCambiadas.length} orden${yaCambiadas.length > 1 ? 'es' : ''} reportada${yaCambiadas.length > 1 ? 's' : ''} como ya cambiada${yaCambiadas.length > 1 ? 's' : ''}</div>
-          <div style="font-size:11px;color:var(--text-4);margin-top:2px">Toca para revisar y gestionar</div>
-        </div>
-        <svg viewBox="0 0 24 24" fill="none" stroke="#fb923c" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><polyline points="9 18 15 12 9 6"/></svg>
-      </div>` : ''}
+      <div class="ds-sec">Para revisar</div>
+      <div class="cm-lista" style="margin-bottom:22px">
+        ${revisar || `<div class="cm-fila" style="cursor:default"><div class="cm-fila-ic ok">${svgCm(ICO_CM.check, 17)}</div><div style="flex:1"><div class="cm-fila-t">Todo al día</div><div class="cm-fila-s">Nada pendiente de revisar</div></div></div>`}
+      </div>
 
-      ${malUbicadas.length ? `
-      <div onclick="window.__cambios.openMalUbicadas()" style="padding:14px 16px;background:rgba(139,92,246,.1);border:1px solid rgba(139,92,246,.35);border-radius:14px;display:flex;align-items:center;gap:12px;cursor:pointer" class="anim-up">
-        <div style="width:36px;height:36px;flex-shrink:0;background:rgba(139,92,246,.15);border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:800;color:#8b5cf6">?</div>
-        <div style="flex:1">
-          <div style="font-size:13px;font-weight:700;color:#8b5cf6">${malUbicadas.length} orden${malUbicadas.length > 1 ? 'es' : ''} mal ubicada${malUbicadas.length > 1 ? 's' : ''}</div>
-          <div style="font-size:11px;color:var(--text-4);margin-top:2px">Toca para investigar y corregir coordenadas</div>
+      <div class="ds-sec">Avance general</div>
+      <div class="ds-card" style="margin-bottom:22px">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:12px">
+          <div class="ds-num-md">${aprobadas.length}<span style="font-size:14px;font-weight:500;color:var(--text-3)"> / ${total} confirmadas</span></div>
+          <div style="font-size:15px;font-weight:600;color:var(--cm-light)">${pct}%</div>
         </div>
-        <svg viewBox="0 0 24 24" fill="none" stroke="#8b5cf6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><polyline points="9 18 15 12 9 6"/></svg>
-      </div>` : ''}
-
-      <!-- Menú de acciones -->
-      <div id="menu-acciones" style="display:none" class="anim-up">        <div class="flex-col gap-6" style="background:var(--glass);border:1px solid var(--border);border-radius:var(--radius);padding:8px;margin-bottom:4px">
-          <button class="menu-accion-btn" onclick="window.__cambios.openImport();window.__cambios.toggleMenuAcciones()">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-            Importar órdenes (Excel)
-          </button>
-          <button class="menu-accion-btn" onclick="window.__cambios.openNuevaUrgente();window.__cambios.toggleMenuAcciones()" style="color:#f87171">
-            <svg viewBox="0 0 24 24" fill="none" stroke="#f87171" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-            Nueva orden urgente
-          </button>
-          <button class="menu-accion-btn" onclick="window.__cambios.openUrgentesImport();window.__cambios.toggleMenuAcciones()" style="color:#f87171">
-            <svg viewBox="0 0 24 24" fill="none" stroke="#f87171" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-            Órdenes urgentes (Excel)
-          </button>
-          <button class="menu-accion-btn" onclick="window.__cambios.openImportLecturas();window.__cambios.toggleMenuAcciones()">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-            Importar calendario (Excel)
-          </button>
-          <button class="menu-accion-btn" onclick="window.__cambios.openGestionarLecturas();window.__cambios.toggleMenuAcciones()">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-            Gestionar calendario de lecturas
-          </button>
-          <div style="height:1px;background:var(--border)"></div>
-          <button class="menu-accion-btn" onclick="window.__cambios.descargarHoy();window.__cambios.toggleMenuAcciones()">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-            Descargar reporte de hoy
-          </button>
-          <button class="menu-accion-btn" onclick="window.__cambios.descargarMensual();window.__cambios.toggleMenuAcciones()">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-            Descargar reporte mensual
-          </button>
+        <div class="cm-seg">
+          <i style="width:${seg(aprobadas.length)}%;background:#22c55e"></i>
+          <i style="width:${seg(porConfirmar.length)}%;background:#fbbf24"></i>
+          <i style="width:${seg(visitas.length)}%;background:#94a3b8"></i>
+        </div>
+        <div class="cm-leyenda">
+          <span><b style="background:#22c55e"></b>${aprobadas.length} confirmadas</span>
+          <span><b style="background:#fbbf24"></b>${porConfirmar.length} por confirmar</span>
+          <span><b style="background:#94a3b8"></b>${visitas.length} visitas</span>
+          <span><b style="background:rgba(255,255,255,.15)"></b>${pendientes.length} pendientes</span>
         </div>
       </div>
 
-      <!-- Barra progreso global -->
-      <div class="progress-card anim-up d1">
-        <div class="progress-bar-bg">
-          <div class="progress-bar-fill cm" style="width:${pct}%"></div>
-        </div>
-        <div class="progress-stats">
-          <span><span class="stat-dot ok"></span>${todasAprobadas.length} confirmadas</span>
-          <span><span class="stat-dot warn" style="background:#fbbf24"></span>${todasHechas.length} por verificar</span>
-          <span><span class="stat-dot" style="background:#111827;border:1px solid #4b5563"></span>${todasVisitas.length} visitas</span>
-          <span><span class="stat-dot muted"></span>${pendientes.length} pendientes</span>
-        </div>
-      </div>
-
-      <!-- Acordeón por pareja -->
-      <div class="section-label anim-up d2">Verificación por pareja</div>
-      <div class="flex-col gap-8 anim-up d2" id="acordeon-parejas">
+      <div class="ds-sec">Por pareja</div>
+      <div class="flex-col gap-8" id="acordeon-parejas">
         ${PAREJAS.map(p => renderAcordeonPareja(p)).join('')}
       </div>
-
     </div>
   `;
 
@@ -828,83 +782,56 @@ function renderPanel() {
 
 function renderAcordeonPareja(pareja) {
   const c         = PAREJA_COLORS[pareja] || PAREJA_COLORS['Pareja 1'];
-  const hechas    = ordenes.filter(o => o.pareja === pareja && o.estadoCampo === 'hecha');
-  const visitas   = ordenes.filter(o => o.pareja === pareja && o.estadoCampo === 'visita');
-  const aprobadas = ordenes.filter(o => o.pareja === pareja && o.estadoCampo === 'aprobada');
-  const total     = ordenes.filter(o => o.pareja === pareja).length;
-  const inputId   = `buscar-${pareja.replace(' ','-')}`;
-  const listaId   = `lista-${pareja.replace(' ','-')}`;
-
+  const lista     = ordenes.filter(o => o.pareja === pareja);
+  const hechas    = lista.filter(o => o.estadoCampo === 'hecha');
+  const visitas   = lista.filter(o => o.estadoCampo === 'visita');
+  const aprobadas = lista.filter(o => o.estadoCampo === 'aprobada');
+  const pend      = lista.filter(o => !o.estadoCampo).length;
+  const total     = lista.length;
+  const key       = pareja.replace(' ','-');
+  const inputId   = `buscar-${key}`;
+  const listaId   = `lista-${key}`;
   if (!total) return '';
-
-  // Agrupar hechas por fecha
-  const hechasPorFecha = agruparPorFecha(hechas);
+  const pct = Math.round((aprobadas.length / total) * 100);
+  const enCampo = asignaciones_[pareja];
 
   return `
-    <div class="acordeon-card" style="border-color:${c.border};background:${c.glass}">
-
-      <!-- Header acordeón -->
-      <div class="acordeon-header" onclick="window.__cambios.toggleAcordeon('${pareja}')">
-        <div>
-          <div class="acordeon-title" style="color:${c.accent}">${pareja}</div>
-          <div class="acordeon-sub">
-            ${aprobadas.length}/${total} confirmadas
-            ${hechas.length ? `· <span style="color:#fbbf24">${hechas.length} por verificar</span>` : ''}
-            ${visitas.length ? `· <span style="color:var(--text-4)">${visitas.length} visitas</span>` : ''}
+    <div class="cm-par">
+      <div class="cm-par-head" onclick="window.__cambios.toggleAcordeon('${pareja}')">
+        <span class="cm-par-dot" style="background:${c.accent}"></span>
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;align-items:center;gap:8px">
+            <span class="cm-par-t">${esc(pareja)}</span>
+            ${enCampo ? '<span class="cm-pill ok" style="margin:0">En campo</span>' : ''}
           </div>
+          <div class="cm-par-s">${aprobadas.length}/${total} confirmadas · ${pend} pendientes${visitas.length ? ` · ${visitas.length} visitas` : ''}</div>
+          ${hechas.length ? `<span class="cm-pill warn" style="margin-top:6px">${hechas.length} por confirmar</span>` : ''}
         </div>
-        <div style="display:flex;align-items:center;gap:8px">
-          <div class="acordeon-pct" style="color:${c.accent}">
-            ${total ? Math.round((aprobadas.length/total)*100) : 0}%
-          </div>
-          <svg id="chevron-${pareja.replace(' ','-')}" viewBox="0 0 24 24" fill="none" stroke="${c.accent}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" style="transition:transform .2s">
-            <polyline points="6 9 12 15 18 9"/>
-          </svg>
-        </div>
+        <span class="cm-par-pct">${pct}%</span>
+        <svg id="chevron-${key}" viewBox="0 0 24 24" fill="none" stroke="var(--text-3)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" style="transition:transform .2s;flex-shrink:0"><polyline points="6 9 12 15 18 9"/></svg>
       </div>
+      <div class="ds-bar" style="margin:0 14px 12px;height:4px"><i style="width:${pct}%;background:${c.accent}"></i></div>
 
-      <!-- Contenido acordeón -->
-      <div class="acordeon-body" id="body-${pareja.replace(' ','-')}" style="display:none">
-
-        <!-- Barra progreso pareja -->
-        <div class="progress-bar-bg" style="margin-bottom:12px">
-          <div class="progress-bar-fill" style="width:${total ? Math.round((aprobadas.length/total)*100) : 0}%;background:${c.accent}"></div>
+      <div class="acordeon-body" id="body-${key}" style="display:none;padding:0 14px 14px">
+        ${hechas.length ? `
+        <div class="buscar-wrap" style="margin-bottom:10px">
+          ${svgCm(ICO_CM.buscar, 14, 'style="color:var(--text-4);flex-shrink:0"')}
+          <input class="buscar-input" id="${inputId}" type="text" placeholder="Buscar WO o cliente…" autocomplete="off" autocorrect="off"/>
         </div>
-
-        <!-- Buscador -->
-        ${hechas.length ? `
-        <div class="buscar-wrap">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14" style="color:var(--text-4);flex-shrink:0">
-            <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
-          </svg>
-          <input class="buscar-input" id="${inputId}" type="text"
-                 placeholder="Buscar WO o cliente…"
-                 autocomplete="off" autocorrect="off"/>
-        </div>` : ''}
-
-        <!-- Órdenes por verificar agrupadas por fecha -->
-        ${hechas.length ? `
         <div class="flex-col gap-10" id="${listaId}">
-          ${hechasPorFecha.map(({ fecha, ordenes: grupo }) => `
+          ${agruparPorFecha(hechas).map(({ fecha, ordenes: grupo }) => `
             <div>
               <div class="fecha-grupo-label">${fecha}</div>
-              <div class="flex-col gap-6">
-                ${grupo.map(o => renderOrdenVerificacion(o, c)).join('')}
-              </div>
-            </div>
-          `).join('')}
+              <div class="flex-col gap-6">${grupo.map(o => renderOrdenVerificacion(o, c)).join('')}</div>
+            </div>`).join('')}
         </div>` : `
-        <div style="text-align:center;padding:12px 0;font-size:12px;color:var(--text-4)">
-          ${aprobadas.length ? 'Todas confirmadas' : 'Sin órdenes realizadas aún'}
+        <div style="text-align:center;padding:10px 0;font-size:12px;color:var(--text-3)">
+          ${aprobadas.length ? 'Nada por confirmar' : 'Sin órdenes realizadas aún'}
         </div>`}
 
-        <!-- Visitas -->
         ${visitas.length ? `
-        <div class="section-label" style="margin:12px 0 6px;font-size:8px">Visitas registradas</div>
-        <div class="flex-col gap-6">
-          ${visitas.map(o => renderOrdenVisitaPanel(o)).join('')}
-        </div>` : ''}
-
+        <div class="fecha-grupo-label" style="margin-top:12px">Visitas registradas</div>
+        <div class="flex-col gap-6">${visitas.map(o => renderOrdenVisitaPanel(o)).join('')}</div>` : ''}
       </div>
     </div>
   `;
@@ -912,20 +839,13 @@ function renderAcordeonPareja(pareja) {
 
 function renderOrdenVerificacion(o, c) {
   return `
-    <div class="orden-verif-card" id="verif-${o.id}">
-      <div class="orden-verif-info" onclick="window.__cambios.verOrden('${o.id}')">
-        <div class="orden-wo" style="font-size:12px">WO ${o.wo || '—'}</div>
-        <div class="orden-cliente" style="font-size:10px">${o.cliente || '—'}</div>
-        ${o.actualizadaDelsur
-          ? '<div style="font-size:9px;color:var(--ok);margin-top:2px">&#10003; Actualizada en DELSUR</div>'
-          : '<div style="font-size:9px;color:#fbbf24;margin-top:2px">Pendiente actualizar DELSUR</div>'}
+    <div class="cm-verif" id="verif-${o.id}">
+      <div style="flex:1;min-width:0;cursor:pointer" onclick="window.__cambios.verOrden('${o.id}')">
+        <div class="cm-wo">WO ${esc(o.wo || '—')}</div>
+        <div class="cm-cli">${esc(o.cliente || '—')}</div>
+        <div class="cm-meta">${esc(o.hechaPor || '')}${o.actualizadaDelsur ? ' · <span style="color:#22c55e">DELSUR al día</span>' : ' · <span style="color:#fbbf24">falta DELSUR</span>'}</div>
       </div>
-      <button class="btn-confirmar-orden" onclick="window.__cambios.aprobar('${o.id}')">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="14" height="14">
-          <path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
-        </svg>
-        Confirmar
-      </button>
+      <button class="cm-btn ok" onclick="window.__cambios.aprobar('${o.id}')">${svgCm(ICO_CM.check, 14)} Confirmar</button>
     </div>
   `;
 }
@@ -933,9 +853,9 @@ function renderOrdenVerificacion(o, c) {
 function renderOrdenVisitaPanel(o) {
   return `
     <div class="orden-visita-panel" onclick="window.__cambios.verOrden('${o.id}')">
-      <div class="status-dot" style="background:#111827;border:1px solid #4b5563;flex-shrink:0"></div>
+      <div class="status-dot" style="background:#94a3b8;flex-shrink:0"></div>
       <div style="flex:1;min-width:0">
-        <div style="font-size:12px;font-weight:700">WO ${o.wo || '—'}</div>
+        <div style="font-size:12px;font-weight:700">WO ${esc(o.wo || '—')}</div>
         <div style="font-size:10px;color:var(--text-3)">${o.motivoVisita ? escapeHtml(o.motivoVisita) : 'Sin motivo registrado'}</div>
       </div>
     </div>
@@ -1061,133 +981,159 @@ function renderParejaCard(pareja) {
 }
 
 // ── ÓRDENES (técnico y admin) ─────────────────────
+// Un grupo a la vez (chips con conteo), filtro por pareja (admin) y buscador.
+// La búsqueda mira todas las órdenes, sin importar el grupo.
+function gruposOrdenes(lista) {
+  const esTec = role_ === 'tecnico';
+  const realizada = o => o.estadoCampo === 'hecha' || o.estadoCampo === 'aprobada';
+  const urgPrimero = arr => arr.sort((a, b) => (b.urgente ? 1 : 0) - (a.urgente ? 1 : 0));
+  const recientes = arr => arr.sort((a, b) => (b.fechaHecha?.seconds || 0) - (a.fechaHecha?.seconds || 0));
+  const g = [
+    { id: 'pendientes', t: 'Pendientes', arr: urgPrimero(lista.filter(o => !o.estadoCampo && !isBlocked(o))) },
+  ];
+  if (esTec) g.push({ id: 'realizadas', t: 'Realizadas', arr: recientes(lista.filter(realizada)) });
+  else {
+    g.push({ id: 'porconfirmar', t: 'Por confirmar', arr: recientes(lista.filter(o => o.estadoCampo === 'hecha')) });
+    g.push({ id: 'confirmadas',  t: 'Confirmadas',   arr: recientes(lista.filter(o => o.estadoCampo === 'aprobada')) });
+  }
+  g.push({ id: 'visitas',    t: 'Visitas',        arr: lista.filter(o => o.estadoCampo === 'visita') });
+  g.push({ id: 'sinact',     t: 'Sin actualizar', arr: recientes(lista.filter(o => realizada(o) && !o.actualizadaDelsur)) });
+  g.push({ id: 'bloqueadas', t: 'Bloqueadas',     arr: lista.filter(o => !o.estadoCampo && isBlocked(o)) });
+  return g;
+}
+
 function renderOrdenes() {
   const content = document.getElementById('cambios-content');
   if (!content) return; // navegó a otra vista mientras cargaban
-  const lista   = role_ === 'tecnico' ? ordenes.filter(o => o.pareja === pareja_) : ordenes;
-  const { sinActualizar, hechas, visitas, pendientes, bloqueadas } = priorizarOrdenes(lista);
-
   const isTecnico = role_ === 'tecnico';
+  let lista = isTecnico ? ordenes.filter(o => o.pareja === pareja_) : ordenes;
+  if (!isTecnico && parejaFiltro_ !== 'todas') lista = lista.filter(o => o.pareja === parejaFiltro_);
+  const grupos = gruposOrdenes(lista);
+  if (!grupos.some(g => g.id === filtroOrd_)) filtroOrd_ = 'pendientes';
+  const grupo = grupos.find(g => g.id === filtroOrd_);
+
+  const q = busqOrd_.trim().toLowerCase();
+  let mostrar = q
+    ? lista.filter(o => [o.wo, o.nc, o.cliente, o.direccion].some(v => v && String(v).toLowerCase().includes(q)))
+    : grupo.arr;
+  if (!q && filtroOrd_ === 'sinact') mostrar = aplicarFiltroFecha(mostrar);
+  const visibles = mostrar.slice(0, limiteOrd_);
 
   content.innerHTML = `
-    <div class="flex-col gap-12">
-
-      <!-- Header -->
-      <div class="panel-header anim-up">
-        <div>
-          <div class="section-title">${isTecnico ? (pareja_ || 'Mis órdenes') : 'Todas las órdenes'}</div>
-          <div class="section-sub">${lista.length} órdenes · ${hechas.length + sinActualizar.length} realizadas</div>
+    <div class="anim-up">
+      <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:14px">
+        <div style="flex:1;min-width:0">
+          <div style="font-size:24px;font-weight:600;letter-spacing:-.02em;line-height:1.15">${isTecnico ? 'Mis órdenes' : 'Órdenes'}</div>
+          <div style="font-size:12px;color:var(--text-3);margin-top:4px">${isTecnico ? esc(pareja_ || '') + ' · ' : ''}${lista.length} órdenes</div>
         </div>
         ${isTecnico ? `
-        <button onclick="window.__cambios.openCampo()"
-          style="display:flex;align-items:center;gap:6px;height:36px;padding:0 14px;border-radius:10px;border:1px solid rgba(45,212,191,.35);background:rgba(45,212,191,.1);color:var(--cm-light);font-size:12px;font-weight:600;font-family:'Outfit',sans-serif;cursor:pointer">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-          Generar orden
-        </button>` : `
-        <button class="icon-btn" onclick="window.__cambios.openBuscar()" title="Buscar orden">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-        </button>`}
+        <button class="cm-btn cm" style="height:38px;padding:0 14px" onclick="window.__cambios.openCampo()">
+          ${svgCm('<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>', 14)} Generar orden
+        </button>` : ''}
       </div>
 
-      ${!lista.length ? `
-        <div class="dev-module">
-          <div class="dev-title">Sin órdenes</div>
-          <p>No hay órdenes asignadas para ${pareja_ || 'esta vista'}.</p>
-        </div>` : ''}
+      <div class="buscar-wrap" style="margin-bottom:12px">
+        ${svgCm(ICO_CM.buscar, 14, 'style="color:var(--text-4);flex-shrink:0"')}
+        <input class="buscar-input" id="cm-buscar-ord" placeholder="Buscar WO, NC, cliente o dirección…" autocomplete="off" spellcheck="false" value="${esc(busqOrd_)}"/>
+      </div>
 
-      <!-- Sin actualizar -->
-      ${sinActualizar.length ? `
-      <div class="anim-up d1">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-          <div class="section-label" style="color:#f87171">Sin actualizar en DELSUR (${sinActualizar.length})</div>
-        </div>
-        <!-- Filtro por fecha -->
-        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px" id="filtro-sin-actualizar">
-          ${['todas','hoy','ayer','semana'].map(f => `
-            <button onclick="window.__cambios.filtrarSinActualizar('${f}')"
-              class="select-chip${filtroSinActualizar_ === f ? ' active' : ''}"
-              style="font-size:11px;padding:5px 12px">
-              ${{todas:'Todas',hoy:'Hoy',ayer:'Ayer',semana:'Esta semana'}[f]}
-            </button>`).join('')}
-        </div>
-        <!-- Buscador -->
-        <div class="buscar-wrap" style="margin-bottom:10px">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14" style="color:var(--text-4);flex-shrink:0"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-          <input class="buscar-input" id="buscar-sin-actualizar" placeholder="Buscar por WO o cliente…" autocomplete="off"
-            oninput="window.__cambios.buscarSinActualizar(this.value)"/>
-        </div>
-        <div id="lista-sin-actualizar" class="flex-col gap-8">
-          ${renderSinActualizarItems(aplicarFiltroFecha(sinActualizar))}
-        </div>
+      ${!isTecnico ? `
+      <div class="filter-row" style="margin-bottom:8px">
+        ${['todas', ...PAREJAS].map(p => `<div class="filter-chip ${parejaFiltro_ === p ? 'active' : ''}" onclick="window.__cambios.setParejaOrd('${p}')">${p === 'todas' ? 'Todas las parejas' : p}</div>`).join('')}
       </div>` : ''}
 
-      <!-- Visitas -->
-      ${visitas.length ? renderGrupo('Visitas registradas', visitas, 'visita', 'd2') : ''}
+      ${!q ? `
+      <div class="cm-tabs-est">
+        ${grupos.map(g => `
+          <div class="cm-est ${g.id === filtroOrd_ ? 'active' : ''} ${g.arr.length ? '' : 'vacio'}" onclick="window.__cambios.setFiltroOrd('${g.id}')">
+            ${g.t}<span>${g.arr.length}</span>
+          </div>`).join('')}
+      </div>` : `
+      <div style="font-size:12px;color:var(--text-3);margin:2px 2px 10px">${mostrar.length} resultado${mostrar.length !== 1 ? 's' : ''} en todas las órdenes</div>`}
 
-      <!-- Pendientes -->
-      ${pendientes.length ? renderGrupo('Pendientes', pendientes, 'pendiente', 'd2') : ''}
+      ${!q && filtroOrd_ === 'sinact' && grupo.arr.length ? `
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
+        ${['todas','hoy','ayer','semana'].map(f => `
+          <button onclick="window.__cambios.filtrarSinActualizar('${f}')" class="select-chip${filtroSinActualizar_ === f ? ' active' : ''}" style="font-size:11px;padding:5px 12px">
+            ${{ todas: 'Todas', hoy: 'Hoy', ayer: 'Ayer', semana: 'Esta semana' }[f]}
+          </button>`).join('')}
+      </div>` : ''}
 
-      <!-- Hechas -->
-      ${hechas.length ? renderGrupo('Realizadas', hechas, 'hecha', 'd3') : ''}
-
-      <!-- Bloqueadas -->
-      ${bloqueadas.length ? renderGrupo('Bloqueadas por lectura', bloqueadas, 'bloqueada', 'd4') : ''}
-
-    </div>
-  `;
-}
-
-function renderGrupo(titulo, lista, tipo, delay) {
-  return `
-    <div class="anim-up ${delay}">
-      <div class="section-label" style="margin-bottom:8px">${titulo}</div>
+      ${visibles.length ? `
       <div class="flex-col gap-8">
-        ${lista.map(o => renderOrdenCard(o, tipo)).join('')}
+        ${visibles.map(o => tarjetaOrden(o, { mostrarEstado: !!q || ['sinact', 'realizadas'].includes(filtroOrd_) })).join('')}
       </div>
+      ${mostrar.length > visibles.length ? `
+      <button class="cm-btn" style="width:100%;height:44px;margin-top:10px" onclick="window.__cambios.verMasOrd()">Ver ${Math.min(40, mostrar.length - visibles.length)} más (${mostrar.length - visibles.length} restantes)</button>` : ''}
+      ` : `
+      <div class="ds-card" style="text-align:center;padding:24px 16px;color:var(--text-3);font-size:13px">
+        ${q ? 'Ninguna orden coincide con la búsqueda.' : `No hay órdenes en "${grupo.t}".`}
+      </div>`}
     </div>
   `;
+
+  const inp = document.getElementById('cm-buscar-ord');
+  if (inp) {
+    inp.addEventListener('input', e => {
+      busqOrd_ = e.target.value; limiteOrd_ = 40;
+      const pos = e.target.selectionStart;
+      renderOrdenes();
+      const n = document.getElementById('cm-buscar-ord');
+      if (n) { n.focus(); try { n.setSelectionRange(pos, pos); } catch {} }
+    });
+  }
 }
 
-function renderOrdenCard(o, tipo) {
-  const blocked  = tipo === 'bloqueada';
-  const c        = PAREJA_COLORS[o.pareja] || PAREJA_COLORS['Pareja 1'];
-  const isTecnico = role_ === 'tecnico';
+function setFiltroOrd(id)  { filtroOrd_ = id; limiteOrd_ = 40; renderOrdenes(); }
+function setParejaOrd(p)   { parejaFiltro_ = p; limiteOrd_ = 40; renderOrdenes(); }
+function verMasOrd()       { limiteOrd_ += 40; renderOrdenes(); }
 
-  // Íconos de estado
-  const statusIcon = {
-    'hecha':         `<div class="status-dot ok"></div>`,
-    'sin-actualizar':`<div class="status-dot warn pulse"></div>`,
-    'visita':        `<div class="status-dot warn"></div>`,
-    'pendiente':     `<div class="status-dot muted"></div>`,
-    'bloqueada':     `<div class="status-dot muted"></div>`,
-  }[tipo] || `<div class="status-dot muted"></div>`;
+// Abre la pestaña Órdenes en un grupo (desde el panel o el resumen)
+function irAOrdenes(filtro) {
+  filtroOrd_ = filtro; busqOrd_ = ''; limiteOrd_ = 40;
+  activeTab = 'ordenes';
+  document.querySelectorAll('.cambios-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === 'ordenes'));
+  renderTab();
+  document.getElementById('content-area')?.scrollTo?.({ top: 0 });
+}
+
+// Tarjeta de orden (lista de órdenes y resumen del técnico)
+function tarjetaOrden(o, { mostrarEstado = false, compacta = false } = {}) {
+  const isTecnico = role_ === 'tecnico';
+  const c   = PAREJA_COLORS[o.pareja] || PAREJA_COLORS['Pareja 1'];
+  const est = estadoOrden(o);
+  const bloqueada = !o.estadoCampo && isBlocked(o);
+  const realizada = o.estadoCampo === 'hecha' || o.estadoCampo === 'aprobada';
+  const sinAct = realizada && !o.actualizadaDelsur;
+  const fecha = o.fechaHecha || o.fechaVisita;
+  const fechaTxt = fecha?.toDate ? fecha.toDate().toLocaleString('es-SV', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
 
   return `
-    <div class="orden-card ${tipo}" onclick="window.__cambios.verOrden('${o.id}')">
-      <div class="orden-card-left">
-        ${statusIcon}
-        <div class="orden-info">
-          <div class="orden-wo">WO ${o.wo || '—'}</div>
-          ${blocked ? `
-            <div class="orden-bloqueada-label">Bloqueada por lectura</div>
-          ` : `
-            <div class="orden-cliente">${o.cliente || '—'}</div>
-            <div class="orden-dir">${o.direccion || ''}</div>
-          `}
-        </div>
-      </div>
-      <div class="orden-card-right">
-        ${!isTecnico && o.pareja ? `<div class="pareja-chip" style="color:${c.accent};border-color:${c.border};background:${c.glass}">${o.pareja.replace('Pareja ','P')}</div>` : ''}
-        ${tipo === 'sin-actualizar' && isTecnico ? `
-          <button class="action-chip warn" onclick="event.stopPropagation();window.__cambios.actualizadaDelsur('${o.id}')">Ya actualicé</button>
-        ` : ''}
-        ${(tipo === 'sin-actualizar' || tipo === 'hecha') && !isTecnico ? `
-          <div style="display:flex;gap:4px">
-            <button class="action-chip ok" onclick="event.stopPropagation();window.__cambios.aprobar('${o.id}')">&#10003;</button>
-            <button class="action-chip danger" onclick="event.stopPropagation();window.__cambios.rechazar('${o.id}')">&#10007;</button>
+    <div class="cm-ord ${o.urgente && !o.estadoCampo ? 'urg' : ''} ${bloqueada ? 'bloq' : ''}" onclick="window.__cambios.verOrden('${o.id}')">
+      <div style="display:flex;align-items:flex-start;gap:10px">
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+            <span class="cm-wo">WO ${esc(o.wo || '—')}</span>
+            ${o.urgente && !o.estadoCampo ? '<span class="cm-pill crit">Urgente</span>' : ''}
+            ${mostrarEstado || compacta ? `<span class="cm-pill ${est.c}">${est.t}</span>` : ''}
           </div>
-        ` : ''}
+          ${bloqueada
+            ? `<div class="cm-cli">Bloqueada por lectura · ${esc(o.unidadLectura || '—')}</div>`
+            : `<div class="cm-cli">${esc(o.cliente || '—')}</div>
+               ${compacta ? '' : `<div class="cm-meta">${esc(o.direccion || '')}</div>`}`}
+          ${(realizada || o.estadoCampo === 'visita') && fechaTxt ? `<div class="cm-meta">${fechaTxt}${o.estadoCampo === 'visita' && o.motivoVisita ? ' · ' + esc(o.motivoVisita) : ''}${realizada ? (o.actualizadaDelsur ? ' · <span style="color:#22c55e">DELSUR al día</span>' : ' · <span style="color:#fbbf24">falta DELSUR</span>') : ''}</div>` : ''}
+        </div>
+        ${!isTecnico && o.pareja ? `<span class="cm-pareja" style="color:${c.accent};border-color:${c.border};background:${c.glass}">${esc(o.pareja.replace('Pareja ', 'P'))}</span>` : ''}
       </div>
+      ${!isTecnico && o.estadoCampo === 'hecha' && !compacta ? `
+      <div class="cm-ord-acc">
+        <button class="cm-btn ok" onclick="event.stopPropagation();window.__cambios.aprobar('${o.id}')">${svgCm(ICO_CM.check, 14)} Confirmar</button>
+        <button class="cm-btn danger" onclick="event.stopPropagation();window.__cambios.rechazar('${o.id}')">Rechazar</button>
+      </div>` : ''}
+      ${isTecnico && sinAct && !compacta ? `
+      <div class="cm-ord-acc">
+        <button class="cm-btn warn" style="flex:1" onclick="event.stopPropagation();window.__cambios.actualizadaDelsur('${o.id}')">${svgCm(ICO_CM.sync, 14)} Ya actualicé en DELSUR</button>
+      </div>` : ''}
     </div>
   `;
 }
@@ -1209,9 +1155,13 @@ function verOrden(id) {
 
       <!-- Estado -->
       <div class="orden-estado-row">
-        ${o.estadoCampo === 'hecha'  ? `<div class="estado-badge ok">Realizada</div>` : ''}
+        ${o.estadoCampo === 'hecha'  ? `<div class="estado-badge ${isTecnico ? 'ok' : 'warn'}">${isTecnico ? 'Realizada' : 'Por confirmar'}</div>` : ''}
+        ${o.estadoCampo === 'aprobada' ? `<div class="estado-badge ok">Confirmada</div>` : ''}
         ${o.estadoCampo === 'visita' ? `<div class="estado-badge warn">Visita registrada</div>` : ''}
+        ${o.estadoCampo === 'ya_cambiado' ? `<div class="estado-badge warn">Reportada ya cambiada</div>` : ''}
+        ${o.estadoCampo === 'mal_ubicado' ? `<div class="estado-badge muted">Mal ubicada</div>` : ''}
         ${!o.estadoCampo             ? `<div class="estado-badge muted">Pendiente</div>` : ''}
+        ${o.urgente && !o.estadoCampo ? `<div class="estado-badge crit">Urgente</div>` : ''}
         ${blocked                    ? `<div class="estado-badge crit">Bloqueada</div>` : ''}
         ${o.actualizadaDelsur        ? `<div class="estado-badge ok-outline">&#10003; Actualizada DELSUR</div>` : ''}
         ${o.pareja ? `<div class="estado-badge" style="color:${c.accent};border-color:${c.border};background:${c.glass}">${o.pareja}</div>` : ''}
@@ -1227,12 +1177,12 @@ function verOrden(id) {
       <div class="detail-section">
         <div class="detail-label">Cliente</div>
         <div class="detail-row">
-          <div class="detail-field"><div class="detail-key">NC</div><div class="detail-val">${o.nc || '—'}</div></div>
-          <div class="detail-field"><div class="detail-key">Nombre</div><div class="detail-val">${o.cliente || '—'}</div></div>
+          <div class="detail-field"><div class="detail-key">NC</div><div class="detail-val">${esc(o.nc || '—')}</div></div>
+          <div class="detail-field"><div class="detail-key">Nombre</div><div class="detail-val">${esc(o.cliente || '—')}</div></div>
         </div>
-        <div class="detail-field full"><div class="detail-key">Dirección</div><div class="detail-val">${o.direccion || '—'}</div></div>
+        <div class="detail-field full"><div class="detail-key">Dirección</div><div class="detail-val">${esc(o.direccion || '—')}</div></div>
         ${o.telefono ? `<div class="detail-field full"><div class="detail-key">Teléfono</div><div class="detail-val">
-          <a href="tel:${o.telefono}" style="color:var(--cm-light)">${o.telefono}</a>
+          <a href="tel:${o.telefono}" style="color:var(--cm-light)">${esc(o.telefono)}</a>
         </div></div>` : ''}
       </div>
 
@@ -1240,22 +1190,22 @@ function verOrden(id) {
       <div class="detail-section">
         <div class="detail-label">Datos técnicos</div>
         <div class="detail-row">
-          <div class="detail-field"><div class="detail-key">Serie medidor</div><div class="detail-val" style="font-family:monospace;font-weight:700;color:var(--cm-light)">${o.serieActual || o.serie || '—'}</div></div>
-          <div class="detail-field"><div class="detail-key">Marca</div><div class="detail-val">${o.marca || '—'}</div></div>
-          <div class="detail-field"><div class="detail-key">DSCT</div><div class="detail-val">${o.dsct || '—'}</div></div>
-          <div class="detail-field"><div class="detail-key">MRU</div><div class="detail-val">${o.unidadLectura || '—'}</div></div>
+          <div class="detail-field"><div class="detail-key">Serie medidor</div><div class="detail-val" style="font-family:monospace;font-weight:700;color:var(--cm-light)">${esc(o.serieActual || o.serie || '—')}</div></div>
+          <div class="detail-field"><div class="detail-key">Marca</div><div class="detail-val">${esc(o.marca || '—')}</div></div>
+          <div class="detail-field"><div class="detail-key">DSCT</div><div class="detail-val">${esc(o.dsct || '—')}</div></div>
+          <div class="detail-field"><div class="detail-key">MRU</div><div class="detail-val">${esc(o.unidadLectura || '—')}</div></div>
         </div>
-        ${o.concepto ? `<div class="detail-field full"><div class="detail-key">Concepto</div><div class="detail-val">${o.concepto}</div></div>` : ''}
+        ${o.concepto ? `<div class="detail-field full"><div class="detail-key">Concepto</div><div class="detail-val">${esc(o.concepto)}</div></div>` : ''}
       </div>` : ''}
 
       <!-- Historial -->
       ${(o.fechaHecha || o.fechaVisita) ? `
       <div class="detail-section">
         <div class="detail-label">Historial</div>
-        ${o.fechaHecha  ? `<div class="detail-field full"><div class="detail-key">Realizada</div><div class="detail-val">${formatDate(o.fechaHecha)} · ${o.hechaPor || '—'}</div></div>` : ''}
-        ${o.parejaDelDia?.length > 1 ? `<div class="detail-field full"><div class="detail-key">Trabajaron ese día</div><div class="detail-val">${o.parejaDelDia.join(' · ')}</div></div>` : ''}
-        ${o.fechaVisita ? `<div class="detail-field full"><div class="detail-key">Visita</div><div class="detail-val">${formatDate(o.fechaVisita)} · ${o.visitadoPor || '—'}</div></div>` : ''}
-        ${o.aprobadoPor ? `<div class="detail-field full"><div class="detail-key">Confirmada por</div><div class="detail-val">${o.aprobadoPor}</div></div>` : ''}
+        ${o.fechaHecha  ? `<div class="detail-field full"><div class="detail-key">Realizada</div><div class="detail-val">${formatDate(o.fechaHecha)} · ${esc(o.hechaPor || '—')}</div></div>` : ''}
+        ${o.parejaDelDia?.length > 1 ? `<div class="detail-field full"><div class="detail-key">Trabajaron ese día</div><div class="detail-val">${esc(o.parejaDelDia.join(' · '))}</div></div>` : ''}
+        ${o.fechaVisita ? `<div class="detail-field full"><div class="detail-key">Visita</div><div class="detail-val">${formatDate(o.fechaVisita)} · ${esc(o.visitadoPor || '—')}</div></div>` : ''}
+        ${o.aprobadoPor ? `<div class="detail-field full"><div class="detail-key">Confirmada por</div><div class="detail-val">${esc(o.aprobadoPor)}</div></div>` : ''}
       </div>` : ''}
 
       <!-- Acciones técnico -->
@@ -1291,6 +1241,7 @@ function verOrden(id) {
           Quitar urgencia
         </button>` : ''}
         ${o.estadoCampo === 'hecha' ? `
+        <button class="btn-action cm" onclick="window.__cambios.aprobar('${o.id}')">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
           Confirmar realizada
         </button>
@@ -1405,7 +1356,6 @@ async function aprobar(id) {
       renderTab();
     }
 
-    window.dispatchEvent(new CustomEvent('cambios:updated'));
     toast('Orden confirmada', 'ok');
     recalcularStats().catch(()=>{});
   } catch (err) {
@@ -1484,7 +1434,6 @@ async function updateOrden(id, data, msg) {
 
     closeSheet('sheet-orden');
     renderTab();
-    window.dispatchEvent(new CustomEvent('cambios:updated'));
     toast(msg, 'ok');
   } catch (err) {
     console.error('[cambios] Error actualizando:', err);
@@ -1504,10 +1453,10 @@ function openYaCambiadas() {
       <div style="padding:14px;background:var(--glass);border:1px solid rgba(249,115,22,.25);border-radius:14px" class="flex-col gap-8">
         <div style="display:flex;justify-content:space-between;align-items:flex-start">
           <div>
-            <div style="font-size:13px;font-weight:700">WO ${o.wo || '—'}</div>
-            <div style="font-size:11px;color:var(--text-3)">${o.cliente || '—'}</div>
+            <div style="font-size:13px;font-weight:700">WO ${esc(o.wo || '—')}</div>
+            <div style="font-size:11px;color:var(--text-3)">${esc(o.cliente || '—')}</div>
           </div>
-          <div style="font-size:10px;color:var(--text-4);text-align:right">${fechaStr}<br>${o.yaCambiadoPor || '—'}</div>
+          <div style="font-size:10px;color:var(--text-4);text-align:right">${fechaStr}<br>${esc(o.yaCambiadoPor || '—')}</div>
         </div>
         ${o.yaCambiadoComentario ? `<div style="font-size:12px;color:var(--text-3);padding:8px 10px;background:rgba(255,255,255,.04);border-radius:8px">${escapeHtml(o.yaCambiadoComentario)}</div>` : ''}
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
@@ -1536,11 +1485,11 @@ function openMalUbicadas() {
       <div style="padding:14px;background:var(--glass);border:1px solid rgba(139,92,246,.25);border-radius:14px" class="flex-col gap-8">
         <div style="display:flex;justify-content:space-between;align-items:flex-start">
           <div>
-            <div style="font-size:13px;font-weight:700">WO ${o.wo || '—'}</div>
-            <div style="font-size:11px;color:var(--text-3)">${o.cliente || '—'}</div>
-            <div style="font-size:11px;color:var(--text-4)">${o.direccion || '—'}</div>
+            <div style="font-size:13px;font-weight:700">WO ${esc(o.wo || '—')}</div>
+            <div style="font-size:11px;color:var(--text-3)">${esc(o.cliente || '—')}</div>
+            <div style="font-size:11px;color:var(--text-4)">${esc(o.direccion || '—')}</div>
           </div>
-          <div style="font-size:10px;color:var(--text-4);text-align:right">${fechaStr}<br>${o.malUbicadoPor || '—'}</div>
+          <div style="font-size:10px;color:var(--text-4);text-align:right">${fechaStr}<br>${esc(o.malUbicadoPor || '—')}</div>
         </div>
         <div style="font-size:11px;color:var(--text-4)">Coordenadas actuales: ${o.latitud || '—'}, ${o.longitud || '—'}</div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
@@ -1614,7 +1563,7 @@ function onBuscarInput(e) {
     (o.cliente && o.cliente.toLowerCase().includes(q))
   );
   if (!filtradas.length) {
-    el.innerHTML = `<p style="text-align:center;font-size:12px;color:var(--text-4);padding:20px">Sin resultados para "${q}"</p>`;
+    el.innerHTML = `<p style="text-align:center;font-size:12px;color:var(--text-4);padding:20px">Sin resultados para "${esc(q)}"</p>`;
     return;
   }
   el.innerHTML = filtradas.map(o => {
@@ -1629,11 +1578,11 @@ function onBuscarInput(e) {
     return `<div onclick="window.__cambios.verOrdenDesdeBuscar('${o.id}')"
       style="padding:12px 14px;background:var(--glass);border:1px solid var(--border);border-radius:12px;cursor:pointer;active:opacity:.7">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
-        <div style="font-size:13px;font-weight:700">WO ${o.wo || '—'}</div>
+        <div style="font-size:13px;font-weight:700">WO ${esc(o.wo || '—')}</div>
         <div style="font-size:10px;font-weight:600;color:${color}">${estado}</div>
       </div>
-      <div style="font-size:11px;color:var(--text-3)">${o.cliente || '—'}</div>
-      <div style="font-size:10px;color:var(--text-4)">${o.nc ? `NC: ${o.nc} · ` : ''}${o.pareja || 'Sin pareja'}</div>
+      <div style="font-size:11px;color:var(--text-3)">${esc(o.cliente || '—')}</div>
+      <div style="font-size:10px;color:var(--text-4)">${o.nc ? `NC: ${esc(o.nc)} · ` : ''}${esc(o.pareja || 'Sin pareja')}</div>
     </div>`;
   }).join('');
 }
@@ -2236,10 +2185,7 @@ function generarExcelOrdenes(lista, nombreArchivo) {
 }
 
 // ── Menú de acciones ─────────────────────────────
-function toggleMenuAcciones() {
-  const menu = document.getElementById('menu-acciones');
-  if (menu) menu.style.display = menu.style.display === 'none' ? '' : 'none';
-}
+function toggleMenuAcciones() { openSheet('sheet-cm-acciones'); }
 
 function openImportLecturas() { openSheet('sheet-import-lecturas'); }
 
