@@ -15,6 +15,7 @@
  */
 
 import { db } from '../firebase.js';
+import { leer } from '../vivo.js';
 import { toast, escapeHtml } from '../ui.js';
 
 const PADRON_URL = '/STC-innova/caracterizacion_padron.json';
@@ -525,15 +526,12 @@ async function marcarListaDesdeBuscador(ordenId, textoBusqueda) {
 
 // El técnico solo lee lo de su pareja (consulta filtrada, no toda la
 // colección); el admin lee todo. Sin pareja asignada, nada.
+// Mismo listener que el mapa y el inicio (js/vivo.js)
 async function leerColeccion(nombre) {
-  let q = db.collection(nombre);
-  if (!esAdmin_) {
-    const miPareja = session_.asignacionActual?.destino || null;
-    if (!miPareja) return [];
-    q = q.where('pareja', '==', miPareja);
-  }
-  const snap = await q.get();
-  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  if (esAdmin_) return leer(`${nombre}|*`, () => db.collection(nombre));
+  const miPareja = session_.asignacionActual?.destino || null;
+  if (!miPareja) return [];
+  return leer(`${nombre}|${miPareja}`, () => db.collection(nombre).where('pareja', '==', miPareja));
 }
 
 // ── Carga: instalaciones y retiros una sola vez al entrar ──

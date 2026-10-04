@@ -9,6 +9,8 @@
  */
 
 import { db } from '../firebase.js';
+import { suscribir, leer, tecnicosActivos } from '../vivo.js';
+import { padronAmi } from './ami_padron.js';
 import { toast, escapeHtml } from '../ui.js';
 import { devolverAPendiente, puedeDevolverse } from './ami_devolver.js';
 import { abrirVistaCondominio, refrescarVistaCondominio, cerrarVistaCondominio, claveEdificio } from './ami_condominio.js';
@@ -89,6 +91,7 @@ export async function init(container, session) {
   // Cancelar listener anterior si el módulo se reinicia
   if (unsubscribe_) { unsubscribe_(); unsubscribe_ = null; }
   if (map_) { map_.remove(); map_ = null; markers_ = []; markersContiguos_ = []; }
+  lienzo_ = null;   // el lienzo de canvas pertenece al mapa anterior
   yaCentrado_ = false;
 
   // Cargar parejas activas y padrón ANTES de render/suscribir, para que
@@ -106,8 +109,7 @@ export async function init(container, session) {
 
   // Cargar calendario de lecturas para bloqueos visuales
   try {
-    const calSnap = await db.collection('cambios_calendario').get();
-    calendario_ = calSnap.docs.map(d => d.data());
+    calendario_ = await leer('cambios_calendario', () => db.collection('cambios_calendario'));
   } catch(err) {
     console.warn('[mapa] Error cargando calendario:', err);
   }
@@ -363,12 +365,20 @@ function suscribirOrdenes() {
   // Cancelar listener anterior si existe
   if (unsubscribe_) { unsubscribe_(); unsubscribe_ = null; }
 
-  let query = role_ === 'tecnico' && pareja_
-    ? db.collection('ami_ordenes').where('pareja', '==', pareja_)
-    : db.collection('ami_ordenes');
-
-  unsubscribe_ = query.onSnapshot(snap => {
-    const todos = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  // Listener compartido con el panel de AMI y el inicio (js/vivo.js)
+  const tec = role_ === 'tecnico' && pareja_;
+  let secuencia = 0;
+  unsubscribe_ = suscribir(tec ? `ami_ordenes|${pareja_}` : 'ami_ordenes|*',
+    () => tec ? db.collection('ami_ordenes').where('pareja', '==', pareja_) : db.collection('ami_ordenes'),
+    async (lista, _cambios, err) => {
+    if (err) { console.error('[mapa] Error en listener:', err); return; }
+    const sec = ++secuencia;
+    // Técnico: el padrón se consulta solo para los NC de su ruta
+    if (role_ === 'tecnico') {
+      try { padronCambiados_ = await padronAmi(false, lista.map(o => o.nc)); } catch {}
+      if (sec !== secuencia) return;
+    }
+    const todos = lista;
     // Condominios: se agrupan por edificio (gota propia + Vista Condominio).
     condoOrdenes_ = todos.filter(o => o.tipoSitio === 'condominio');
     condoOrdenes_.forEach(o => { o._yaCambiada = padronCambiados_.has(String(o.nc ?? '').trim()); });
@@ -397,16 +407,14 @@ function suscribirOrdenes() {
     centrarEnOrdenes();
     updateStatChip();
     refrescarVistaCondominio();
-  }, err => {
-    console.error('[mapa] Error en listener:', err);
   });
 }
 
 // Cargar el padrón de NC ya cambiados (colección ami_cambiados)
 async function cargarPadronCambiados() {
   try {
-    const snap = await db.collection('ami_cambiados').get();
-    padronCambiados_ = new Set(snap.docs.map(d => String(d.data().nc ?? d.id).trim()));
+    // Admin: padrón completo (compartido). Técnico: se consulta con sus órdenes.
+    if (role_ !== 'tecnico') padronCambiados_ = await padronAmi(true);
   } catch (err) {
     console.warn('[ami] No se pudo cargar padrón de cambiados:', err.message);
     padronCambiados_ = new Set();
@@ -416,11 +424,15 @@ async function cargarPadronCambiados() {
 // Parejas con al menos un técnico activo asignado a AMI (para los selectores).
 async function cargarParejasActivas() {
   try {
-    const us = await db.collection('users')
-      .where('asignacionActual.area', '==', 'AMI')
-      .where('active', '==', true).get();
     const set = new Set();
-    us.docs.forEach(d => { const p = d.data().asignacionActual?.destino; if (p) set.add(p); });
+    if (role_ !== 'tecnico') {
+      (await tecnicosActivos(db)).forEach(u => { if (u.asignacionActual?.area === 'AMI' && u.asignacionActual?.destino) set.add(u.asignacionActual.destino); });
+    } else {
+      const us = await db.collection('users')
+        .where('asignacionActual.area', '==', 'AMI')
+        .where('active', '==', true).get();
+      us.docs.forEach(d => { const p = d.data().asignacionActual?.destino; if (p) set.add(p); });
+    }
     parejasActivas_ = [...set].sort((a, b) =>
       (parseInt(String(a).replace(/\D/g,''),10)||0) - (parseInt(String(b).replace(/\D/g,''),10)||0));
   } catch (err) {
@@ -538,6 +550,7 @@ function initMap() {
 
   // Redibujar etiquetas al cambiar zoom
   map_.on('zoomend', () => plotMarkers());
+  map_.on('moveend', () => { if (map_.getZoom() >= 16) plotMarkers(); });
 
   // Brújula — solo para técnicos
   if (conRotacion) {
@@ -702,108 +715,73 @@ function iniciarGeolocalizacion() {
 }
 
 // ── Marcadores ────────────────────────────────────
+// Puntos normales en canvas (L.circleMarker), con tamaño según el zoom, igual
+// que el mapa de Cambios: con cientos de órdenes el mapa va más fluido que con
+// un ícono HTML por punto. Ya cambiado y mal ubicado siguen como íconos.
+let lienzo_ = null;
+function radioPorZoom(z) { return z <= 10 ? 3 : z <= 11 ? 4 : z <= 12 ? 5 : z <= 13 ? 6 : z <= 14 ? 7 : 8; }
+
 function plotMarkers() {
   // Si el mapa aún no existe (el snapshot llegó antes de initMap), no hacer
   // nada: initMap llamará a plotMarkers al terminar y dibujará lo que haya.
   if (!map_) return;
   markers_.forEach(m => map_.removeLayer(m));
   markers_ = [];
+  if (!lienzo_) lienzo_ = L.canvas({ padding: 0.5 });
 
-  const mostrarLabels = map_.getZoom() >= 16;
+  const z = map_.getZoom();
+  const r = radioPorZoom(z);
+  const cerca = z >= 13;
+  const mostrarLabels = z >= 16;
+  const vista = mostrarLabels ? map_.getBounds().pad(0.2) : null;
   const visibles = ordenes_.filter(o => o.estadoCampo !== 'aprobada');
 
   visibles.forEach(orden => {
     if (!orden.latitud || !orden.longitud) return;
-
+    const latlng = [orden.latitud, orden.longitud];
     const bloqueada = !orden.estadoCampo && isBlocked_(orden);
-    const color = orden._yaCambiada
-      ? '#16a34a'
-      : bloqueada
-      ? '#4b5563'
-      : ESTADO_COLORS[orden.estadoCampo] || PAREJA_COLORS[orden.pareja] || PAREJA_COLORS[null];
-    const size  = orden.estadoCampo === 'hecha' ? 10 : 14;
-    const wo    = orden.nc || '';
-
-    const labelHtml = mostrarLabels && wo && !bloqueada ? `
-      <div style="
-        position:absolute;
-        top:${size + 3}px;
-        left:50%;
-        transform:translateX(-50%);
-        white-space:nowrap;
-        font-size:9px;
-        font-weight:700;
-        font-family:'Outfit',sans-serif;
-        color:white;
-        text-shadow:0 1px 3px rgba(0,0,0,.9),0 0 6px rgba(0,0,0,.7);
-        pointer-events:none;
-        letter-spacing:.02em;
-      ">${wo}</div>` : '';
-
     const yaCambiado  = orden.estadoCampo === 'ya_cambiado';
     const esMalUbicado = orden.estadoCampo === 'mal_ubicado';
-    const icon = L.divIcon({
-      className: '',
-      html: bloqueada ? `
-        <div style="
-          width:22px;height:22px;
-          background:#1f2937;
-          border:2px solid #4b5563;
-          border-radius:6px;
-          display:flex;align-items:center;justify-content:center;
-          box-shadow:0 2px 6px rgba(0,0,0,.5);
-        ">
-          <svg viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="11" height="11">
-            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
-            <path d="M7 11V7a5 5 0 0110 0v4"/>
-          </svg>
-        </div>
-      ` : yaCambiado ? `
-        <div style="
-          width:22px;height:22px;
-          background:rgba(249,115,22,.15);
-          border:2px solid #f97316;
-          border-radius:6px;
-          display:flex;align-items:center;justify-content:center;
-          box-shadow:0 2px 6px rgba(0,0,0,.5);
-        ">
-          <svg viewBox="0 0 24 24" fill="none" stroke="#f97316" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="11" height="11">
-            <circle cx="12" cy="12" r="10"/>
-            <line x1="12" y1="8" x2="12" y2="12"/>
-            <line x1="12" y1="16" x2="12.01" y2="16"/>
-          </svg>
-        </div>
-      ` : esMalUbicado ? `
-        <div style="
-          width:22px;height:22px;
-          background:rgba(139,92,246,.15);
-          border:2px solid #8b5cf6;
-          border-radius:6px;
-          display:flex;align-items:center;justify-content:center;
-          box-shadow:0 2px 6px rgba(0,0,0,.5);
-          font-size:13px;font-weight:800;color:#8b5cf6;line-height:1;
-        ">?</div>
-      ` : `
-        <div style="position:relative">
-          <div style="
-            width:${size}px;height:${size}px;
-            background:${color};
-            border:2px solid ${esResiduoAMI(orden) ? '#f59e0b' : 'rgba(255,255,255,.8)'};
-            border-radius:50%;
-            box-shadow:${esResiduoAMI(orden) ? '0 0 0 2px rgba(245,158,11,.5), ' : ''}0 2px 6px rgba(0,0,0,.4);
-            ${orden.estadoCampo === 'hecha' ? 'opacity:0.6' : ''}
-          "></div>
-          ${labelHtml}
-        </div>
-      `,
-      iconSize:   (bloqueada || yaCambiado || esMalUbicado) ? [22,22] : [size, size],
-      iconAnchor: (bloqueada || yaCambiado || esMalUbicado) ? [11,11]  : [size/2, size/2],
-    });
+    let marker;
 
-    const marker = L.marker([orden.latitud, orden.longitud], { icon });
+    if (yaCambiado || esMalUbicado) {
+      const t = cerca ? 20 : 14;
+      marker = L.marker(latlng, { zIndexOffset: 500, icon: L.divIcon({ className: '', iconSize: [t, t], iconAnchor: [t / 2, t / 2], html: `
+        <div style="width:${t}px;height:${t}px;border-radius:${cerca ? 6 : 4}px;display:flex;align-items:center;justify-content:center;
+          background:${yaCambiado ? '#f97316' : '#8b5cf6'};border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.45);
+          font-size:${cerca ? 12 : 9}px;font-weight:800;color:#fff;line-height:1;font-family:'Outfit',sans-serif">${yaCambiado ? '!' : '?'}</div>` }) });
+    } else {
+      const hecha = orden.estadoCampo === 'hecha';
+      const visita = orden.estadoCampo === 'visita';
+      const residuo = esResiduoAMI(orden);
+      const color = orden._yaCambiada ? '#16a34a'
+        : bloqueada ? '#64748b'
+        : visita ? '#0f172a'
+        : ESTADO_COLORS[orden.estadoCampo] || PAREJA_COLORS[orden.pareja] || PAREJA_COLORS[null];
+      marker = L.circleMarker(latlng, {
+        renderer: lienzo_,
+        bubblingMouseEvents: false,   // que el toque no cierre el panel al abrirlo
+        radius: hecha || bloqueada ? Math.max(2, r - 1) : r,
+        fillColor: color,
+        fillOpacity: hecha ? 0.6 : bloqueada ? 0.55 : 1,
+        color: residuo ? '#f59e0b' : visita ? '#cbd5e1' : cerca ? '#ffffff' : 'rgba(5,10,20,.55)',
+        weight: residuo ? (cerca ? 3 : 2) : cerca ? 2 : 1,
+        opacity: bloqueada ? 0.6 : 1,
+        dashArray: bloqueada && cerca ? '3 3' : null,
+      });
+    }
     marker.on('click', () => tocarPunto(orden.id));
     marker.addTo(map_);
     markers_.push(marker);
+
+    // Etiqueta con el NC de cerca (solo lo que está en pantalla)
+    if (mostrarLabels && orden.nc && !bloqueada && vista.contains(latlng)) {
+      const lbl = L.marker(latlng, { interactive: false, icon: L.divIcon({ className: '', iconSize: [0, 0], html: `
+        <div style="position:absolute;top:${r + 4}px;left:0;transform:translateX(-50%);white-space:nowrap;font-size:10px;font-weight:700;
+          font-family:'Outfit',sans-serif;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.95),0 0 6px rgba(0,0,0,.8)">${escapeHtml(orden.nc)}</div>` }) });
+      lbl.addTo(map_);
+      markers_.push(lbl);
+    }
   });
 
   plotCondominios();
@@ -916,9 +894,8 @@ async function buscarPorMedidor(texto) {
   // Cargar todas las órdenes de AMI una vez (cache en memoria por sesión de mapa)
   try {
     if (!todasAmiCache_) {
-      const snap = await db.collection('ami_ordenes').get();
       // Sin condominios por ahora: no tienen pin propio al que llevar (fase 2).
-      todasAmiCache_ = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(o => o.tipoSitio !== 'condominio');
+      todasAmiCache_ = (await leer('ami_ordenes|*', () => db.collection('ami_ordenes'))).filter(o => o.tipoSitio !== 'condominio');
     }
   } catch (e) {
     cont.innerHTML = `<div style="padding:10px;color:#f87171;font-size:12px">Error al consultar. Intenta de nuevo.</div>`;

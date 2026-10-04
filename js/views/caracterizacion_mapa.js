@@ -12,6 +12,7 @@
  */
 
 import { db } from '../firebase.js';
+import { suscribir as suscribirVivo, tecnicosActivos } from '../vivo.js';
 import { toast, escapeHtml } from '../ui.js';
 
 let map_ = null;
@@ -191,11 +192,15 @@ function ajustarTamano() {
 // Parejas con al menos un técnico activo en Caracterización (para asignar).
 async function cargarParejasActivas() {
   try {
-    const us = await db.collection('users')
-      .where('asignacionActual.area', '==', 'Caracterizacion')
-      .where('active', '==', true).get();
     const set = new Set();
-    us.docs.forEach(d => { const p = d.data().asignacionActual?.destino; if (p) set.add(p); });
+    if (esAdmin_) {
+      (await tecnicosActivos(db)).forEach(u => { if (u.asignacionActual?.area === 'Caracterizacion' && u.asignacionActual?.destino) set.add(u.asignacionActual.destino); });
+    } else {
+      const us = await db.collection('users')
+        .where('asignacionActual.area', '==', 'Caracterizacion')
+        .where('active', '==', true).get();
+      us.docs.forEach(d => { const p = d.data().asignacionActual?.destino; if (p) set.add(p); });
+    }
     parejasActivas_ = [...set];
   } catch { parejasActivas_ = []; }
 }
@@ -213,14 +218,21 @@ function parejasDisponibles() {
 function suscribir() {
   const miPareja = session_.asignacionActual?.destino || null;
   if (!esAdmin_ && !miPareja) { cargado_ = { o: true, r: true }; updateStat(); return; }
-  const colO = db.collection('caracterizacion_ordenes');
-  const colR = db.collection('caracterizacion_retiros');
-  const qO = esAdmin_ ? colO : colO.where('pareja', '==', miPareja);
-  const qR = esAdmin_ ? colR : colR.where('pareja', '==', miPareja);
-  unsubOrd_ = qO.onSnapshot(snap => aplicarCambios(snap, 'o'),
-    err => { toast('Error cargando órdenes: ' + err.message, 'error'); cargado_.o = true; trasCarga(); });
-  unsubRet_ = qR.onSnapshot(snap => aplicarCambios(snap, 'r'),
-    () => { cargado_.r = true; trasCarga(); });
+  // Listeners compartidos con la lista y el inicio (js/vivo.js): entrar y
+  // salir del mapa ya no vuelve a leer las colecciones completas.
+  const q = nombre => esAdmin_ ? db.collection(nombre) : db.collection(nombre).where('pareja', '==', miPareja);
+  const clave = nombre => `${nombre}|${esAdmin_ ? '*' : miPareja}`;
+  // Adapta los cambios del listener compartido a la forma de un snapshot
+  const comoSnap = cambios => ({ docChanges: () => cambios.map(c => ({
+    type: c.type, doc: { id: c.doc.id, data: () => c.doc, metadata: { hasPendingWrites: c.local } } })) });
+  unsubOrd_ = suscribirVivo(clave('caracterizacion_ordenes'), () => q('caracterizacion_ordenes'), (_l, cambios, err) => {
+    if (err) { toast('Error cargando órdenes: ' + err.message, 'error'); cargado_.o = true; trasCarga(); return; }
+    aplicarCambios(comoSnap(cambios), 'o');
+  });
+  unsubRet_ = suscribirVivo(clave('caracterizacion_retiros'), () => q('caracterizacion_retiros'), (_l, cambios, err) => {
+    if (err) { cargado_.r = true; trasCarga(); return; }
+    aplicarCambios(comoSnap(cambios), 'r');
+  });
 }
 
 function aplicarCambios(snap, tipo) {

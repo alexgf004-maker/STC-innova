@@ -9,6 +9,7 @@
  */
 
 import { db } from '../firebase.js';
+import { leer, tecnicosActivos } from '../vivo.js';
 import { toast, escapeHtml } from '../ui.js';
 import { recalcularStats } from '../stats.js';
 
@@ -119,12 +120,9 @@ let escuchandoMapa_ = false, recargarAlSalirMapa_ = false;
 async function loadAsignaciones() {
   if (role_ === 'tecnico') return;   // solo lo necesita el panel de gestión
   try {
-    const snap = await db.collection('users')
-      .where('role', '==', 'tecnico')
-      .where('active', '==', true).get();
+    const tecnicos = await tecnicosActivos(db);   // compartido (js/vivo.js)
     const mapa = {};
-    snap.docs.forEach(d => {
-      const u = d.data();
+    tecnicos.forEach(u => {
       const destino = u.asignacionActual?.destino;
       const area    = u.asignacionActual?.area;
       if (!destino || area !== 'CAMBIOS') return;   // solo los que andan en Cambios hoy
@@ -507,8 +505,7 @@ function renderShell() {
 async function loadCalendario() {
   if (cacheValid('calendario')) return;
   try {
-    const snap = await db.collection('cambios_calendario').get();
-    calendario = snap.docs.map(d => d.data());
+    calendario = await leer('cambios_calendario', () => db.collection('cambios_calendario'));
     cache.calendario.data = calendario;
     cache.calendario.ts   = Date.now();
   } catch (err) {
@@ -524,13 +521,11 @@ async function loadOrdenes() {
     return;
   }
   try {
-    let query = db.collection('cambios_ordenes');
-    // Técnico solo ve su pareja
-    if (role_ === 'tecnico' && pareja_) {
-      query = query.where('pareja', '==', pareja_);
-    }
-    const snap = await query.get();
-    ordenes = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    // Mismo listener que el mapa y el inicio (js/vivo.js): si ya está
+    // abierto no cuesta lecturas; si no, lo abre y queda vivo un rato.
+    const tec = role_ === 'tecnico' && pareja_;
+    ordenes = await leer(tec ? `cambios_ordenes|${pareja_}` : 'cambios_ordenes|*',
+      () => tec ? db.collection('cambios_ordenes').where('pareja', '==', pareja_) : db.collection('cambios_ordenes'));
     cache.ordenes.data = ordenes;
     cache.ordenes.ts   = Date.now();
     renderTab();

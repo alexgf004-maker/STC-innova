@@ -20,6 +20,8 @@
  */
 
 import { db } from '../firebase.js';
+import { leer, tecnicosActivos } from '../vivo.js';
+import { padronAmi } from './ami_padron.js';
 import { toast, escapeHtml } from '../ui.js';
 import { devolverAPendiente, puedeDevolverse } from './ami_devolver.js';
 
@@ -137,32 +139,20 @@ export async function init(container, session) {
 // la colección completa y filtraba en el teléfono).
 async function cargarOrdenes() {
   try {
+    // Mismo listener que el mapa y el inicio (js/vivo.js)
     let todas = [];
     if (esAdmin_) {
-      const snap = await db.collection(COLECCION).get();
-      todas = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      todas = await leer(`${COLECCION}|*`, () => db.collection(COLECCION));
     } else if (pareja_) {
-      const snap = await db.collection(COLECCION).where('pareja', '==', pareja_).get();
-      todas = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      todas = await leer(`${COLECCION}|${pareja_}`, () => db.collection(COLECCION).where('pareja', '==', pareja_));
     }
 
     // Padrón de NC ya cambiados (para marcar/esconder). El admin lo lee
     // completo; el técnico solo pregunta por los NC de su ruta (el id del
     // documento es el NC), de 30 en 30.
     let padron = new Set();
-    try {
-      if (esAdmin_) {
-        const pad = await db.collection('ami_cambiados').get();
-        padron = new Set(pad.docs.map(d => String(d.data().nc ?? d.id).trim()));
-      } else {
-        const ncs = [...new Set(todas.map(o => String(o.nc ?? '').trim()).filter(Boolean))];
-        const docId = firebase.firestore.FieldPath.documentId();
-        for (let k = 0; k < ncs.length; k += 30) {
-          const pad = await db.collection('ami_cambiados').where(docId, 'in', ncs.slice(k, k + 30)).get();
-          pad.docs.forEach(d => padron.add(String(d.data().nc ?? d.id).trim()));
-        }
-      }
-    } catch (e) { /* si no existe aún, padrón vacío */ }
+    try { padron = await padronAmi(esAdmin_, todas.map(o => o.nc)); }
+    catch (e) { /* si no existe aún, padrón vacío */ }
 
     todas.forEach(o => { o._yaCambiada = padron.has(String(o.nc ?? '').trim()); });
     if (!esAdmin_) todas = todas.filter(o => !o._yaCambiada);
@@ -180,11 +170,8 @@ async function cargarOrdenes() {
     // Parejas activas: las que tienen al menos un técnico activo en AMI
     if (esAdmin_) {
       try {
-        const us = await db.collection('users')
-          .where('asignacionActual.area', '==', AREA)
-          .where('active', '==', true).get();
         const set = new Set();
-        us.docs.forEach(d => { const p = d.data().asignacionActual?.destino; if (p) set.add(p); });
+        (await tecnicosActivos(db)).forEach(u => { if (u.asignacionActual?.area === AREA && u.asignacionActual?.destino) set.add(u.asignacionActual.destino); });
         parejasActivas_ = [...set].sort((a, b) =>
           (parseInt(String(a).replace(/\D/g,''),10)||0) - (parseInt(String(b).replace(/\D/g,''),10)||0));
       } catch (e) { parejasActivas_ = []; }

@@ -5,6 +5,7 @@
  */
 
 import { db } from '../firebase.js';
+import { leer, actual, tecnicosActivos } from '../vivo.js';
 import { leerStats, recalcularStats } from '../stats.js';
 import { toast, escapeHtml } from '../ui.js';
 
@@ -319,15 +320,17 @@ async function cargarDatosTecnico(session, area, destino) {
               : area === 'AMI' ? 'ami_ordenes'
               : 'otc_ordenes';
     const campo = (area === 'CAMBIOS' || area === 'Caracterizacion' || area === 'AMI') ? 'pareja' : 'tecnicoDestino';
-    const snap = await db.collection(col).where(campo, '==', destino).get();
-    const ordenes = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    // Mismo listener que los paneles y mapas (js/vivo.js): abrir el inicio
+    // varias veces al día ya no vuelve a leer todas las órdenes de la pareja.
+    const ordenes = campo === 'pareja'
+      ? await leer(`${col}|${destino}`, () => db.collection(col).where('pareja', '==', destino))
+      : (await db.collection(col).where(campo, '==', destino).get()).docs.map(d => ({ id: d.id, ...d.data() }));
 
     // Caracterización lleva instalaciones Y retiros: cargar también los retiros
     let retiros = [];
     if (area === 'Caracterizacion') {
       try {
-        const snapR = await db.collection('caracterizacion_retiros').where('pareja', '==', destino).get();
-        retiros = snapR.docs.map(d => ({ id: d.id, ...d.data() }));
+        retiros = await leer(`caracterizacion_retiros|${destino}`, () => db.collection('caracterizacion_retiros').where('pareja', '==', destino));
       } catch(e) { retiros = []; }
     }
 
@@ -770,11 +773,15 @@ function renderHomeOficina(container, session) {
 }
 
 async function cargarRevisiones() {
-  const res = await Promise.all(REVISION.map(r =>
-    db.collection(r.col).where(r.campo, '==', r.valor).limit(TOPE_REVISION).get()
+  // Si el panel o el mapa de esa área ya tiene su listener abierto, se cuenta
+  // de ahí (sin lecturas); si no, una consulta filtrada con tope.
+  const res = await Promise.all(REVISION.map(r => {
+    const enVivo = actual(`${r.col}|*`);
+    if (enVivo) return Promise.resolve({ ...r, n: enVivo.filter(o => o[r.campo] === r.valor).length });
+    return db.collection(r.col).where(r.campo, '==', r.valor).limit(TOPE_REVISION).get()
       .then(snap => ({ ...r, n: snap.size }))
-      .catch(err => { console.warn('[home] revisión', r.col, err.message); return { ...r, n: null }; })
-  ));
+      .catch(err => { console.warn('[home] revisión', r.col, err.message); return { ...r, n: null }; });
+  }));
   // Devoluciones de material esperando aprobación en bodega
   let devol = null;
   try {
@@ -818,12 +825,7 @@ async function cargarPersonalHoy() {
   if (!el) return;
 
   try {
-    const snap = await db.collection('users')
-      .where('active', '==', true)
-      .where('role', '==', 'tecnico')
-      .get();
-
-    const todos = snap.docs.map(d => d.data());
+    const todos = await tecnicosActivos(db);   // compartido (js/vivo.js)
     const asignados = todos.filter(u => u.asignacionActual?.area && u.asignacionActual?.destino);
     const sinAsignar = todos.filter(u => !(u.asignacionActual?.area && u.asignacionActual?.destino));
 

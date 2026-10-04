@@ -9,6 +9,7 @@
  */
 
 import { db } from '../firebase.js';
+import { suscribir, leer } from '../vivo.js';
 import { toast, escapeHtml } from '../ui.js';
 
 const PAREJA_COLORS = {
@@ -83,8 +84,7 @@ export async function init(container, session) {
 
   // Cargar calendario de lecturas para bloqueos visuales
   try {
-    const calSnap = await db.collection('cambios_calendario').get();
-    calendario_ = calSnap.docs.map(d => d.data());
+    calendario_ = await leer('cambios_calendario', () => db.collection('cambios_calendario'));
   } catch(err) {
     console.warn('[mapa] Error cargando calendario:', err);
   }
@@ -346,13 +346,14 @@ function suscribirOrdenes() {
   // Cancelar listener anterior si existe
   if (unsubscribe_) { unsubscribe_(); unsubscribe_ = null; }
 
-  let query = role_ === 'tecnico' && pareja_
-    ? db.collection('cambios_ordenes').where('pareja', '==', pareja_)
-    : db.collection('cambios_ordenes');
-
-  unsubscribe_ = query.onSnapshot(snap => {
-    ordenes_ = snap.docs
-      .map(d => ({ id: d.id, ...d.data() }))
+  // Listener compartido con el panel de Cambios y el inicio (js/vivo.js):
+  // entrar y salir del mapa ya no vuelve a leer la colección completa.
+  const tec = role_ === 'tecnico' && pareja_;
+  unsubscribe_ = suscribir(tec ? `cambios_ordenes|${pareja_}` : 'cambios_ordenes|*',
+    () => tec ? db.collection('cambios_ordenes').where('pareja', '==', pareja_) : db.collection('cambios_ordenes'),
+    (lista, _cambios, err) => {
+    if (err) { console.error('[mapa] Error en listener:', err); return; }
+    ordenes_ = lista
       .filter(o => {
         const lat = parseFloat(o.latitud);
         const lng = parseFloat(o.longitud);
@@ -365,8 +366,6 @@ function suscribirOrdenes() {
 
     plotMarkers();
     updateStatChip();
-  }, err => {
-    console.error('[mapa] Error en listener:', err);
   });
 }
 
