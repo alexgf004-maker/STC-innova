@@ -705,19 +705,12 @@ function renderPanel() {
   const totalHoy = enCampo.reduce((a, p) => a + hechasHoyDe(p), 0);
   const metaHoy  = enCampo.length * 15;
 
-  const tile = (cls, ico, n, titulo, sub, onclick) => `
-    <div class="hm-tile ${n ? '' : 'cm-tile-cero'}" onclick="${onclick}">
-      <div style="display:flex;align-items:center;justify-content:space-between;width:100%">
-        <div class="hm-ic ${cls}">${svgCm(ico, 20)}</div>
-        <span class="cm-tile-n">${n}</span>
-      </div>
-      <div style="min-width:0;width:100%">
-        <div class="hm-tile-t">${titulo}</div>
-        <div class="hm-tile-s">${sub}</div>
-      </div>
-    </div>`;
-
-  const parejasConOrdenes = PAREJAS.filter(p => ordenes.some(o => o.pareja === p));
+  const revisar = [
+    porConfirmar.length  ? filaAtencion('warn',   ICO_CM.check,  `${porConfirmar.length} por confirmar`, 'Confirmar por día o todas', 'window.__cambios.abrirConfirmar()') : '',
+    yaCambiadas.length   ? filaAtencion('orange', ICO_CM.alerta, `${yaCambiadas.length} reportada${yaCambiadas.length > 1 ? 's' : ''} como ya cambiada${yaCambiadas.length > 1 ? 's' : ''}`, '¿Las hicimos nosotros o se revierten?', 'window.__cambios.openYaCambiadas()') : '',
+    malUbicadas.length   ? filaAtencion('violet', ICO_CM.pin,    `${malUbicadas.length} mal ubicada${malUbicadas.length > 1 ? 's' : ''}`, 'Corregir coordenadas', 'window.__cambios.openMalUbicadas()') : '',
+    bloqueadas.length    ? filaAtencion('muted',  ICO_CM.lock,   `${bloqueadas.length} bloqueada${bloqueadas.length > 1 ? 's' : ''} por lectura`, 'No se pueden trabajar estos días', "window.__cambios.irAOrdenes('bloqueadas')") : '',
+  ].join('');
 
   content.innerHTML = `
     <div class="anim-up">
@@ -757,16 +750,8 @@ function renderPanel() {
       </div>
 
       <div class="ds-sec">Para revisar</div>
-      <div class="hm-grid" style="margin-bottom:22px">
-        ${tile('rc', ICO_CM.check,  porConfirmar.length, 'Por confirmar', 'Por día o todas', 'window.__cambios.abrirConfirmar()')}
-        ${tile('or', ICO_CM.alerta, yaCambiadas.length,  'Ya cambiadas', 'Reportadas en campo', 'window.__cambios.openYaCambiadas()')}
-        ${tile('am', ICO_CM.pin,    malUbicadas.length,  'Mal ubicadas', 'Corregir coordenadas', 'window.__cambios.openMalUbicadas()')}
-        ${tile('us', ICO_CM.reloj,  visitas.length,      'Visitas', 'Cliente ausente y otras', "window.__cambios.irAOrdenes('visitas')")}
-      </div>
-
-      <div class="ds-sec">Parejas</div>
-      <div class="hm-grid" style="margin-bottom:22px">
-        ${parejasConOrdenes.map(p => tarjetaPareja(p)).join('') || '<div class="ds-card" style="grid-column:1/-1;text-align:center;color:var(--text-3);font-size:13px">Sin órdenes asignadas a parejas</div>'}
+      <div class="cm-lista" style="margin-bottom:22px">
+        ${revisar || `<div class="cm-fila" style="cursor:default"><div class="cm-fila-ic ok">${svgCm(ICO_CM.check, 17)}</div><div style="flex:1"><div class="cm-fila-t">Todo al día</div><div class="cm-fila-s">Nada pendiente de revisar</div></div></div>`}
       </div>
 
       <div class="ds-sec">Avance general</div>
@@ -788,41 +773,20 @@ function renderPanel() {
         </div>
       </div>
 
-      ${bloqueadas.length ? `
-      <div class="cm-lista" style="margin-top:12px">
-        ${filaAtencion('muted', ICO_CM.lock, `${bloqueadas.length} bloqueada${bloqueadas.length > 1 ? 's' : ''} por lectura`, 'No se pueden trabajar estos días', "window.__cambios.irAOrdenes('bloqueadas')")}
-      </div>` : ''}
+      <div class="ds-sec">Por pareja</div>
+      <div class="flex-col gap-8" id="acordeon-parejas">
+        ${PAREJAS.map(p => renderAcordeonPareja(p)).join('')}
+      </div>
     </div>
   `;
-}
 
-// Tarjeta de pareja (estilo inicio). Al tocarla se abren sus realizadas por confirmar.
-function tarjetaPareja(p) {
-  const c = PAREJA_COLORS[p] || PAREJA_COLORS['Pareja 1'];
-  const lista = ordenes.filter(o => o.pareja === p);
-  const aprob = lista.filter(o => o.estadoCampo === 'aprobada').length;
-  const porConf = lista.filter(o => o.estadoCampo === 'hecha').length;
-  const pct = lista.length ? Math.round(aprob / lista.length * 100) : 0;
-  const miembros = asignaciones_[p];
-  return `
-    <div class="hm-tile" onclick="window.__cambios.abrirConfirmar('${p}')">
-      <div style="display:flex;align-items:center;justify-content:space-between;width:100%">
-        <div class="cm-pav" style="background:linear-gradient(140deg, ${c.accent}, ${c.accent}88);box-shadow:0 8px 20px -8px ${c.accent}">${esc(p.replace('Pareja ', 'P'))}</div>
-        ${miembros ? '<span class="cm-pill ok">En campo</span>' : ''}
-      </div>
-      <div style="min-width:0;width:100%">
-        <div class="hm-tile-t">${esc(p)}</div>
-        <div class="hm-tile-s" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${miembros ? esc(miembros.join(' · ')) : 'Sin técnicos hoy'}</div>
-      </div>
-      <div style="width:100%">
-        <div style="display:flex;align-items:baseline;justify-content:space-between">
-          <span style="font-size:20px;font-weight:600">${pct}%</span>
-          <span style="font-size:11.5px;color:var(--text-3)">${aprob}/${lista.length}</span>
-        </div>
-        <div class="ds-bar" style="height:5px;margin-top:6px"><i style="width:${pct}%;background:${c.accent}"></i></div>
-      </div>
-      ${porConf ? `<span class="hm-pill warn">${porConf} por confirmar</span>` : '<span class="hm-pill ok">Al día</span>'}
-    </div>`;
+  // Inicializar búsquedas
+  PAREJAS.forEach(p => {
+    const inputId = `buscar-${p.replace(' ','-')}`;
+    document.getElementById(inputId)?.addEventListener('input', e => {
+      filtrarOrdenesPareja(p, e.target.value.trim());
+    });
+  });
 }
 
 // ── Confirmar realizadas: por día o todas ────────
@@ -957,6 +921,9 @@ function renderAcordeonPareja(pareja) {
 
       <div class="acordeon-body" id="body-${key}" style="display:none;padding:0 14px 14px">
         ${hechas.length ? `
+        <button class="btn-action marca" style="margin-bottom:10px" onclick="window.__cambios.abrirConfirmar('${pareja}')">
+          ${svgCm(ICO_CM.check, 16)} Confirmar por día o todas (${hechas.length})
+        </button>
         <div class="buscar-wrap" style="margin-bottom:10px">
           ${svgCm(ICO_CM.buscar, 14, 'style="color:var(--text-4);flex-shrink:0"')}
           <input class="buscar-input" id="${inputId}" type="text" placeholder="Buscar WO o cliente…" autocomplete="off" autocorrect="off"/>
