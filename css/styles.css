@@ -2384,3 +2384,8 @@ body {
     border-color: rgba(96,165,250,.20);
   }
 }
+
+/* ── Caracterización ── */
+.crc-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 8px; }
+.crc-scope .cm-est.active { color: #fff; background: #ef4444; border-color: #ef4444; box-shadow: 0 6px 16px -6px rgba(239,68,68,.7); }
+.crc-scope .cm-est.active span { background: rgba(255,255,255,.2); color: #fff; }

@@ -25,8 +25,9 @@ let esAdmin_   = false;
 let padron_    = null;   // { NC: {nc,nombre,direccion,ds,medidor,lat,lng,sup1?,sup2?} }
 let ordenes_   = [];
 let retiros_   = [];     // puntos de retiro (colección caracterizacion_retiros)
-let pestana_   = 'instalacion';   // 'instalacion' | 'retiro'
-let verListas_ = false;          // la sección "Lista" (confirmadas) va plegada
+let pestana_   = 'panel';   // 'panel' (admin) | 'resumen' (técnico) | 'instalacion' | 'retiro'
+let filtroInst_ = 'porhacer', filtroRet_ = 'porretirar', parejaF_ = 'todas', limite_ = 40;
+let datosListos_ = false;
 
 // Mismos colores de pareja que el mapa (por número, no solo 1-3)
 const PALETA_PAREJA = ['#2dd4bf','#fbbf24','#a78bfa','#f472b6','#60a5fa'];
@@ -249,100 +250,131 @@ export async function init(container, session) {
   container_ = container;
   session_ = session;
   esAdmin_ = (session.role === 'admin' || session.role === 'asistente');
+  pestana_ = esAdmin_ ? 'panel' : 'resumen';
+  filtroInst_ = 'porhacer'; filtroRet_ = 'porretirar'; parejaF_ = 'todas'; limite_ = 40;
+  datosListos_ = false; ordenes_ = []; retiros_ = [];
   container.scrollTop = 0;
+
+  const tabs = esAdmin_
+    ? [['panel', 'Panel'], ['instalacion', 'Instalación'], ['retiro', 'Retiro']]
+    : [['resumen', 'Resumen'], ['instalacion', 'Instalación'], ['retiro', 'Retiro']];
+
   container.innerHTML = `
-    <div style="max-width:1100px;margin:0 auto">
-      <div style="margin-bottom:18px">
-        <div style="font-size:24px;font-weight:600;letter-spacing:-.02em;line-height:1.15">Caracterización de la Carga</div>
-        <div style="font-size:12px;color:var(--text-4);margin-top:4px">${esAdmin_ ? 'Órdenes del día' : 'Tus órdenes del día'}</div>
-        ${esAdmin_ ? `
-        <div style="display:flex;gap:8px;margin-top:14px">
-          <button id="crc-cargar" class="btn-marca" style="flex:1;display:flex;align-items:center;justify-content:center;gap:8px;padding:12px;border-radius:12px;font-size:13px;cursor:pointer;font-family:inherit">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-            Cargar órdenes del día
-          </button>
-          <button class="icon-btn" id="crc-mapa" title="Mapa y asignación de zonas" style="width:46px;height:auto;border-radius:12px">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg>
-          </button>
+    <div class="crc-scope" style="max-width:1100px;margin:0 auto">
+      <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:16px">
+        <div style="flex:1;min-width:0">
+          <div style="font-size:24px;font-weight:600;letter-spacing:-.02em;line-height:1.15">Caracterización</div>
+          <div style="font-size:12px;color:var(--text-3);margin-top:4px">Caracterización de la carga · instalación y retiro</div>
         </div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
-          <button class="crc-acc" id="crc-cargar-retiro" style="color:#f59e0b;border-color:rgba(245,158,11,.35);background:rgba(245,158,11,.08)">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M22 12v5a2 2 0 01-2 2H4a2 2 0 01-2-2v-5"/><polyline points="8 8 12 4 16 8"/><line x1="12" y1="4" x2="12" y2="16"/></svg>
-            Subir retiros
-          </button>
-          <button class="crc-acc" id="crc-complemento">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M20 6H10M20 12H10M20 18H10"/><path d="M4 7l2 2 3-3"/><path d="M4 13l2 2 3-3"/><path d="M4 19l2 2 3-3"/></svg>
-            Completar BDTH
-          </button>
-          <button class="crc-acc" id="crc-excel" title="Descargar Excel">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-            Excel
-          </button>
-        </div>
-        <input type="file" id="crc-file" accept=".xlsx,.xls" style="display:none"/>
-        <input type="file" id="crc-file-comp" accept=".xlsx,.xls" style="display:none"/>
-        <input type="file" id="crc-file-retiro" accept=".xlsx,.xls" style="display:none"/>` : `
-        <button id="crc-mapa-tec" style="width:100%;margin-top:14px;display:flex;align-items:center;justify-content:center;gap:8px;padding:12px;border-radius:12px;border:1px solid rgba(239,68,68,.4);background:rgba(239,68,68,.1);color:#f87171;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg>
-          Ver mapa
-        </button>`}
+        <button class="cm-ico-btn" id="crc-mapa" title="Mapa">${svgC(ICO_C.mapa, 18)}</button>
+        ${esAdmin_ ? `<button class="cm-ico-btn" id="crc-menu" title="Acciones">${svgC(ICO_C.dots, 18)}</button>` : ''}
       </div>
 
-      <!-- Pestañas Instalación / Retiro -->
       <div class="area-tabs" style="margin-bottom:14px">
-        <button class="area-tab crc-tab" data-tab="instalacion">Instalación</button>
-        <button class="area-tab crc-tab" data-tab="retiro">Retiro</button>
+        ${tabs.map(([id, t]) => `<button class="area-tab crc-tab" data-tab="${id}">${t}</button>`).join('')}
       </div>
 
-      <div style="margin-bottom:14px">
-        <div class="buscar-wrap" style="margin-bottom:0">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14" style="color:var(--text-4);flex-shrink:0"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-          <input class="buscar-input" id="crc-buscar" type="text" placeholder="Buscar por NC, medidor o nombre…" autocomplete="off"/>
-        </div>
+      <div class="buscar-wrap" style="margin-bottom:14px">
+        ${svgC(ICO_C.buscar, 14, 'style="color:var(--text-4);flex-shrink:0"')}
+        <input class="buscar-input" id="crc-buscar" type="text" placeholder="Buscar NC, medidor o nombre…" autocomplete="off"/>
       </div>
       <div id="crc-busqueda"></div>
 
       <div id="crc-estado"></div>
       <div id="crc-resumen"></div>
       <div id="crc-lista"></div>
+
+      ${esAdmin_ ? `
+      <input type="file" id="crc-file" accept=".xlsx,.xls" style="display:none"/>
+      <input type="file" id="crc-file-comp" accept=".xlsx,.xls" style="display:none"/>
+      <input type="file" id="crc-file-retiro" accept=".xlsx,.xls" style="display:none"/>
+
+      <div class="sheet-backdrop" id="crc-sheet-acciones">
+        <div class="sheet">
+          <div class="sheet-handle"></div>
+          <div class="sheet-title">Acciones de Caracterización</div>
+          <div class="sheet-body"><div class="flex-col gap-8">
+            ${accionC('crc-a-cargar', ICO_C.subir, 'Cargar órdenes del día', 'Excel de instalaciones de DELSUR')}
+            ${accionC('crc-a-retiros', ICO_C.subir, 'Subir retiros', 'Excel con los puntos de retiro')}
+            ${accionC('crc-a-bdth', ICO_C.check, 'Completar BDTH', 'Agregar datos que faltan a los puntos')}
+            <div class="cm-acc-sep">Reportes</div>
+            ${accionC('crc-a-excel', ICO_C.bajar, 'Trazabilidad por día', 'Excel de instalaciones del día que elijas')}
+            ${accionC('crc-a-excel-ret', ICO_C.bajar, 'Excel de retiros', 'Todos los retiros con su estado')}
+          </div></div>
+        </div>
+      </div>
+
+      <div class="sheet-backdrop" id="crc-sheet-confirmar">
+        <div class="sheet" style="max-height:92vh">
+          <div class="sheet-handle"></div>
+          <div class="sheet-title" id="crc-conf-title">Falta revisar</div>
+          <div class="sheet-body" id="crc-conf-body" style="padding-bottom:16px"></div>
+        </div>
+      </div>` : ''}
     </div>`;
 
-  if (!document.getElementById('crc-lista-css')) {
-    const st = document.createElement('style');
-    st.id = 'crc-lista-css';
-    st.textContent = `.crc-acc{display:flex;align-items:center;gap:6px;padding:8px 12px;border-radius:10px;border:1px solid var(--border);background:var(--glass);color:var(--text-2);font-size:12px;font-weight:600;cursor:pointer;font-family:inherit}
-      .crc-acc:active{filter:brightness(1.15)}
-      .crc-tocable{cursor:pointer}.crc-tocable:active{background:var(--glass-hov)}`;
-    document.head.appendChild(st);
-  }
-
-  // Pestañas
-  const tabs = container.querySelectorAll('.crc-tab');
-  tabs.forEach(t => t.onclick = () => setPestana(t.dataset.tab));
+  container.querySelectorAll('.crc-tab').forEach(t => t.onclick = () => setPestana(t.dataset.tab));
+  container.querySelector('#crc-mapa').onclick = () => window.__router.navigateTo('caracterizacion_mapa');
 
   if (esAdmin_) {
+    const hoja = container.querySelector('#crc-sheet-acciones');
+    const cerrarHoja = () => hoja.classList.remove('open');
+    container.querySelector('#crc-menu').onclick = () => hoja.classList.add('open');
+    ['crc-sheet-acciones', 'crc-sheet-confirmar'].forEach(id => {
+      const el = container.querySelector('#' + id);
+      el.addEventListener('click', e => { if (e.target === el) el.classList.remove('open'); });
+    });
     const fileInput = container.querySelector('#crc-file');
-    container.querySelector('#crc-cargar').onclick = () => fileInput.click();
-    container.querySelector('#crc-mapa').onclick = () => window.__router.navigateTo('caracterizacion_mapa');
-    container.querySelector('#crc-excel').onclick = () => pestana_ === 'retiro' ? descargarExcelRetiros() : abrirDescargaExcel();
     const fileComp = container.querySelector('#crc-file-comp');
-    container.querySelector('#crc-complemento').onclick = () => fileComp.click();
-    fileComp.onchange = (e) => manejarComplemento(e.target.files[0]);
-    fileInput.onchange = (e) => manejarArchivo(e.target.files[0]);
     const fileRet = container.querySelector('#crc-file-retiro');
-    container.querySelector('#crc-cargar-retiro').onclick = () => fileRet.click();
+    container.querySelector('#crc-a-cargar').onclick = () => { cerrarHoja(); fileInput.click(); };
+    container.querySelector('#crc-a-retiros').onclick = () => { cerrarHoja(); fileRet.click(); };
+    container.querySelector('#crc-a-bdth').onclick = () => { cerrarHoja(); fileComp.click(); };
+    container.querySelector('#crc-a-excel').onclick = () => { cerrarHoja(); abrirDescargaExcel(); };
+    container.querySelector('#crc-a-excel-ret').onclick = () => { cerrarHoja(); descargarExcelRetiros(); };
+    fileInput.onchange = (e) => manejarArchivo(e.target.files[0]);
+    fileComp.onchange = (e) => manejarComplemento(e.target.files[0]);
     fileRet.onchange = (e) => manejarArchivoRetiro(e.target.files[0]);
     cargarPadron().catch(()=>{});
-  } else {
-    container.querySelector('#crc-mapa-tec').onclick = () => window.__router.navigateTo('caracterizacion_mapa');
   }
+
   // Buscador (admin y técnico; el técnico solo encuentra lo de su pareja)
   const inpBuscar = container.querySelector('#crc-buscar');
   let tb = null;
   inpBuscar.oninput = () => { clearTimeout(tb); const v = inpBuscar.value; tb = setTimeout(() => buscarOrdenes(v), 250); };
 
-  setPestana(pestana_);
+  marcarPestana();
+  cargarTodo();
 }
+
+// ── Íconos y piezas de la vista ──
+const ICO_C = {
+  mapa:   '<polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/>',
+  dots:   '<circle cx="12" cy="5" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="12" cy="19" r="1.4"/>',
+  buscar: '<circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>',
+  subir:  '<path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>',
+  bajar:  '<path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>',
+  check:  '<path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>',
+  pin:    '<path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/>',
+  x:      '<circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/>',
+  chev:   '<polyline points="9 18 15 12 9 6"/>',
+};
+const svgC = (d, n = 16, extra = '') => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="${n}" height="${n}" ${extra}>${d}</svg>`;
+function accionC(id, ico, txt, sub) {
+  return `<button class="us-accion" id="${id}">${svgC(ico, 18)}<span style="flex:1;text-align:left"><span style="display:block">${txt}</span><span class="us-accion-sub">${sub}</span></span></button>`;
+}
+function filaC(cls, ico, titulo, sub, accion) {
+  return `
+    <div class="cm-fila" data-accion="${accion}">
+      <div class="cm-fila-ic ${cls}">${svgC(ico, 17)}</div>
+      <div style="flex:1;min-width:0"><div class="cm-fila-t">${titulo}</div><div class="cm-fila-s">${sub}</div></div>
+      ${svgC(ICO_C.chev, 16, 'style="color:var(--text-3);flex-shrink:0"')}
+    </div>`;
+}
+const esLograda   = o => (o.estado === 'por_confirmar' || o.estado === 'confirmada');
+const esPorHacer  = o => !o.estado || o.estado === 'pendiente';
+const retHecho    = r => r.estado === 'retirado' || r.estado === 'no_retirado';
+const ordenPareja = (a, b) => (parseInt(String(a).replace(/\D/g, ''), 10) || 0) - (parseInt(String(b).replace(/\D/g, ''), 10) || 0);
 
 // ── Buscador global (admin): NC, medidor o nombre en instalaciones y retiros ──
 async function buscarOrdenes(texto) {
@@ -359,6 +391,7 @@ async function buscarOrdenes(texto) {
     if (lista) lista.style.display = '';
     return;
   }
+  if (!datosListos_) return;
   if (resumen) resumen.style.display = 'none';
   if (lista) lista.style.display = 'none';
   cont.innerHTML = `<div style="text-align:center;padding:20px;color:var(--text-4);font-size:12px">Buscando…</div>`;
@@ -502,222 +535,390 @@ async function leerColeccion(nombre) {
   return snap.docs.map(d => ({ id: d.id, ...d.data() }));
 }
 
-// ── Cargar y renderizar las órdenes del día ──
-async function cargarOrdenes() {
-  const lista = container_.querySelector('#crc-lista');
-  if (lista) lista.innerHTML = `<div style="text-align:center;padding:24px"><div class="spinner" style="margin:0 auto 8px"></div><div style="font-size:12px;color:var(--text-4)">Cargando órdenes…</div></div>`;
+// ── Carga: instalaciones y retiros una sola vez al entrar ──
+// (antes cada cambio de pestaña volvía a leer la colección completa)
+async function cargarTodo() {
+  const res = container_.querySelector('#crc-resumen');
+  if (res) res.innerHTML = `<div style="text-align:center;padding:24px"><div class="spinner" style="margin:0 auto 8px"></div><div style="font-size:12px;color:var(--text-4)">Cargando…</div></div>`;
   try {
-    ordenes_ = await leerColeccion('caracterizacion_ordenes');
-    if (pestana_ === 'instalacion') { renderResumen(); renderLista(); }
+    [ordenes_, retiros_] = await Promise.all([
+      leerColeccion('caracterizacion_ordenes'),
+      leerColeccion('caracterizacion_retiros'),
+    ]);
+    datosListos_ = true;
+    render();
   } catch (err) {
-    if (lista) lista.innerHTML = `<div style="color:#ef4444;font-size:12px;padding:16px">Error cargando órdenes: ${escapeHtml(err.message)}</div>`;
+    if (res) res.innerHTML = `<div style="color:#ef4444;font-size:12px;padding:16px">Error cargando: ${escapeHtml(err.message)}</div>`;
   }
 }
-
+async function cargarOrdenes() {
+  try { ordenes_ = await leerColeccion('caracterizacion_ordenes'); datosListos_ = true; render(); }
+  catch (err) { toast('Error cargando órdenes: ' + err.message, 'error'); }
+}
 async function cargarRetiros() {
-  const lista = container_.querySelector('#crc-lista');
-  if (lista && pestana_ === 'retiro') lista.innerHTML = `<div style="text-align:center;padding:24px"><div class="spinner" style="margin:0 auto 8px"></div><div style="font-size:12px;color:var(--text-4)">Cargando retiros…</div></div>`;
-  try {
-    retiros_ = await leerColeccion('caracterizacion_retiros');
-    if (pestana_ === 'retiro') { renderResumenRetiros(); renderListaRetiros(); }
-  } catch (err) {
-    if (lista && pestana_ === 'retiro') lista.innerHTML = `<div style="color:#ef4444;font-size:12px;padding:16px">Error cargando retiros: ${escapeHtml(err.message)}</div>`;
-  }
+  try { retiros_ = await leerColeccion('caracterizacion_retiros'); render(); }
+  catch (err) { toast('Error cargando retiros: ' + err.message, 'error'); }
+}
+
+function marcarPestana() {
+  container_.querySelectorAll('.crc-tab').forEach(t => {
+    t.classList.toggle('active', t.dataset.tab === pestana_);
+    t.classList.toggle('cr', t.dataset.tab === pestana_);
+  });
 }
 
 function setPestana(tab) {
-  pestana_ = tab;
-  // Resaltar la pestaña activa con la clase estándar (color del área)
-  container_.querySelectorAll('.crc-tab').forEach(t => {
-    t.classList.toggle('active', t.dataset.tab === tab);
-    t.classList.toggle('cr', t.dataset.tab === tab);
-  });
-  // Al cambiar de pestaña, limpiar la búsqueda y restaurar la vista normal
-  const inpBuscar = container_.querySelector('#crc-buscar');
+  pestana_ = tab; limite_ = 40;
+  marcarPestana();
+  const inp = container_.querySelector('#crc-buscar');
+  if (inp) inp.value = '';
   const busq = container_.querySelector('#crc-busqueda');
-  if (inpBuscar) inpBuscar.value = '';
   if (busq) busq.innerHTML = '';
-  // Limpiar y cargar la pestaña elegida
-  const resumenEl = container_.querySelector('#crc-resumen');
-  const listaEl = container_.querySelector('#crc-lista');
-  if (resumenEl) { resumenEl.innerHTML = ''; resumenEl.style.display = ''; }
-  if (listaEl) { listaEl.innerHTML = ''; listaEl.style.display = ''; }
   container_.querySelector('#crc-estado').innerHTML = '';
-  if (tab === 'retiro') cargarRetiros();
-  else cargarOrdenes();
+  render();
 }
 
+function render() {
+  if (!datosListos_ || !container_) return;
+  const res = container_.querySelector('#crc-resumen');
+  const lista = container_.querySelector('#crc-lista');
+  if (!res || !lista) return;
+  res.style.display = ''; lista.style.display = '';
+  res.innerHTML = ''; lista.innerHTML = '';
+  if (pestana_ === 'panel') renderPanel();
+  else if (pestana_ === 'resumen') renderResumenTec();
+  else if (pestana_ === 'retiro') renderRetiros();
+  else renderInstalaciones();
+  const q = container_.querySelector('#crc-buscar')?.value;
+  if (q && q.trim()) buscarOrdenes(q);
+}
+// Compatibilidad con llamadas anteriores
+function renderResumen() { render(); }
+function renderLista() { render(); }
 
-function renderResumen() {
+// ── Panel (admin/asistente) ──
+const META_PAREJA = 7;
+const META_RETIROS = 12;
+
+function renderPanel() {
   const el = container_.querySelector('#crc-resumen');
-  if (!el) return;
+  const hoy = claveDia(firebase.firestore.Timestamp.now());
   const total = ordenes_.length;
-  if (!total) { el.innerHTML = ''; return; }
-  const porConfirmar = ordenes_.filter(o => o.estado === 'por_confirmar').length;
-  const confirmadas  = ordenes_.filter(o => o.estado === 'confirmada').length;
-  const listas = porConfirmar + confirmadas;
-  const pend = total - listas;
-  const pct = total ? Math.round((listas / total) * 100) : 0;
-  const totalVisitas = ordenes_.reduce((s, o) => s + (Array.isArray(o.visitas) ? o.visitas.length : 0), 0);
+  const faltaRevisar = ordenes_.filter(o => o.estado === 'por_confirmar');
+  const listas = ordenes_.filter(o => o.estado === 'confirmada').length;
+  const porHacer = ordenes_.filter(esPorHacer).length;
+  const sinAsignar = ordenes_.filter(o => esPorHacer(o) && !o.pareja).length
+                   + retiros_.filter(r => !retHecho(r) && !r.pareja).length;
+  const noPudo = retiros_.filter(r => r.estado === 'no_retirado').length;
+  const visitas = ordenes_.reduce((s, o) => s + (Array.isArray(o.visitas) ? o.visitas.length : 0), 0);
+
+  // Hoy por pareja: instalaciones logradas (se hizo en algún punto) y retiros
+  const parejas = {};
+  const P = p => (parejas[p] = parejas[p] || { inst: 0, ret: 0, asign: 0 });
+  ordenes_.forEach(o => {
+    if (!o.pareja) return;
+    P(o.pareja).asign++;
+    if (esLograda(o) && o.logranoEn && o.fechaHecha && claveDia(o.fechaHecha) === hoy) P(o.pareja).inst++;
+  });
+  retiros_.forEach(r => {
+    if (!r.pareja) return;
+    P(r.pareja).asign++;
+    if (retHecho(r) && r.fechaHecho && claveDia(r.fechaHecho) === hoy) P(r.pareja).ret++;
+  });
+  const nombres = Object.keys(parejas).sort(ordenPareja);
+  const instHoy = nombres.reduce((a, p) => a + parejas[p].inst, 0);
+  const retHoy  = nombres.reduce((a, p) => a + parejas[p].ret, 0);
+  const seg = n => total ? (n / total * 100).toFixed(2) : 0;
+
+  const revisar = [
+    faltaRevisar.length ? filaC('warn', ICO_C.check, `${faltaRevisar.length} hecha${faltaRevisar.length > 1 ? 's' : ''}, falta revisar`, 'Marcar listas por día o todas', 'confirmar') : '',
+    sinAsignar ? filaC('muted', ICO_C.pin, `${sinAsignar} sin asignar`, 'Asignar zonas en el mapa', 'mapa') : '',
+    noPudo ? filaC('crit', ICO_C.x, `${noPudo} retiro${noPudo > 1 ? 's' : ''} no se pudo`, 'Ver motivos', 'nopudo') : '',
+  ].join('');
 
   el.innerHTML = `
-    ${esAdmin_ ? panelParejas() : ''}
-    <div class="ds-card" style="margin-bottom:16px">
-      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:12px">
-        <div style="font-size:14px;font-weight:600">${esAdmin_ ? 'Avance general' : 'Tu avance'}</div>
-        <div style="font-size:12px;color:var(--text-4)">${listas} de ${total} · ${pct}%</div>
+    <div class="ds-pcard cr" style="margin-bottom:22px">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start">
+        <div class="ds-pcard-lbl">Instalaciones hoy</div>
+        <div class="ds-pcard-badge">${new Date().toLocaleDateString('es-SV', { day: 'numeric', month: 'short' })}</div>
       </div>
-      <div class="ds-bar"><i class="cr" style="width:${pct}%"></i></div>
-      <div style="margin-top:12px;display:flex;flex-wrap:wrap;gap:10px 14px;font-size:11px;color:var(--text-3)">
-        <span style="display:flex;align-items:center;gap:6px"><span style="width:7px;height:7px;border-radius:50%;background:var(--text-4)"></span>${pend} por hacer</span>
-        <span style="display:flex;align-items:center;gap:6px"><span style="width:7px;height:7px;border-radius:50%;background:#fbbf24"></span>${porConfirmar} falta revisar</span>
-        <span style="display:flex;align-items:center;gap:6px"><span style="width:7px;height:7px;border-radius:50%;background:#22c55e"></span>${confirmadas} listas</span>
-        ${totalVisitas ? `<span style="display:flex;align-items:center;gap:6px"><span style="width:7px;height:7px;border-radius:50%;background:#fbbf24"></span>${totalVisitas} visitas cobrables</span>` : ''}
-      </div>
-    </div>`;
-}
-
-// Panel por pareja: ejecutadas (marcadas hechas, aunque falte confirmar),
-// visitas, y avance contra la meta diaria.
-const META_PAREJA = 7;
-
-function panelParejas() {
-  // Agrupar por pareja. "Ejecutada" = el técnico la marcó hecha (logró un punto),
-  // esté por_confirmar o confirmada. La META es DIARIA: solo cuenta las
-  // ejecutadas HOY (por fechaHecha), igual que en Cambio de Medidores.
-  const hoy = claveDia(firebase.firestore.Timestamp.now());
-  const parejas = {};
-  for (const o of ordenes_) {
-    const p = o.pareja;
-    if (!p) continue;
-    if (!parejas[p]) parejas[p] = { ejecutadas: 0, visitas: 0, asignadas: 0 };
-    parejas[p].asignadas++;
-    const ejecutada = (o.estado === 'por_confirmar' || o.estado === 'confirmada')
-      && o.logranoEn
-      && o.fechaHecha && claveDia(o.fechaHecha) === hoy;
-    if (ejecutada) parejas[p].ejecutadas++;
-    parejas[p].visitas += Array.isArray(o.visitas) ? o.visitas.length : 0;
-  }
-  const nombres = Object.keys(parejas).sort((a, b) => (parseInt(a.replace(/\D/g, ''), 10) || 0) - (parseInt(b.replace(/\D/g, ''), 10) || 0));
-  if (!nombres.length) return '';
-
-  return `
-    <div style="margin-bottom:18px">
-      <div class="ds-sec">Avance por pareja · meta diaria ${META_PAREJA}</div>
-      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px">
-        ${nombres.map(nombre => {
-          const d = parejas[nombre];
-          const color = colorPareja(nombre);
-          const pct = Math.min(100, Math.round((d.ejecutadas / META_PAREJA) * 100));
-          const cumplida = d.ejecutadas >= META_PAREJA;
-          const acc = cumplida ? '#22c55e' : color;
+      <div style="font-size:38px;font-weight:500;letter-spacing:-.02em;line-height:1;color:#fff;margin-top:6px">${instHoy}${nombres.length ? `<span style="font-size:18px;color:rgba(255,255,255,.7)"> / ${nombres.length * META_PAREJA}</span>` : ''}</div>
+      <div style="font-size:12px;color:rgba(255,255,255,.85);margin-top:8px">${nombres.length ? `${retHoy} retiro${retHoy !== 1 ? 's' : ''} hoy · meta ${META_PAREJA} instalaciones por pareja` : 'Aún no hay parejas con puntos asignados'}</div>
+      ${nombres.length ? `
+      <div style="height:1px;background:rgba(255,255,255,.2);margin:14px 0 12px"></div>
+      <div class="flex-col" style="gap:12px">
+        ${nombres.map(p => {
+          const d = parejas[p];
           return `
-            <div class="ds-card" style="border-color:${cumplida?'rgba(34,197,94,.4)':'var(--border)'}">
-              <div style="display:flex;align-items:center;gap:6px;min-width:0;margin-bottom:8px">
-                <span style="width:9px;height:9px;border-radius:50%;background:${color};flex-shrink:0"></span>
-                <span style="font-size:13px;font-weight:600;color:${acc};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(nombre)}</span>
-              </div>
-              <div style="display:flex;align-items:baseline;gap:4px;margin-bottom:10px">
-                <span class="ds-num-md" style="color:${acc}">${d.ejecutadas}</span>
-                <span style="font-size:11px;color:var(--text-4);font-weight:500">/ ${META_PAREJA} hoy</span>
-              </div>
-              <div class="ds-bar"><i style="width:${pct}%;background:${acc}"></i></div>
-              <div style="margin-top:9px;font-size:11px;color:var(--text-3);display:flex;flex-wrap:wrap;gap:4px">
-                <span>${d.asignadas} asignadas</span>
-                ${d.visitas ? `<span style="color:#fbbf24">· ${d.visitas} visita${d.visitas!==1?'s':''}</span>` : ''}
-                ${cumplida ? `<span style="color:#22c55e;font-weight:600">· META &#10003;</span>` : ''}
-              </div>
-            </div>`;
+          <div>
+            <div style="display:flex;align-items:baseline;gap:8px">
+              <span style="font-size:13px;font-weight:600;color:#fff">${escapeHtml(p)}</span>
+              <span style="font-size:11.5px;color:rgba(255,255,255,.75);flex:1">${d.ret ? `${d.ret} retiro${d.ret > 1 ? 's' : ''}` : ''}</span>
+              <span style="font-size:14px;font-weight:700;color:#fff">${d.inst}<span style="font-size:11px;font-weight:500;color:rgba(255,255,255,.7)"> / ${META_PAREJA}</span></span>
+            </div>
+            <div class="ds-bar on-grad" style="margin-top:6px;height:5px"><i style="width:${Math.min(100, Math.round(d.inst / META_PAREJA * 100))}%;background:#fff"></i></div>
+          </div>`;
         }).join('')}
+      </div>` : ''}
+    </div>
+
+    <div class="ds-sec">Para revisar</div>
+    <div class="cm-lista" style="margin-bottom:22px">
+      ${revisar || `<div class="cm-fila" style="cursor:default"><div class="cm-fila-ic ok">${svgC(ICO_C.check, 17)}</div><div style="flex:1"><div class="cm-fila-t">Todo al día</div><div class="cm-fila-s">Nada pendiente de revisar</div></div></div>`}
+    </div>
+
+    <div class="ds-sec">Avance general</div>
+    <div class="ds-card" style="margin-bottom:12px">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:12px">
+        <div class="ds-num-md">${listas}<span style="font-size:14px;font-weight:500;color:var(--text-3)"> / ${total} instalaciones listas</span></div>
+        <div style="font-size:15px;font-weight:600;color:var(--cr-light)">${total ? Math.round(listas / total * 100) : 0}%</div>
       </div>
-    </div>`;
+      <div class="cm-seg">
+        <i style="width:${seg(listas)}%;background:#22c55e"></i>
+        <i style="width:${seg(faltaRevisar.length)}%;background:#fbbf24"></i>
+      </div>
+      <div class="cm-leyenda">
+        <span><b style="background:#22c55e"></b>${listas} listas</span>
+        <span><b style="background:#fbbf24"></b>${faltaRevisar.length} falta revisar</span>
+        <span><b style="background:rgba(255,255,255,.15)"></b>${porHacer} por hacer</span>
+        ${visitas ? `<span><b style="background:#fb923c"></b>${visitas} visitas cobrables</span>` : ''}
+      </div>
+    </div>
+    ${retiros_.length ? (() => {
+      const ret = retiros_.filter(r => r.estado === 'retirado').length;
+      const pend = retiros_.length - ret - noPudo;
+      const s2 = n => (n / retiros_.length * 100).toFixed(2);
+      return `
+    <div class="ds-card">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:12px">
+        <div class="ds-num-md">${ret}<span style="font-size:14px;font-weight:500;color:var(--text-3)"> / ${retiros_.length} retiros</span></div>
+        <div style="font-size:15px;font-weight:600;color:#f59e0b">${Math.round(ret / retiros_.length * 100)}%</div>
+      </div>
+      <div class="cm-seg">
+        <i style="width:${s2(ret)}%;background:#22c55e"></i>
+        <i style="width:${s2(noPudo)}%;background:#ef4444"></i>
+      </div>
+      <div class="cm-leyenda">
+        <span><b style="background:#22c55e"></b>${ret} retirados</span>
+        ${noPudo ? `<span><b style="background:#ef4444"></b>${noPudo} no se pudo</span>` : ''}
+        <span><b style="background:rgba(255,255,255,.15)"></b>${pend} por retirar</span>
+      </div>
+    </div>`; })() : ''}`;
+
+  el.querySelectorAll('[data-accion]').forEach(f => f.onclick = () => {
+    const a = f.dataset.accion;
+    if (a === 'confirmar') abrirConfirmarCrc();
+    else if (a === 'mapa') window.__router.navigateTo('caracterizacion_mapa');
+    else if (a === 'nopudo') { filtroRet_ = 'nopudo'; setPestana('retiro'); }
+  });
 }
 
-const LOGRO_LABEL = { titular:'Titular', suplente1:'Suplente 1', suplente2:'Suplente 2' };
-
-function renderLista() {
-  const el = container_.querySelector('#crc-lista');
-  if (!el) return;
-  if (!ordenes_.length) {
+// ── Resumen del técnico ──
+function renderResumenTec() {
+  const el = container_.querySelector('#crc-resumen');
+  const hoy = claveDia(firebase.firestore.Timestamp.now());
+  if (!ordenes_.length && !retiros_.length) {
     const miPareja = session_.asignacionActual?.destino;
-    el.innerHTML = esAdmin_
-      ? `<div class="dev-module"><div class="dev-title">No hay órdenes cargadas</div><p>Usa "Cargar órdenes del día" para subir el Excel de DELSUR.</p></div>`
-      : `<div class="dev-module"><div class="dev-title">${miPareja ? 'No tienes órdenes asignadas' : 'Sin pareja asignada'}</div><p>${miPareja ? `Cuando te asignen puntos a ${escapeHtml(miPareja)} aparecerán aquí y en el mapa.` : 'Pide que te asignen a una pareja de Caracterización.'}</p></div>`;
+    el.innerHTML = `<div class="dev-module"><div class="dev-title">${miPareja ? 'No tienes puntos asignados' : 'Sin pareja asignada'}</div><p>${miPareja ? `Cuando te asignen puntos a ${escapeHtml(miPareja)} aparecerán aquí y en el mapa.` : 'Pide que te asignen a una pareja de Caracterización.'}</p></div>`;
     return;
   }
+  const instHoy = ordenes_.filter(o => esLograda(o) && o.logranoEn && o.fechaHecha && claveDia(o.fechaHecha) === hoy);
+  const retHoy  = retiros_.filter(r => retHecho(r) && r.fechaHecho && claveDia(r.fechaHecho) === hoy);
+  const pi = Math.min(100, Math.round(instHoy.length / META_PAREJA * 100));
+  const pr = Math.min(100, Math.round(retHoy.length / META_RETIROS * 100));
+  const porHacer = ordenes_.filter(esPorHacer).length;
+  const retPend = retiros_.filter(r => !retHecho(r)).length;
+  const visitas = ordenes_.reduce((s, o) => s + (Array.isArray(o.visitas) ? o.visitas.length : 0), 0);
+  const hechasHoy = [
+    ...ordenes_.filter(o => esLograda(o) && o.fechaHecha && claveDia(o.fechaHecha) === hoy).map(o => ({ t: 'o', o, ts: o.fechaHecha.seconds || 0 })),
+    ...retHoy.map(r => ({ t: 'r', o: r, ts: r.fechaHecho.seconds || 0 })),
+  ].sort((a, b) => b.ts - a.ts);
 
-  const porConfirmar = ordenes_.filter(o => o.estado === 'por_confirmar');
-  const pend = ordenes_.filter(o => !o.estado || o.estado === 'pendiente');
-  const confirmadas = ordenes_.filter(o => o.estado === 'confirmada');
+  el.innerHTML = `
+    <div class="ds-pcard cr" style="margin-bottom:14px">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px">
+        <div class="ds-pcard-lbl">Meta del día</div>
+        <div class="ds-pcard-badge">${escapeHtml(session_.asignacionActual?.destino || '')}</div>
+      </div>
+      <div style="margin-bottom:14px">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px">
+          <span style="font-size:13px;color:rgba(255,255,255,.85);font-weight:500">Instalaciones</span>
+          <span style="font-size:17px;font-weight:700;color:#fff">${instHoy.length} / ${META_PAREJA}</span>
+        </div>
+        <div class="ds-bar on-grad"><i style="width:${pi}%;background:#fff"></i></div>
+      </div>
+      <div>
+        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px">
+          <span style="font-size:13px;color:rgba(255,255,255,.85);font-weight:500">Retiros</span>
+          <span style="font-size:17px;font-weight:700;color:#fff">${retHoy.length} / ${META_RETIROS}</span>
+        </div>
+        <div class="ds-bar on-grad"><i style="width:${pr}%;background:#fff"></i></div>
+      </div>
+    </div>
 
-  const grid = arr => `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:10px">${arr.map(tarjetaOrden).join('')}</div>`;
-  const seccion = (titulo, arr) => arr.length ? secTitulo(titulo, arr.length) + grid(arr) : '';
-  // "Lista" crece todos los días: va plegada, se abre a pedido
-  const seccionListas = confirmadas.length ? secTitulo('Lista', confirmadas.length,
-      `<button id="crc-toggle-listas" class="crc-acc" style="padding:4px 10px;font-size:11px">${verListas_ ? 'Ocultar' : 'Ver'}</button>`)
-    + (verListas_ ? grid(confirmadas) : '') : '';
+    <button class="btn-action marca" id="crc-abrir-mapa" style="margin-bottom:14px">${svgC(ICO_C.mapa, 16)} Abrir el mapa</button>
 
-  el.innerHTML = seccion('Hecha, falta revisar', porConfirmar)
-               + seccion('Por hacer', pend)
-               + seccionListas;
+    <div class="ds-mini" style="margin-bottom:20px">
+      <div class="ds-m" data-ir="instalacion"><div class="ds-num-md">${porHacer}</div><div class="ds-lbl-sm" style="margin-top:6px">Por instalar</div></div>
+      <div class="ds-m" data-ir="retiro"><div class="ds-num-md" style="color:#f59e0b">${retPend}</div><div class="ds-lbl-sm" style="margin-top:6px">Por retirar</div></div>
+      <div class="ds-m"><div class="ds-num-md" style="color:#fb923c">${visitas}</div><div class="ds-lbl-sm" style="margin-top:6px">Visitas</div></div>
+    </div>
 
-  el.querySelector('#crc-toggle-listas')?.addEventListener('click', () => { verListas_ = !verListas_; renderLista(); });
-  // Enganchar botones de confirmar y tocar tarjeta -> mapa
-  el.querySelectorAll('[data-confirmar]').forEach(btn => {
-    btn.onclick = (e) => { e.stopPropagation(); confirmarDesdeLista(btn.dataset.confirmar); };
-  });
-  el.querySelectorAll('.crc-tocable[data-orden]').forEach(c => c.onclick = () => verEnMapa('o', c.dataset.orden));
+    <div class="ds-sec">Hoy</div>
+    ${hechasHoy.length ? `<div class="flex-col gap-8">${hechasHoy.map(x => x.t === 'o' ? tarjetaInst(x.o) : tarjetaRet(x.o)).join('')}</div>`
+      : `<div class="ds-card" style="text-align:center;padding:22px 16px;color:var(--text-3);font-size:13px">Aún no hay puntos hechos hoy.</div>`}`;
+
+  el.querySelector('#crc-abrir-mapa').onclick = () => window.__router.navigateTo('caracterizacion_mapa');
+  el.querySelectorAll('[data-ir]').forEach(m => { m.style.cursor = 'pointer'; m.onclick = () => setPestana(m.dataset.ir); });
+  engancharTarjetas(el);
 }
 
-function tarjetaOrden(o) {
+// ── Chips de filtro (pareja y estado) ──
+function chipsParejas(lista) {
+  if (!esAdmin_) return '';
+  const ps = [...new Set(lista.map(x => x.pareja).filter(Boolean))].sort(ordenPareja);
+  if (!ps.length) return '';
+  return `<div class="filter-row" style="margin-bottom:8px">
+    ${['todas', ...ps, 'sin'].map(p => `<div class="filter-chip ${parejaF_ === p ? 'active' : ''}" data-pareja="${escapeHtml(p)}">${p === 'todas' ? 'Todas las parejas' : p === 'sin' ? 'Sin asignar' : escapeHtml(p)}</div>`).join('')}
+  </div>`;
+}
+const pasaPareja = x => parejaF_ === 'todas' || (parejaF_ === 'sin' ? !x.pareja : x.pareja === parejaF_);
+
+function chipsEstado(grupos, actual) {
+  return `<div class="cm-tabs-est">
+    ${grupos.map(g => `<div class="cm-est ${g.id === actual ? 'active' : ''} ${g.arr.length ? '' : 'vacio'}" data-est="${g.id}">${g.t}<span>${g.arr.length}</span></div>`).join('')}
+  </div>`;
+}
+
+function pintarLista(el, grupos, actual, tarjeta, extraArriba = '') {
+  const g = grupos.find(x => x.id === actual) || grupos[0];
+  const vis = g.arr.slice(0, limite_);
+  el.innerHTML = `
+    ${extraArriba}
+    ${vis.length ? `<div class="crc-grid">${vis.map(tarjeta).join('')}</div>
+      ${g.arr.length > vis.length ? `<button class="cm-btn" id="crc-ver-mas" style="width:100%;height:44px;margin-top:10px">Ver ${Math.min(40, g.arr.length - vis.length)} más (${g.arr.length - vis.length} restantes)</button>` : ''}`
+    : `<div class="ds-card" style="text-align:center;padding:24px 16px;color:var(--text-3);font-size:13px">No hay puntos en "${g.t}".</div>`}`;
+  el.querySelector('#crc-ver-mas')?.addEventListener('click', () => { limite_ += 40; render(); });
+}
+
+function engancharFiltros(el, alCambiarEstado) {
+  el.querySelectorAll('[data-pareja]').forEach(c => c.onclick = () => { parejaF_ = c.dataset.pareja; limite_ = 40; render(); });
+  el.querySelectorAll('[data-est]').forEach(c => c.onclick = () => { alCambiarEstado(c.dataset.est); limite_ = 40; render(); });
+}
+
+// ── Pestaña Instalación ──
+function renderInstalaciones() {
+  const res = container_.querySelector('#crc-resumen');
+  const lista = container_.querySelector('#crc-lista');
+  if (!ordenes_.length) {
+    res.innerHTML = esAdmin_
+      ? `<div class="dev-module"><div class="dev-title">No hay órdenes cargadas</div><p>Usa los tres puntos de arriba, "Cargar órdenes del día", para subir el Excel de DELSUR.</p></div>`
+      : `<div class="dev-module"><div class="dev-title">No tienes instalaciones asignadas</div></div>`;
+    return;
+  }
+  const base = ordenes_.filter(pasaPareja);
+  const reciente = arr => arr.sort((a, b) => (b.fechaHecha?.seconds || 0) - (a.fechaHecha?.seconds || 0));
+  const grupos = [
+    { id: 'porhacer', t: 'Por hacer',     arr: base.filter(esPorHacer).sort((a, b) => (b.esUPR ? 1 : 0) - (a.esUPR ? 1 : 0)) },
+    { id: 'falta',    t: esAdmin_ ? 'Falta revisar' : 'Hechas', arr: reciente(base.filter(o => o.estado === 'por_confirmar')) },
+    { id: 'listas',   t: 'Listas',        arr: reciente(base.filter(o => o.estado === 'confirmada')) },
+  ];
+  res.innerHTML = chipsParejas(ordenes_) + chipsEstado(grupos, filtroInst_);
+  engancharFiltros(res, id => { filtroInst_ = id; });
+  const extra = esAdmin_ && filtroInst_ === 'falta' && grupos[1].arr.length
+    ? `<button class="btn-action marca" id="crc-conf-btn" style="margin-bottom:12px">${svgC(ICO_C.check, 16)} Marcar listas por día o todas</button>` : '';
+  pintarLista(lista, grupos, filtroInst_, tarjetaInst, extra);
+  lista.querySelector('#crc-conf-btn')?.addEventListener('click', () => abrirConfirmarCrc());
+  engancharTarjetas(lista);
+}
+
+// ── Pestaña Retiro ──
+function renderRetiros() {
+  const res = container_.querySelector('#crc-resumen');
+  const lista = container_.querySelector('#crc-lista');
+  if (!retiros_.length) {
+    res.innerHTML = esAdmin_
+      ? `<div class="dev-module"><div class="dev-title">No hay retiros cargados</div><p>Usa los tres puntos de arriba, "Subir retiros", para cargar el Excel.</p></div>`
+      : `<div class="dev-module"><div class="dev-title">No tienes retiros asignados</div></div>`;
+    return;
+  }
+  const base = retiros_.filter(pasaPareja);
+  const reciente = arr => arr.sort((a, b) => (b.fechaHecho?.seconds || 0) - (a.fechaHecho?.seconds || 0));
+  const grupos = [
+    { id: 'porretirar', t: 'Por retirar', arr: base.filter(r => !retHecho(r)) },
+    { id: 'nopudo',     t: 'No se pudo',  arr: reciente(base.filter(r => r.estado === 'no_retirado')) },
+    { id: 'retirados',  t: 'Retirados',   arr: reciente(base.filter(r => r.estado === 'retirado')) },
+  ];
+  res.innerHTML = chipsParejas(retiros_) + chipsEstado(grupos, filtroRet_);
+  engancharFiltros(res, id => { filtroRet_ = id; });
+  pintarLista(lista, grupos, filtroRet_, tarjetaRet);
+  engancharTarjetas(lista);
+}
+
+// ── Tarjetas ──
+const LOGRO_LABEL = { titular:'Titular', suplente1:'Suplente 1', suplente2:'Suplente 2' };
+
+function tarjetaInst(o) {
   const t = o.titular || {};
-  const puntos = [o.titular ? 1 : 0, o.suplente1 ? 1 : 0, o.suplente2 ? 1 : 0].reduce((a,b)=>a+b,0);
-  const porConfirmar = o.estado === 'por_confirmar';
-  const confirmada = o.estado === 'confirmada';
+  const falta = o.estado === 'por_confirmar';
+  const lista = o.estado === 'confirmada';
   const visitas = Array.isArray(o.visitas) ? o.visitas : [];
-
-  const dotClase = confirmada ? 'ok' : porConfirmar ? 'warn' : 'muted';
-  const dotStyle = porConfirmar ? 'style="background:#fbbf24"' : o.esUPR && !confirmada && !porConfirmar ? 'style="background:#38bdf8"' : '';
-
-  const badge = confirmada
-    ? `<div class="estado-badge ok">${o.logranoEn ? LOGRO_LABEL[o.logranoEn] : 'Sin lograr'}</div>`
-    : porConfirmar
-    ? `<div class="estado-badge warn">Falta revisar</div>`
-    : `<div class="estado-badge muted">${puntos} punto${puntos>1?'s':''}</div>`;
-
-  const badgeUPR = o.esUPR
-    ? `<div class="pareja-chip" style="color:#38bdf8;border-color:rgba(56,189,248,.4);background:rgba(56,189,248,.14)">UPR</div>`
-    : '';
-
-  const detalle = (porConfirmar || confirmada) ? `
-    <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;font-size:10px;color:var(--text-4)">
-      ${o.logranoEn ? `<span>Hecha en <span style="color:#22c55e;font-weight:700">${LOGRO_LABEL[o.logranoEn]}</span></span>` : `<span style="color:#ef4444">Sin lograr</span>`}
-      ${visitas.length ? `<span>· <span style="color:#fbbf24;font-weight:700">${visitas.length} visita${visitas.length>1?'s':''}</span> (${visitas.map(v=>LOGRO_LABEL[v]).join(', ')})</span>` : ''}
-      ${o.pareja ? `<span>· ${escapeHtml(o.pareja)}</span>` : ''}
-    </div>` : (esAdmin_ ? `<div style="font-size:11px;color:${o.pareja ? colorPareja(o.pareja) : 'var(--text-4)'};margin-top:8px">${o.pareja ? escapeHtml(o.pareja) : 'Sin asignar'}</div>` : '');
-
-  const botonConfirmar = (porConfirmar && esAdmin_)
-    ? `<button data-confirmar="${o.id}" class="btn-action" style="margin-top:10px;height:38px;background:rgba(34,197,94,.12);border:1px solid rgba(34,197,94,.3);color:#22c55e">Marcar como lista</button>`
-    : '';
-
+  const puntos = [o.titular, o.suplente1, o.suplente2].filter(Boolean).length;
+  const estado = lista ? '<span class="cm-pill ok">Lista</span>'
+    : falta ? `<span class="cm-pill warn">${esAdmin_ ? 'Falta revisar' : 'Hecha'}</span>` : '';
+  const resultado = (falta || lista)
+    ? (o.logranoEn ? `Hecha en <b style="color:#22c55e">${LOGRO_LABEL[o.logranoEn]}</b>` : '<b style="color:#f87171">Sin lograr</b>')
+    : `${puntos} punto${puntos !== 1 ? 's' : ''}`;
+  const meta = [
+    resultado,
+    visitas.length ? `<span style="color:#fb923c">${visitas.length} visita${visitas.length > 1 ? 's' : ''}</span>` : '',
+    esAdmin_ ? (o.pareja ? escapeHtml(o.pareja) : '<span style="color:#fbbf24">Sin asignar</span>') : '',
+    (falta || lista) && o.hechaPor ? escapeHtml(o.hechaPor) : '',
+  ].filter(Boolean).join(' · ');
   return `
-    <div class="orden-card stacked crc-tocable" data-orden="${o.id}" style="${o.esUPR?'border-left:3px solid #38bdf8':''}">
-      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px">
-        <div class="orden-card-left" style="align-items:flex-start">
-          <div class="status-dot ${dotClase}" ${dotStyle} style="margin-top:4px"></div>
-          <div class="orden-info">
-            <div class="orden-wo" style="font-weight:700">${escapeHtml(t.nombre || o.ncTitular || '—')}</div>
-            <div class="orden-dir">NC ${escapeHtml(o.ncTitular)}${o.tarifa ? ' · ' + escapeHtml(o.tarifa) : ''}${t.direccion ? ' · ' + escapeHtml(t.direccion.split(',')[0]) : ''}</div>
+    <div class="cm-ord" data-orden="${o.id}" style="${o.esUPR ? 'box-shadow:inset 3px 0 0 #38bdf8, var(--sh-card)' : ''}">
+      <div style="display:flex;align-items:flex-start;gap:10px">
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+            <span class="cm-wo">${escapeHtml(t.nombre || ('NC ' + o.ncTitular) || '—')}</span>
+            ${o.esUPR ? '<span class="cm-pill" style="color:#38bdf8;background:rgba(56,189,248,.14);border-color:rgba(56,189,248,.35)">UPR</span>' : ''}
+            ${estado}
           </div>
-        </div>
-        <div class="orden-card-right" style="flex-direction:column;align-items:flex-end;gap:4px">
-          ${badgeUPR}
-          ${badge}
+          <div class="cm-cli">NC ${escapeHtml(o.ncTitular || '—')}${o.tarifa ? ' · ' + escapeHtml(o.tarifa) : ''}${t.direccion ? ' · ' + escapeHtml(String(t.direccion).split(',')[0]) : ''}</div>
+          <div class="cm-meta">${meta}</div>
         </div>
       </div>
-      ${detalle}
-      ${botonConfirmar}
+      ${falta && esAdmin_ ? `
+      <div class="cm-ord-acc">
+        <button class="cm-btn ok" data-confirmar="${o.id}">${svgC(ICO_C.check, 14)} Marcar lista</button>
+      </div>` : ''}
     </div>`;
+}
+
+function tarjetaRet(r) {
+  const est = r.estado === 'retirado' ? '<span class="cm-pill ok">Retirado</span>'
+    : r.estado === 'no_retirado' ? '<span class="cm-pill crit">No se pudo</span>'
+    : '<span class="cm-pill" style="color:#f59e0b;background:rgba(245,158,11,.12);border-color:rgba(245,158,11,.3)">Por retirar</span>';
+  const meta = [
+    retHecho(r) && r.hechoPor ? escapeHtml(r.hechoPor) : '',
+    retHecho(r) && r.fechaHecho ? fmtFechaHora(r.fechaHecho) : '',
+    esAdmin_ ? (r.pareja ? escapeHtml(r.pareja) : '<span style="color:#fbbf24">Sin asignar</span>') : '',
+  ].filter(Boolean).join(' · ');
+  return `
+    <div class="cm-ord" data-retiro="${r.id}">
+      <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+        <span class="cm-wo">${escapeHtml(r.nombre || ('NC ' + r.nc))}</span>${est}
+      </div>
+      <div class="cm-cli">NC ${escapeHtml(r.nc || '—')}${r.direccion ? ' · ' + escapeHtml(String(r.direccion).split(',')[0]) : ''}</div>
+      ${r.estado === 'no_retirado' && r.motivo ? `<div class="cm-meta" style="color:#f87171">Motivo: ${escapeHtml(r.motivo)}</div>` : ''}
+      ${meta ? `<div class="cm-meta">${meta}</div>` : ''}
+    </div>`;
+}
+
+function engancharTarjetas(el) {
+  el.querySelectorAll('[data-confirmar]').forEach(btn => btn.onclick = (e) => { e.stopPropagation(); confirmarDesdeLista(btn.dataset.confirmar); });
+  el.querySelectorAll('.cm-ord[data-orden]').forEach(c => c.onclick = () => verEnMapa('o', c.dataset.orden));
+  el.querySelectorAll('.cm-ord[data-retiro]').forEach(c => c.onclick = () => verEnMapa('r', c.dataset.retiro));
 }
 
 async function confirmarDesdeLista(ordenId) {
@@ -729,9 +930,83 @@ async function confirmarDesdeLista(ordenId) {
       confirmadaPor: session_.displayName, fechaConfirmacion: firebase.firestore.Timestamp.now(),
     });
     o.estado = 'confirmada'; o.confirmadaPor = session_.displayName;
-    renderResumen(); renderLista();
+    if (container_.querySelector('#crc-sheet-confirmar')?.classList.contains('open')) renderConfirmarCrc();
+    render();
     toast('Orden marcada como lista', 'ok');
   } catch (err) { toast('Error: ' + err.message, 'error'); }
+}
+
+// ── Marcar listas: por día o todas ──
+let confGruposCrc_ = [];
+
+function abrirConfirmarCrc() {
+  renderConfirmarCrc();
+  container_.querySelector('#crc-sheet-confirmar')?.classList.add('open');
+}
+
+function renderConfirmarCrc() {
+  const body = container_.querySelector('#crc-conf-body');
+  if (!body) return;
+  const pareja = parejaF_ !== 'todas' && parejaF_ !== 'sin' ? parejaF_ : null;
+  const lista = ordenes_.filter(o => o.estado === 'por_confirmar' && (!pareja || o.pareja === pareja))
+    .sort((a, b) => (b.fechaHecha?.seconds || 0) - (a.fechaHecha?.seconds || 0));
+  const porDia = {};
+  lista.forEach(o => { const k = claveDia(o.fechaHecha) || 'sin-fecha'; (porDia[k] = porDia[k] || []).push(o); });
+  confGruposCrc_ = Object.keys(porDia).sort().reverse().map(k => ({ k, fecha: k === 'sin-fecha' ? 'Sin fecha' : etiquetaDia(k), ordenes: porDia[k] }));
+  container_.querySelector('#crc-conf-title').textContent = 'Falta revisar' + (pareja ? ' · ' + pareja : '');
+
+  body.innerHTML = lista.length ? `
+    <div style="font-size:12.5px;color:var(--text-3);margin-bottom:12px">${lista.length} hecha${lista.length > 1 ? 's' : ''} esperando revisión${pareja ? '' : ' en todas las parejas'}.</div>
+    <button class="btn-action marca" style="margin-bottom:16px" data-lote="-1">${svgC(ICO_C.check, 16)} Marcar todas como listas (${lista.length})</button>
+    <div class="flex-col" style="gap:16px">
+      ${confGruposCrc_.map((g, i) => `
+        <div>
+          <div class="cm-dia">
+            <div style="flex:1;min-width:0"><div class="cm-dia-t">${g.fecha}</div><div class="cm-dia-s">${g.ordenes.length} ${g.ordenes.length > 1 ? 'puntos' : 'punto'}</div></div>
+            <button class="cm-btn ok" data-lote="${i}">${svgC(ICO_C.check, 14)} Marcar día</button>
+          </div>
+          <div class="flex-col gap-6">
+            ${g.ordenes.map(o => `
+              <div class="cm-verif">
+                <div style="flex:1;min-width:0">
+                  <div class="cm-wo" style="font-size:13.5px">${escapeHtml(o.titular?.nombre || 'NC ' + o.ncTitular)}</div>
+                  <div class="cm-cli">NC ${escapeHtml(o.ncTitular || '—')}${!pareja && o.pareja ? ' · ' + escapeHtml(o.pareja) : ''}</div>
+                  <div class="cm-meta">${o.logranoEn ? `Hecha en ${LOGRO_LABEL[o.logranoEn]}` : '<span style="color:#f87171">Sin lograr</span>'}${o.hechaPor ? ' · ' + escapeHtml(o.hechaPor) : ''}</div>
+                </div>
+                <button class="cm-btn ok" data-uno="${o.id}">${svgC(ICO_C.check, 14)}</button>
+              </div>`).join('')}
+          </div>
+        </div>`).join('')}
+    </div>` : `
+    <div style="text-align:center;padding:26px 10px">
+      <div class="hm-ic cr" style="margin:0 auto 12px">${svgC(ICO_C.check, 20)}</div>
+      <div style="font-size:15px;font-weight:600">Nada por revisar</div>
+      <div style="font-size:12.5px;color:var(--text-3);margin-top:4px">Todas las hechas ya están listas.</div>
+    </div>`;
+  body.querySelectorAll('[data-lote]').forEach(b => b.onclick = () => confirmarLoteCrc(parseInt(b.dataset.lote, 10)));
+  body.querySelectorAll('[data-uno]').forEach(b => b.onclick = () => confirmarDesdeLista(b.dataset.uno));
+}
+
+async function confirmarLoteCrc(i) {
+  const lista = i === -1 ? confGruposCrc_.flatMap(g => g.ordenes) : (confGruposCrc_[i]?.ordenes || []);
+  if (!lista.length) return;
+  const que = i === -1 ? `todas (${lista.length})` : `${lista.length} del ${confGruposCrc_[i].fecha.replace(/^(Hoy|Ayer) · /, '')}`;
+  if (!confirm(`¿Marcar como listas ${que}?`)) return;
+  const datos = { estado: 'confirmada', confirmadaPor: session_.displayName, fechaConfirmacion: firebase.firestore.Timestamp.now() };
+  try {
+    for (let k = 0; k < lista.length; k += 400) {
+      const batch = db.batch();
+      lista.slice(k, k + 400).forEach(o => batch.update(db.collection('caracterizacion_ordenes').doc(o.id), datos));
+      await batch.commit();
+    }
+    const ids = new Set(lista.map(o => o.id));
+    ordenes_.forEach(o => { if (ids.has(o.id)) Object.assign(o, datos); });
+    toast(`${lista.length} marcada${lista.length > 1 ? 's' : ''} como lista${lista.length > 1 ? 's' : ''}`, 'ok');
+    renderConfirmarCrc();
+    render();
+  } catch (err) {
+    toast('Error al marcar: ' + err.message, 'error');
+  }
 }
 
 async function manejarArchivo(file) {
@@ -1255,83 +1530,8 @@ function previsualizarRetiros(nuevos, sinCoord) {
   };
 }
 
-function renderResumenRetiros() {
-  const el = container_.querySelector('#crc-resumen');
-  if (!el) return;
-  const total = retiros_.length;
-  if (!total) { el.innerHTML = ''; return; }
-  const retirados = retiros_.filter(r => r.estado === 'retirado').length;
-  const noPudo = retiros_.filter(r => r.estado === 'no_retirado').length;
-  const pend = total - retirados - noPudo;
-  const pct = total ? Math.round((retirados / total) * 100) : 0;
-  el.innerHTML = `
-    <div class="ds-card" style="margin-bottom:16px">
-      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:12px">
-        <div style="font-size:14px;font-weight:600">${esAdmin_ ? 'Avance de retiros' : 'Tus retiros'}</div>
-        <div style="font-size:12px;color:var(--text-4)">${retirados} de ${total} · ${pct}%</div>
-      </div>
-      <div class="ds-bar"><i style="width:${pct}%;background:#f59e0b"></i></div>
-      <div style="margin-top:12px;display:flex;flex-wrap:wrap;gap:10px 14px;font-size:11px;color:var(--text-3)">
-        <span style="display:flex;align-items:center;gap:6px"><span style="width:7px;height:7px;border-radius:50%;background:#f59e0b"></span>${pend} por retirar</span>
-        <span style="display:flex;align-items:center;gap:6px"><span style="width:7px;height:7px;border-radius:50%;background:#22c55e"></span>${retirados} retirados</span>
-        ${noPudo ? `<span style="display:flex;align-items:center;gap:6px"><span style="width:7px;height:7px;border-radius:50%;background:#ef4444"></span>${noPudo} no se pudo</span>` : ''}
-      </div>
-    </div>`;
-}
-
-function renderListaRetiros() {
-  const el = container_.querySelector('#crc-lista');
-  if (!el) return;
-  if (!retiros_.length) {
-    el.innerHTML = esAdmin_
-      ? `<div class="dev-module">
-          <div class="dev-title">No hay retiros cargados</div>
-          <p>Usa "Subir retiros" para cargar el Excel.</p>
-        </div>`
-      : `<div class="dev-module"><div class="dev-title">No tienes retiros asignados</div></div>`;
-    return;
-  }
-
-  const pend = retiros_.filter(r => r.estado === 'pendiente' || !r.estado);
-  const retirados = retiros_.filter(r => r.estado === 'retirado');
-  const noPudo = retiros_.filter(r => r.estado === 'no_retirado');
-
-  const tarjeta = (r) => {
-    const dotClase = r.estado === 'retirado' ? 'ok' : r.estado === 'no_retirado' ? 'crit' : 'warn';
-    const dotStyle = r.estado === 'pendiente' || !r.estado ? 'style="background:#f59e0b"' : r.estado === 'no_retirado' ? 'style="background:#ef4444"' : '';
-    const badgeClase = r.estado === 'retirado' ? 'ok' : r.estado === 'no_retirado' ? 'crit' : 'warn';
-    const etiqueta = r.estado === 'retirado' ? 'Retirado' : r.estado === 'no_retirado' ? 'No se pudo' : 'Por retirar';
-    const color = r.estado === 'retirado' ? '#22c55e' : r.estado === 'no_retirado' ? '#ef4444' : '#f59e0b';
-    const meta = (r.estado === 'retirado' || r.estado === 'no_retirado')
-      ? `${r.hechoPor ? 'Por ' + escapeHtml(r.hechoPor) : ''}${r.fechaHecho ? ' · ' + fmtFechaHora(r.fechaHecho) : ''}${r.pareja ? ' · ' + escapeHtml(r.pareja) : ''}`
-      : (r.pareja ? escapeHtml(r.pareja) : (esAdmin_ ? 'Sin asignar' : ''));
-    return `
-      <div class="orden-card stacked crc-tocable" data-retiro="${r.id}" style="border-left:3px solid ${color}">
-        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px">
-          <div class="orden-card-left" style="align-items:flex-start">
-            <div class="status-dot ${dotClase}" ${dotStyle} style="margin-top:4px"></div>
-            <div class="orden-info">
-              <div class="orden-wo" style="font-weight:700">${escapeHtml(r.nombre || r.nc)}</div>
-              <div class="orden-dir">NC ${escapeHtml(r.nc)}${r.direccion ? ' · ' + escapeHtml(r.direccion.split(',')[0]) : ''}</div>
-            </div>
-          </div>
-          <div class="orden-card-right">
-            <div class="estado-badge ${badgeClase}">${etiqueta}</div>
-          </div>
-        </div>
-        ${r.estado === 'no_retirado' && r.motivo ? `<div style="font-size:11px;color:#f87171;margin-top:8px">Motivo: ${escapeHtml(r.motivo)}</div>` : ''}
-        ${meta ? `<div style="font-size:10px;color:var(--text-4);margin-top:8px">${meta}</div>` : ''}
-      </div>`;
-  };
-
-  const seccion = (titulo, arr) => arr.length ? secTitulo(titulo, arr.length)
-    + `<div style="display:flex;flex-direction:column;gap:8px">${arr.map(tarjeta).join('')}</div>` : '';
-
-  el.innerHTML = seccion('Por retirar', pend)
-               + seccion('No se pudo', noPudo)
-               + seccion('Retirados', retirados);
-  el.querySelectorAll('.crc-tocable[data-retiro]').forEach(c => c.onclick = () => verEnMapa('r', c.dataset.retiro));
-}
+function renderResumenRetiros() { render(); }
+function renderListaRetiros() { render(); }
 
 function descargarExcelRetiros() {
   try {
