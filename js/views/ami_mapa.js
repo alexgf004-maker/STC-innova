@@ -12,6 +12,7 @@ import { db } from '../firebase.js';
 import { suscribir, leer, tecnicosActivos } from '../vivo.js';
 import { padronAmi } from './ami_padron.js';
 import { toast, escapeHtml } from '../ui.js';
+import { ponerEtiquetas } from './etiquetas_mapa.js';
 import { devolverAPendiente, puedeDevolverse } from './ami_devolver.js';
 import { abrirVistaCondominio, refrescarVistaCondominio, cerrarVistaCondominio, claveEdificio } from './ami_condominio.js';
 
@@ -734,6 +735,7 @@ function plotMarkers() {
   const cerca = z >= 13;
   const mostrarLabels = z >= 16;
   const vista = mostrarLabels ? map_.getBounds().pad(0.2) : null;
+  const etiquetas = [], puntos = [];
   const visibles = ordenes_.filter(o => o.estadoCampo !== 'aprobada');
 
   visibles.forEach(orden => {
@@ -778,15 +780,14 @@ function plotMarkers() {
     marker.addTo(map_);
     markers_.push(marker);
 
-    // Etiqueta con el NC de cerca (solo lo que está en pantalla)
+    // Etiqueta con el NC de cerca (solo lo que está en pantalla); se ponen
+    // después, sin encimarse (ver etiquetas_mapa.js).
     if (mostrarLabels && orden.nc && !bloqueada && vista.contains(latlng)) {
-      const lbl = L.marker(latlng, { interactive: false, icon: L.divIcon({ className: '', iconSize: [0, 0], html: `
-        <div style="position:absolute;top:${r + 4}px;left:0;transform:translateX(-50%);white-space:nowrap;font-size:10px;font-weight:700;
-          font-family:'Outfit',sans-serif;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.95),0 0 6px rgba(0,0,0,.8)">${escapeHtml(orden.nc)}</div>` }) });
-      lbl.addTo(map_);
-      markers_.push(lbl);
+      etiquetas.push({ latlng, texto: orden.nc, prioridad: orden.estadoCampo ? 1 : 0 });
     }
+    if (mostrarLabels && vista.contains(latlng)) puntos.push({ latlng, radio: marker instanceof L.CircleMarker ? r + 2 : 11 });
   });
+  if (etiquetas.length) markers_.push(...ponerEtiquetas(map_, etiquetas, puntos, r));
 
   plotCondominios();
 
