@@ -137,7 +137,7 @@ function renderDespachosPendientesTecnico(cont) {
           </div>
           <div style="display:flex;gap:8px">
             <button style="flex:1;height:44px;border-radius:12px;border:1px solid var(--border);background:transparent;color:#ef4444;font-size:13px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif" onclick="window.__despachoPend_rechazar('${p.id}')">Rechazar</button>
-            <button style="flex:2;height:44px;border-radius:12px;border:none;background:${col};color:#0a1628;font-size:13px;font-weight:800;cursor:pointer;font-family:'Outfit',sans-serif" onclick="window.__despachoPend_aceptar('${p.id}')">Aceptar material</button>
+            <button class="btn-marca" style="flex:2;height:44px;border-radius:12px;font-size:13px;cursor:pointer;font-family:'Outfit',sans-serif" onclick="window.__despachoPend_aceptar('${p.id}')">Aceptar material</button>
           </div>
         </div>`;
       }).join('')}

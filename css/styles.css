@@ -6,20 +6,24 @@
 /* ── TOKENS ──────────────────────────────────── */
 :root {
   --bg-deep:    #070c12;
-  --bg-base:    #050a17;
+  --bg-base:    #060c18;
   --bg-mid:     #0d2137;
-  /* Superficie con luz arriba (estilo "Profundidad"). Es un degradado:
-     usarlo siempre como `background`, nunca dentro de otro gradiente. */
-  --glass:      linear-gradient(165deg, rgba(255,255,255,.09) 0%, rgba(255,255,255,.035) 55%, rgba(255,255,255,.02) 100%);
-  --glass-hov:  rgba(255,255,255,.12);
-  --border:     rgba(255,255,255,.09);
-  --border-md:  rgba(255,255,255,.13);
+  /* Superficies azul marino sólidas, como la tarjeta del login (antes
+     eran un blanco translúcido que sobre el fondo se veía gris). */
+  --glass:      #0f1a2c;
+  --glass-in:   #16243b;   /* lo que va dentro de una tarjeta */
+  --glass-hov:  #14223a;
+  --border:     rgba(130,165,225,.11);
+  --border-md:  rgba(130,165,225,.16);
+  /* Degradado de la marca (botón Ingresar del login) */
+  --marca:      linear-gradient(135deg, #3b82f6, #22d3ee);
+  --marca-sh:   0 12px 26px -12px rgba(59,130,246,.75);
   --text:       #ffffff;
   --text-2:     rgba(255,255,255,.65);
   --text-3:     rgba(255,255,255,.52);
   --text-4:     rgba(255,255,255,.36);
   /* Relieve de las tarjetas: brillo en el borde de arriba + sombra */
-  --sh-card:    inset 0 1px 0 rgba(255,255,255,.08), 0 14px 30px -14px rgba(0,0,0,.95);
+  --sh-card:    0 18px 38px -22px rgba(0,0,0,.9);
 
   /* Cambios (CM) */
   --cm:         #0d9488;
@@ -79,10 +83,9 @@ body {
 #bg {
   position: fixed; inset: 0; z-index: 0; pointer-events: none;
   background:
-    radial-gradient(70% 30% at 15% -4%, rgba(45,212,191,.22), transparent 70%),
-    radial-gradient(60% 30% at 95% 0%, rgba(99,102,241,.26), transparent 70%),
-    radial-gradient(80% 40% at 50% 110%, rgba(37,99,235,.18), transparent 70%),
-    #050a17;
+    radial-gradient(70% 34% at 50% -6%, rgba(59,130,246,.22), rgba(34,211,238,.05) 50%, transparent 75%),
+    radial-gradient(60% 30% at 50% 108%, rgba(37,99,235,.12), transparent 70%),
+    #060c18;
 }
 
 /* ── ANIMACIONES ─────────────────────────────── */
@@ -361,7 +364,7 @@ body {
   padding: max(12px, env(safe-area-inset-top)) 16px 12px;
   display: flex; align-items: center; gap: 12px;
   background: transparent;
-  border-bottom: 1px solid rgba(255,255,255,.04);
+  border-bottom: 1px solid rgba(130,165,225,.07);
   position: relative; z-index: 20;
 }
 .topbar-logo {
@@ -480,11 +483,11 @@ body {
   pointer-events: auto;
   display: flex; gap: 2px; padding: 6px;
   border-radius: 26px;
-  background: rgba(9,15,32,.86);
+  background: rgba(15,26,44,.92);
   backdrop-filter: blur(20px) saturate(140%);
   -webkit-backdrop-filter: blur(20px) saturate(140%);
-  border: 1px solid rgba(255,255,255,.09);
-  box-shadow: 0 20px 44px -14px rgba(0,0,0,.95), inset 0 1px 0 rgba(255,255,255,.08);
+  border: 1px solid rgba(130,165,225,.12);
+  box-shadow: 0 20px 44px -14px rgba(0,0,0,.95);
 }
 /* Color de acento por área (--nav-acc) y su tinte (--nav-tint) */
 .nav-item          { --nav-acc: var(--cm-light);  --nav-tint: rgba(45,212,191,.16); }
@@ -864,14 +867,14 @@ body {
 .btn-primary {
   display: inline-flex; align-items: center; gap: 6px;
   padding: 8px 14px; border-radius: 10px;
-  background: rgba(45,212,191,.12); border: 1.5px solid var(--cm-border);
-  color: var(--cm-light); font-family: 'Outfit', sans-serif;
+  background: var(--marca); border: none; box-shadow: var(--marca-sh);
+  color: #fff; font-family: 'Outfit', sans-serif;
   font-size: 12px; font-weight: 700; cursor: pointer;
   transition: background .15s;
   -webkit-tap-highlight-color: transparent;
 }
-.btn-primary:active { background: rgba(45,212,191,.2); }
-.btn-primary.full   { width: 100%; justify-content: center; height: 48px; font-size: 14px; margin-top: 8px; }
+.btn-primary:active { filter: brightness(1.1); transform: scale(.99); }
+.btn-primary.full   { width: 100%; justify-content: center; height: 50px; font-size: 14px; font-weight: 600; border-radius: 14px; margin-top: 8px; }
 .btn-primary:disabled { opacity: .4; cursor: not-allowed; }
 
 /* Filtros */
@@ -1024,7 +1027,7 @@ body {
 /* Tabs */
 .cambios-tabs, .area-tabs {
   display: flex; gap: 4px;
-  background: rgba(255,255,255,.04);
+  background: var(--glass);
   border: 1px solid var(--border);
   border-radius: 12px; padding: 4px;
   margin-bottom: 4px; position: relative;
@@ -2315,3 +2318,14 @@ body {
 .cm-dia { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
 .cm-dia-t { font-size: 13.5px; font-weight: 600; }
 .cm-dia-s { font-size: 11.5px; color: var(--text-3); margin-top: 1px; }
+
+/* ── Marca: superficies internas y botones principales ── */
+.ds-card .buscar-wrap, .cm-par .buscar-wrap, .sheet .buscar-wrap, .hm-chip, .us-count, .bod-count,
+.cm-verif, .cm-est span { background: var(--glass-in); }
+.sheet { background: #0d1728; }
+.btn-marca, .btn-action.marca, .cm-btn.marca, .us-btn-main, .bod-btn-main {
+  background: var(--marca) !important; border: none !important; color: #fff !important;
+  box-shadow: var(--marca-sh); font-weight: 600;
+}
+.btn-marca:active, .btn-action.marca:active, .cm-btn.marca:active { filter: brightness(1.1); }
+.btn-marca:disabled, .bod-btn-main:disabled { opacity: .45; box-shadow: none; }

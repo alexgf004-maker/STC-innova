@@ -847,7 +847,7 @@ function renderConfirmar() {
   body.innerHTML = `
     ${lista.length ? `
     <div style="font-size:12.5px;color:var(--text-3);margin-bottom:12px">${lista.length} realizada${lista.length > 1 ? 's' : ''} esperando confirmación${confPareja_ ? '' : ' en todas las parejas'}.</div>
-    <button class="btn-action cm" style="margin-bottom:16px" onclick="window.__cambios.confirmarLote(-1)">
+    <button class="btn-action marca" style="margin-bottom:16px" onclick="window.__cambios.confirmarLote(-1)">
       ${svgCm(ICO_CM.check, 16)} Confirmar todas (${lista.length})
     </button>
     <div class="flex-col" style="gap:16px">
@@ -1168,7 +1168,7 @@ function renderOrdenes() {
           <div style="font-size:12px;color:var(--text-3);margin-top:4px">${isTecnico ? esc(pareja_ || '') + ' · ' : ''}${lista.length} órdenes</div>
         </div>
         ${isTecnico ? `
-        <button class="cm-btn cm" style="height:38px;padding:0 14px" onclick="window.__cambios.openCampo()">
+        <button class="cm-btn marca" style="height:38px;padding:0 14px" onclick="window.__cambios.openCampo()">
           ${svgCm('<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>', 14)} Generar orden
         </button>` : ''}
       </div>
@@ -1193,7 +1193,7 @@ function renderOrdenes() {
       <div style="font-size:12px;color:var(--text-3);margin:2px 2px 10px">${mostrar.length} resultado${mostrar.length !== 1 ? 's' : ''} en todas las órdenes</div>`}
 
       ${!q && filtroOrd_ === 'porconfirmar' && grupo.arr.length ? `
-      <button class="btn-action cm" style="margin-bottom:12px" onclick="window.__cambios.abrirConfirmar(${parejaFiltro_ !== 'todas' ? `'${parejaFiltro_}'` : ''})">
+      <button class="btn-action marca" style="margin-bottom:12px" onclick="window.__cambios.abrirConfirmar(${parejaFiltro_ !== 'todas' ? `'${parejaFiltro_}'` : ''})">
         ${svgCm(ICO_CM.check, 16)} Confirmar por día o todas
       </button>` : ''}
 
