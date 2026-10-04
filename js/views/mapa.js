@@ -673,8 +673,8 @@ function verOrden(id) {
     <div class="panel-scroll-info">
     <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:11px">
       <div style="flex:1;min-width:0">
-        <div style="font-size:17px;font-weight:800;color:#fff;letter-spacing:-.01em">WO ${o.wo || '—'}</div>
-        <div style="font-size:13px;font-weight:500;color:rgba(255,255,255,.85);margin-top:2px">${o.cliente || '—'}</div>
+        <div style="font-size:17px;font-weight:800;color:#fff;letter-spacing:-.01em">WO ${escapeHtml(o.wo || '—')}</div>
+        <div style="font-size:13px;font-weight:500;color:rgba(255,255,255,.85);margin-top:2px">${escapeHtml(o.cliente || '—')}</div>
       </div>
       <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0">
         ${o.pareja ? `<div class="pareja-chip" style="color:${c};border-color:${c}33;background:${c}15">${o.pareja}</div>` : ''}
@@ -688,7 +688,7 @@ function verOrden(id) {
     ${o.direccion ? `
     <div style="display:flex;align-items:flex-start;gap:8px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);border-radius:11px;padding:10px 12px;margin-bottom:11px">
       <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" style="flex-shrink:0;margin-top:1px"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>
-      <div style="font-size:13px;font-weight:500;color:rgba(255,255,255,.95);line-height:1.4">${o.direccion}</div>
+      <div style="font-size:13px;font-weight:500;color:rgba(255,255,255,.95);line-height:1.4">${escapeHtml(o.direccion)}</div>
     </div>` : ''}
 
     <!-- Info técnica -->
@@ -699,7 +699,7 @@ function verOrden(id) {
       </div>` : ''}
       ${o.nc ? `<div style="background:var(--glass);border:1px solid var(--border);border-radius:10px;padding:9px 11px">
         <div style="font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:rgba(255,255,255,.45);margin-bottom:3px">NC</div>
-        <div style="font-size:14px;font-weight:700;color:#fff">${o.nc}</div>
+        <div style="font-size:14px;font-weight:700;color:#fff">${escapeHtml(o.nc)}</div>
       </div>` : ''}
       ${o.marca ? `<div style="background:var(--glass);border:1px solid var(--border);border-radius:10px;padding:9px 11px">
         <div style="font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:rgba(255,255,255,.45);margin-bottom:3px">Marca</div>
@@ -715,7 +715,7 @@ function verOrden(id) {
       </div>` : ''}
       ${o.concepto ? `<div style="background:var(--glass);border:1px solid var(--border);border-radius:10px;padding:9px 11px;grid-column:1 / -1">
         <div style="font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:rgba(255,255,255,.45);margin-bottom:3px">Concepto</div>
-        <div style="font-size:13px;font-weight:600;color:#fff">${o.concepto}</div>
+        <div style="font-size:13px;font-weight:600;color:#fff">${escapeHtml(o.concepto)}</div>
       </div>` : ''}
       ${o.motivoVisita ? `<div style="background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.3);border-radius:10px;padding:9px 11px;grid-column:1 / -1">
         <div style="font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:#fbbf24;margin-bottom:3px">Motivo visita</div>
@@ -728,7 +728,7 @@ function verOrden(id) {
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="13" height="13">
         <path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 014.17 9.82a19.79 19.79 0 01-3.07-8.59A2 2 0 013.08 1h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L7.09 8.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"/>
       </svg>
-      <a href="tel:${o.telefono}">${o.telefono}</a>
+      <a href="tel:${escapeHtml(o.telefono)}">${escapeHtml(o.telefono)}</a>
     </div>` : ''}
     </div><!-- fin panel-scroll-info -->
 
@@ -803,8 +803,8 @@ function buscarOrden(texto) {
 
   cont.innerHTML = coincidencias.map(o => `
     <div style="padding:12px;background:var(--glass);border:1px solid var(--border);border-radius:9px;margin-bottom:8px">
-      <div style="font-size:13px;font-weight:800;color:#f1f5f9">WO ${o.wo || '—'}</div>
-      <div style="font-size:11px;color:#94a3b8;margin:2px 0 6px">${o.cliente || '—'} · ${o.pareja || 'Sin asignar'} · ${estadoTxt(o)}</div>
+      <div style="font-size:13px;font-weight:800;color:#f1f5f9">WO ${escapeHtml(o.wo || '—')}</div>
+      <div style="font-size:11px;color:#94a3b8;margin:2px 0 6px">${escapeHtml(o.cliente || '—')} · ${escapeHtml(o.pareja || 'Sin asignar')} · ${estadoTxt(o)}</div>
       <button class="btn-ir-orden" data-id="${o.id}" style="width:100%;padding:8px;border-radius:9px;border:1px solid rgba(45,212,191,.4);background:rgba(45,212,191,.14);color:var(--cm-light);font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">Ver en el mapa</button>
     </div>`).join('');
 
@@ -958,7 +958,7 @@ function mostrarAlertaUrgente(urgentes) {
       <div style="width:8px;height:8px;background:#ef4444;border-radius:50%;flex-shrink:0"></div>
       <div style="font-size:13px;font-weight:700;color:#ef4444">${urgentes.length} orden${urgentes.length > 1 ? 'es urgentes' : ' urgente'}</div>
     </div>
-    ${urgentes.map(o => `<div style="font-size:12px;color:#e2e8f0;margin-bottom:2px">· WO ${o.wo || '—'} — ${o.cliente || '—'}</div>`).join('')}
+    ${urgentes.map(o => `<div style="font-size:12px;color:#e2e8f0;margin-bottom:2px">· WO ${escapeHtml(o.wo || '—')} — ${escapeHtml(o.cliente || '—')}</div>`).join('')}
     <div style="font-size:11px;color:#64748b;margin-top:8px">Toca para cerrar</div>
   `;
   div.addEventListener('click', () => div.remove());
@@ -1175,9 +1175,9 @@ function verContiguo(c) {
   content.innerHTML = `
     <div class="panel-orden-header">
       <div style="flex:1;min-width:0">
-        <div class="panel-orden-wo">NC ${c.nc}</div>
-        <div class="panel-orden-cliente">${c.nombre || '—'}</div>
-        <div class="panel-orden-dir">${c.direccion || ''}</div>
+        <div class="panel-orden-wo">NC ${escapeHtml(c.nc)}</div>
+        <div class="panel-orden-cliente">${escapeHtml(c.nombre || '—')}</div>
+        <div class="panel-orden-dir">${escapeHtml(c.direccion || '')}</div>
       </div>
       <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0">
         <div class="pareja-chip" style="color:${colorEtiqueta};border-color:${colorEtiqueta}33;background:${colorEtiqueta}15">${etiqueta}</div>
@@ -1185,7 +1185,7 @@ function verContiguo(c) {
     </div>
     <div class="panel-detail-grid">
       ${c.aparato ? `<div class="panel-detail-item"><div class="panel-detail-key">Medidor</div><div class="panel-detail-val" style="font-family:monospace;font-weight:700;color:var(--cm-light)">${c.aparato}</div></div>` : ''}
-      ${c.marca ? `<div class="panel-detail-item"><div class="panel-detail-key">Marca</div><div class="panel-detail-val">${c.marca}</div></div>` : ''}
+      ${c.marca ? `<div class="panel-detail-item"><div class="panel-detail-key">Marca</div><div class="panel-detail-val">${escapeHtml(c.marca)}</div></div>` : ''}
     </div>
     <div class="panel-orden-actions">
       <button class="btn-action outline" onclick="window.__mapa.abrirGoogleMaps(${c.lat},${c.lng})">

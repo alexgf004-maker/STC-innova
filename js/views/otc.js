@@ -5,7 +5,7 @@
  */
 
 import { db } from '../firebase.js';
-import { toast } from '../ui.js';
+import { toast, escapeHtml } from '../ui.js';
 
 // Indicadores de color (sin emojis: se corrompen al editar y cada
 // teléfono los dibuja distinto).
@@ -365,8 +365,8 @@ function renderResumenTecnicoOtc() {
         ${reconexiones.map(o => `
           <div class="orden-verif-card" onclick="window.__otc.verOrden('${o.id}')" style="margin-top:6px">
             <div class="orden-verif-info">
-              <div style="font-size:12px;font-weight:700">WO ${o.wo || '—'}</div>
-              <div style="font-size:10px;color:var(--text-3)">${o.cliente || '—'}</div>
+              <div style="font-size:12px;font-weight:700">WO ${escapeHtml(o.wo || '—')}</div>
+              <div style="font-size:10px;color:var(--text-3)">${escapeHtml(o.cliente || '—')}</div>
               <div style="font-size:11px;color:#ef4444;font-weight:700;margin-top:2px">⏱ ${countdownReconexion(o.fechaPago)}</div>
             </div>
           </div>`).join('')}
@@ -380,8 +380,8 @@ function renderResumenTecnicoOtc() {
           <div class="orden-visita-panel" onclick="window.__otc.verOrden('${o.id}')" style="margin-top:6px">
             <div class="status-dot" style="background:#ef4444"></div>
             <div>
-              <div style="font-size:12px;font-weight:700">WO ${o.wo || '—'}</div>
-              <div style="font-size:10px;color:var(--text-3)">${TIPO_LABELS[o.tipo] || ''} · ${o.cliente || '—'}</div>
+              <div style="font-size:12px;font-weight:700">WO ${escapeHtml(o.wo || '—')}</div>
+              <div style="font-size:10px;color:var(--text-3)">${TIPO_LABELS[o.tipo] || ''} · ${escapeHtml(o.cliente || '—')}</div>
             </div>
           </div>`).join('')}
       </div>` : ''}
@@ -394,8 +394,8 @@ function renderResumenTecnicoOtc() {
           <div class="orden-visita-panel" onclick="window.__otc.verOrden('${o.id}')" style="margin-top:6px">
             <div class="status-dot" style="background:#f97316"></div>
             <div>
-              <div style="font-size:12px;font-weight:700">WO ${o.wo || '—'}</div>
-              <div style="font-size:10px;color:var(--text-3)">${TIPO_LABELS[o.tipo] || ''} · ${o.cliente || '—'}</div>
+              <div style="font-size:12px;font-weight:700">WO ${escapeHtml(o.wo || '—')}</div>
+              <div style="font-size:10px;color:var(--text-3)">${TIPO_LABELS[o.tipo] || ''} · ${escapeHtml(o.cliente || '—')}</div>
             </div>
           </div>`).join('')}
       </div>` : ''}
@@ -737,12 +737,12 @@ function renderOrdenAlerta(o) {
   return `
     <div class="orden-verif-card" onclick="window.__otc.verOrden('${o.id}')" style="margin-top:6px">
       <div class="orden-verif-info">
-        <div class="orden-wo" style="font-size:12px">WO ${o.wo || '—'}</div>
-        <div class="orden-cliente" style="font-size:10px">${o.cliente || '—'}</div>
+        <div class="orden-wo" style="font-size:12px">WO ${escapeHtml(o.wo || '—')}</div>
+        <div class="orden-cliente" style="font-size:10px">${escapeHtml(o.cliente || '—')}</div>
         ${countdown ? `<div style="font-size:10px;color:#ef4444;font-weight:700;margin-top:2px">⏱ ${countdown}</div>` : ''}
         ${dias !== null && !countdown ? `<div style="font-size:10px;color:#fbbf24;margin-top:2px">${dias === 0 ? 'Vence hoy' : `Vence en ${dias} día${dias > 1 ? 's' : ''} hábil${dias > 1 ? 'es' : ''}`}</div>` : ''}
       </div>
-      <div class="pareja-chip" style="color:${c.accent};border-color:${c.border};background:${c.glass}">${o.tecnicoDestino || '—'}</div>
+      <div class="pareja-chip" style="color:${c.accent};border-color:${c.border};background:${c.glass}">${escapeHtml(o.tecnicoDestino || '—')}</div>
     </div>
   `;
 }
@@ -902,11 +902,11 @@ function renderOrdenCardTecnico(o) {
         <div style="width:10px;height:10px;border-radius:50%;background:${cfg.dot};flex-shrink:0"></div>
         <div style="flex:1;min-width:0">
           <div style="display:flex;align-items:center;gap:8px">
-            <div class="orden-wo">WO ${o.wo || '—'}</div>
+            <div class="orden-wo">WO ${escapeHtml(o.wo || '—')}</div>
             <div style="font-size:10px;font-weight:600;color:var(--text-4);text-transform:uppercase;letter-spacing:.04em">${TIPO_LABELS[o.tipo] || ''}</div>
           </div>
-          <div class="orden-cliente">${o.cliente || '—'}</div>
-          <div class="orden-dir">${o.direccion || ''}</div>
+          <div class="orden-cliente">${escapeHtml(o.cliente || '—')}</div>
+          <div class="orden-dir">${escapeHtml(o.direccion || '')}</div>
           ${diasLabel}
         </div>
       </div>
@@ -945,14 +945,14 @@ function renderOrdenCard(o, tipo = '') {
       <div class="orden-card-left">
         ${statusDot}
         <div class="orden-info">
-          <div class="orden-wo">WO ${o.wo || '—'}</div>
-          <div class="orden-cliente">${o.cliente || '—'}</div>
+          <div class="orden-wo">WO ${escapeHtml(o.wo || '—')}</div>
+          <div class="orden-cliente">${escapeHtml(o.cliente || '—')}</div>
           <div class="orden-dir">${TIPO_LABELS[o.tipo] || o.tipo || '—'}</div>
           ${countdown ? `<div style="font-size:10px;color:#ef4444;font-weight:700">⏱ ${countdown}</div>` : ''}
         </div>
       </div>
       <div class="orden-card-right">
-        ${!isTecnico ? `<div class="pareja-chip" style="color:${c.accent};border-color:${c.border};background:${c.glass}">${o.tecnicoDestino || '—'}</div>` : ''}
+        ${!isTecnico ? `<div class="pareja-chip" style="color:${c.accent};border-color:${c.border};background:${c.glass}">${escapeHtml(o.tecnicoDestino || '—')}</div>` : ''}
         ${tipo === 'hecha' && !isTecnico ? `
           <button class="action-chip ok" onclick="event.stopPropagation();window.__otc.aprobar('${o.id}')">&#10003;</button>
         ` : ''}
@@ -985,7 +985,7 @@ function verOrden(id) {
         ${o.estadoCampo === 'aprobada' ? '<div class="estado-badge ok">Confirmada</div>'  : ''}
         ${!o.estadoCampo               ? '<div class="estado-badge muted">Pendiente</div>': ''}
         ${o.actualizadaDelsur ? '<div class="estado-badge ok-outline">&#10003; DELSUR</div>' : ''}
-        ${o.tecnicoDestino ? `<div class="pareja-chip" style="color:${c.accent};border-color:${c.border};background:${c.glass}">${o.tecnicoDestino}</div>` : ''}
+        ${o.tecnicoDestino ? `<div class="pareja-chip" style="color:${c.accent};border-color:${c.border};background:${c.glass}">${escapeHtml(o.tecnicoDestino)}</div>` : ''}
       </div>
 
       <!-- Urgencia -->
@@ -1003,8 +1003,8 @@ function verOrden(id) {
       <!-- Info cliente -->
       <div class="detail-section">
         <div class="detail-label">Cliente</div>
-        <div class="detail-field full"><div class="detail-key">Nombre</div><div class="detail-val">${o.cliente || '—'}</div></div>
-        <div class="detail-field full"><div class="detail-key">Dirección</div><div class="detail-val">${o.direccion || '—'}</div></div>
+        <div class="detail-field full"><div class="detail-key">Nombre</div><div class="detail-val">${escapeHtml(o.cliente || '—')}</div></div>
+        <div class="detail-field full"><div class="detail-key">Dirección</div><div class="detail-val">${escapeHtml(o.direccion || '—')}</div></div>
       </div>
 
       <!-- Info orden -->
@@ -1021,8 +1021,8 @@ function verOrden(id) {
       ${o.fechaHecha ? `
       <div class="detail-section">
         <div class="detail-label">Historial</div>
-        <div class="detail-field full"><div class="detail-key">Realizada</div><div class="detail-val">${formatDate(o.fechaHecha)} · ${o.hechaPor || '—'}</div></div>
-        ${o.aprobadoPor ? `<div class="detail-field full"><div class="detail-key">Confirmada por</div><div class="detail-val">${o.aprobadoPor}</div></div>` : ''}
+        <div class="detail-field full"><div class="detail-key">Realizada</div><div class="detail-val">${formatDate(o.fechaHecha)} · ${escapeHtml(o.hechaPor || '—')}</div></div>
+        ${o.aprobadoPor ? `<div class="detail-field full"><div class="detail-key">Confirmada por</div><div class="detail-val">${escapeHtml(o.aprobadoPor)}</div></div>` : ''}
       </div>` : ''}
 
       <!-- Acciones técnico -->
@@ -1185,12 +1185,12 @@ function mostrarPanelOtc(o) {
   panelContent.innerHTML = `
     <div class="panel-orden-header">
       <div style="flex:1;min-width:0">
-        <div class="panel-orden-wo">WO ${o.wo || '—'}</div>
-        <div class="panel-orden-cliente">${o.cliente || '—'}</div>
+        <div class="panel-orden-wo">WO ${escapeHtml(o.wo || '—')}</div>
+        <div class="panel-orden-cliente">${escapeHtml(o.cliente || '—')}</div>
         <div class="panel-orden-dir">${TIPO_LABELS[o.tipo] || o.tipo || ''}</div>
       </div>
       <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0">
-        <div class="pareja-chip" style="color:${c.accent};border-color:${c.border};background:${c.glass}">${o.tecnicoDestino || '—'}</div>
+        <div class="pareja-chip" style="color:${c.accent};border-color:${c.border};background:${c.glass}">${escapeHtml(o.tecnicoDestino || '—')}</div>
         ${o.estadoCampo === 'hecha' ? '<div class="estado-badge ok">Realizada</div>' : '<div class="estado-badge muted">Pendiente</div>'}
       </div>
     </div>

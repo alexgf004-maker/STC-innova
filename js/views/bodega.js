@@ -57,6 +57,8 @@ const safeStr = (v, fb='—') => (v!==undefined&&v!==null&&String(v).trim()) ? S
 // Muestra el nombre tal cual se escribió (antes forzaba Title Case y
 // destrozaba siglas y códigos: AWG -> Awg, 3x220 -> 3X220)
 const tc = str => safeStr(str,'');
+// tc() escapado para insertar en HTML (nombres de material vienen de Excel).
+const tcH = str => escapeHtml(tc(str));
 const fmtDate = ts => {
   if (!ts) return '—';
   try { const d=ts.toDate?ts.toDate():new Date(ts); return d.toLocaleDateString('es-SV',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}); } catch { return '—'; }
@@ -306,11 +308,11 @@ function renderMiMaterial() {
     return `<div class="bod-item-card" style="background:${bajo?'rgba(245,158,11,.06)':'var(--glass)'};border-color:${bajo?'rgba(245,158,11,.25)':'var(--border)'}">
       <div style="flex:1;min-width:0">
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:3px">
-          <div style="font-size:13px;font-weight:700">${tc(e.item.name)}</div>
+          <div style="font-size:13px;font-weight:700">${tcH(e.item.name)}</div>
           ${bajo?'<div class="bod-badge warn">Poco</div>':''}
           ${e.item.requiereSerial?`<div class="bod-badge" style="color:var(--bod-light);border-color:var(--bod-border);background:var(--bod-glass)" onclick="window.__bodega.verSeriales('${e.item.id}')">Serial</div>`:''}
         </div>
-        <div style="font-size:10px;color:var(--text-4)">${e.item.sapCode?`SAP: ${e.item.sapCode}`:''}${e.item.axCode?` · AX: ${e.item.axCode}`:''}</div>
+        <div style="font-size:10px;color:var(--text-4)">${e.item.sapCode?`SAP: ${escapeHtml(e.item.sapCode)}`:''}${e.item.axCode?` · AX: ${escapeHtml(e.item.axCode)}`:''}</div>
       </div>
       <div style="text-align:right;flex-shrink:0">
         <div style="font-size:22px;font-weight:800;color:${bajo?'#fbbf24':'#22c55e'}">${e.cant}</div>
@@ -394,7 +396,7 @@ function renderRecibido() {
                     : '';
                 return `<div style="padding:8px 0;border-top:1px solid var(--border)">
                   <div style="display:flex;justify-content:space-between;gap:10px;font-size:13px">
-                    <span style="color:var(--text-2)">${tc(m.nombre||m.name||'—')}</span>
+                    <span style="color:var(--text-2)">${tcH(m.nombre||m.name||'—')}</span>
                     <span style="font-weight:600;white-space:nowrap">${m.cantidad} ${safeStr(m.unit,'')}</span>
                   </div>${seriales}
                 </div>`;
@@ -434,7 +436,7 @@ function renderConsumo() {
             <div class="flex-col gap-3">
               ${(c.items||[]).map(i=>`<div style="display:flex;justify-content:space-between;font-size:11px">
                 <span style="color:var(--text-2)">${safeStr(i.nombre)}</span>
-                <span style="font-weight:700">${i.cantidad} ${safeStr(i.unit,'')}${i.serial?` · <span style="color:var(--bod-light)">${i.serial}</span>`:''}</span>
+                <span style="font-weight:700">${i.cantidad} ${safeStr(i.unit,'')}${i.serial?` · <span style="color:var(--bod-light)">${escapeHtml(i.serial)}</span>`:''}</span>
               </div>`).join('')}
             </div>
           </div>`).join('')}
@@ -497,7 +499,7 @@ function abrirRegistrarConsumo() {
                 const e=misItems.find(x=>x.id===id);
                 return `<div style="background:rgba(34,197,94,.06);border:1px solid rgba(34,197,94,.2);border-radius:10px;padding:10px 12px;display:flex;justify-content:space-between;font-size:12px">
                   <span style="color:var(--text-2)">${e?tc(e.item.name):id}</span>
-                  <span style="font-weight:700;color:var(--ok)">${v.cantidad} ${e?safeStr(e.item.unit,''):''}${v.serial?` · ${v.serial}`:''}</span>
+                  <span style="font-weight:700;color:var(--ok)">${v.cantidad} ${e?safeStr(e.item.unit,''):''}${v.serial?` · ${escapeHtml(v.serial)}`:''}</span>
                 </div>`;
               }).join('')}
             </div>
@@ -537,9 +539,9 @@ function abrirRegistrarConsumo() {
       const esSer=e.item.requiereSerial;
       return `<div class="bod-solicitar-row" style="background:${sd.cantidad>0?'rgba(34,197,94,.06)':'var(--glass)'};border-color:${sd.cantidad>0?'rgba(34,197,94,.2)':'var(--border)'}">
         <div style="flex:1;min-width:0">
-          <div style="font-size:13px;font-weight:600">${tc(e.item.name)}</div>
+          <div style="font-size:13px;font-weight:600">${tcH(e.item.name)}</div>
           <div style="font-size:10px;color:var(--text-4)">Disponible: ${e.cant} ${safeStr(e.item.unit,'')}</div>
-          ${esSer&&sd.cantidad>0?`<input class="form-input" style="margin-top:6px;font-size:11px;padding:6px 10px" id="ser-${e.id}" placeholder="Serial…" value="${sd.serial}" onchange="window.__bod_serial_upd('${e.id}',this.value)"/>`:''}
+          ${esSer&&sd.cantidad>0?`<input class="form-input" style="margin-top:6px;font-size:11px;padding:6px 10px" id="ser-${e.id}" placeholder="Serial…" value="${escapeHtml(sd.serial)}" onchange="window.__bod_serial_upd('${e.id}',this.value)"/>`:''}
         </div>
         ${esSer?`
         <button class="action-chip ${sd.cantidad>0?'ok':'muted'}" onclick="window.__bod_tog_ser('${e.id}')" style="${sd.cantidad>0?'':'color:var(--text-3);border-color:var(--border);background:var(--glass)'}">
@@ -659,7 +661,7 @@ function renderFormSolicitar() {
           <div class="flex-col gap-6">
             ${sel.map((s,idx)=>`
               <div class="bod-sel-row">
-                <div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:600;line-height:1.3">${tc(s.name)}</div><div style="font-size:11px;color:var(--text-4);margin-top:2px">${s.stock} ${s.unit} disponibles</div></div>
+                <div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:600;line-height:1.3">${tcH(s.name)}</div><div style="font-size:11px;color:var(--text-4);margin-top:2px">${s.stock} ${escapeHtml(s.unit)} disponibles</div></div>
                 <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
                   <button class="bod-qty" id="sol-dec-${idx}">−</button>
                   <div style="min-width:32px;text-align:center;font-size:16px;font-weight:600;color:var(--bod-light)">${s.cantidad}</div>
@@ -737,7 +739,7 @@ function renderFormSolicitar() {
       const sinStock=item.stock<=0;
       return `<div class="bod-mat-row ${agregado?'sel':''} ${sinStock&&!agregado?'off':''}" data-item="${item.id}">
         <div style="flex:1;min-width:0">
-          <div style="font-size:14px;font-weight:600;line-height:1.3">${tc(item.name)}</div>
+          <div style="font-size:14px;font-weight:600;line-height:1.3">${tcH(item.name)}</div>
           <div style="font-size:12px;color:${sinStock?'var(--text-4)':'var(--text-3)'};margin-top:4px">${Math.max(0,item.stock)} ${safeStr(item.unit,'')} en bodega</div>
         </div>
         ${agregado?`<span class="bod-add ok">&#10003;</span>`:sinStock?`<span class="estado-badge crit">Agotado</span>`:`<span class="bod-add">+</span>`}
@@ -811,7 +813,7 @@ function renderMisSolicitudes() {
               <span class="estado-badge ${b.cls}" style="flex-shrink:0">${b.label}</span>
             </div>
             <div class="flex-col gap-4">
-              ${(s.materiales||[]).map(m=>`<div style="display:flex;justify-content:space-between;gap:10px;font-size:13px"><span style="color:var(--text-2)">${tc(m.nombre||m.name||'—')}</span><span style="font-weight:600;white-space:nowrap">${m.cantidad} ${safeStr(m.unit||m.unidad,'')}</span></div>`).join('')}
+              ${(s.materiales||[]).map(m=>`<div style="display:flex;justify-content:space-between;gap:10px;font-size:13px"><span style="color:var(--text-2)">${tcH(m.nombre||m.name||'—')}</span><span style="font-weight:600;white-space:nowrap">${m.cantidad} ${safeStr(m.unit||m.unidad,'')}</span></div>`).join('')}
             </div>
             ${s.estado==='rechazado'&&s.notas?`<div style="font-size:12px;color:var(--text-3);margin-top:10px">Motivo: ${escapeHtml(s.notas)}</div>`:''}
           </div>`;
@@ -943,7 +945,7 @@ function renderItemCard(item) {
   return `<div class="bod-item-row ${agotado?'crit':bajo?'warn':''}" data-item="${item.id}">
     <div class="bod-item-head">
       <div style="flex:1;min-width:0">
-        <div style="font-size:14px;font-weight:600;line-height:1.3">${tc(item.name)}</div>
+        <div style="font-size:14px;font-weight:600;line-height:1.3">${tcH(item.name)}</div>
         <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:6px">
           ${agotado?`<span class="estado-badge crit">${item.stock<0?'Descuadre':'Agotado'}</span>`:bajo?'<span class="estado-badge warn">Bajo</span>':''}
           ${item.requiereSerial?'<span class="estado-badge muted">Serial</span>':''}
@@ -978,7 +980,7 @@ function renderHistorial() {
   const sec = (titulo, n) => `<div class="bod-sec"><div class="ds-sec">${titulo}</div><span class="bod-count">${n}</span></div>`;
   const lineas = (items, max) => `
     <div class="flex-col gap-4">
-      ${(items||[]).slice(0,max).map(m=>`<div style="display:flex;justify-content:space-between;gap:10px;font-size:12px"><span style="color:var(--text-2)">${tc(m.nombre||m.name||'—')}${m.requiereSerial&&m.seriales?.length?` <span style="color:var(--text-4)">(${m.seriales.length} series)</span>`:''}</span><span style="font-weight:600;white-space:nowrap">${m.cantidad} ${safeStr(m.unit,'')}</span></div>`).join('')}
+      ${(items||[]).slice(0,max).map(m=>`<div style="display:flex;justify-content:space-between;gap:10px;font-size:12px"><span style="color:var(--text-2)">${tcH(m.nombre||m.name||'—')}${m.requiereSerial&&m.seriales?.length?` <span style="color:var(--text-4)">(${m.seriales.length} series)</span>`:''}</span><span style="font-weight:600;white-space:nowrap">${m.cantidad} ${safeStr(m.unit,'')}</span></div>`).join('')}
       ${(items||[]).length>max?`<div style="font-size:11px;color:var(--text-4)">+${(items||[]).length-max} más</div>`:''}
     </div>`;
 
@@ -1196,7 +1198,7 @@ function verDetalleDevolucion(id){
           <div style="background:var(--glass);border:1px solid var(--border);border-radius:12px;padding:14px">
             <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:${it.requiereSerial?'10px':'0'}">
               <div style="flex:1">
-                <div style="font-size:13px;font-weight:700">${tc(it.nombre||it.name||'—')}</div>
+                <div style="font-size:13px;font-weight:700">${tcH(it.nombre||it.name||'—')}</div>
                 <div style="font-size:10px;color:var(--text-4)">${it.requiereSerial?'Medidor con serie':safeStr(it.unit,'unidades')}</div>
               </div>
               ${it.requiereSerial
@@ -1346,12 +1348,12 @@ function renderStockUsuarios() {
                 const c=critico?'#ef4444':bajo?'#fbbf24':'#22c55e';
                 return `<div style="display:flex;align-items:center;gap:12px;padding:10px 14px;background:var(--glass);border:1px solid ${critico?'rgba(239,68,68,.2)':bajo?'rgba(245,158,11,.2)':'var(--border)'};border-radius:10px">
                   <div style="flex:1;min-width:0">
-                    <div style="font-size:12px;font-weight:600">${tc(e.item.name)}</div>
-                    ${e.item.sapCode?`<div style="font-size:10px;color:var(--text-4)">SAP: ${e.item.sapCode}</div>`:''}
+                    <div style="font-size:12px;font-weight:600">${tcH(e.item.name)}</div>
+                    ${e.item.sapCode?`<div style="font-size:10px;color:var(--text-4)">SAP: ${escapeHtml(e.item.sapCode)}</div>`:''}
                   </div>
                   <div style="text-align:right;flex-shrink:0">
                     <div style="font-size:20px;font-weight:800;color:${c}">${e.cant}</div>
-                    <div style="font-size:10px;color:var(--text-4)">${e.item.unit}</div>
+                    <div style="font-size:10px;color:var(--text-4)">${escapeHtml(e.item.unit)}</div>
                   </div>
                 </div>`;
               }).join('')}
@@ -1382,7 +1384,7 @@ function renderSolicitudes() {
         <span class="estado-badge ${b.cls}" style="flex-shrink:0">${b.label}</span>
       </div>
       <div class="flex-col gap-4">
-        ${(s.materiales||[]).map(m=>`<div style="display:flex;justify-content:space-between;gap:10px;font-size:12px"><span style="color:var(--text-2)">${tc(m.nombre||m.name||'—')}</span><span style="font-weight:600;white-space:nowrap">${m.cantidad} ${safeStr(m.unit||m.unidad,'')}</span></div>`).join('')}
+        ${(s.materiales||[]).map(m=>`<div style="display:flex;justify-content:space-between;gap:10px;font-size:12px"><span style="color:var(--text-2)">${tcH(m.nombre||m.name||'—')}</span><span style="font-weight:600;white-space:nowrap">${m.cantidad} ${safeStr(m.unit||m.unidad,'')}</span></div>`).join('')}
       </div>
       ${actions?`<div style="display:flex;gap:8px;margin-top:12px">
         <button class="btn-action" style="flex:1;height:40px;font-size:12px;border:1px solid var(--bod-border);background:var(--bod-glass);color:var(--bod-light)" onclick="window.__bodega.aprobarSolicitud('${s.id}')">
@@ -1436,7 +1438,7 @@ async function verSeriales(itemId) {
   const sheet=document.createElement('div');
   sheet.className='sheet-backdrop open bod-scope';
   sheet.innerHTML=`<div class="sheet"><div class="sheet-handle"></div>
-    <div class="sheet-title">Seriales · ${tc(item?.name||'—')}</div>
+    <div class="sheet-title">Seriales · ${tcH(item?.name||'—')}</div>
     <div class="sheet-body">
       <div class="buscar-wrap" style="margin-bottom:12px">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14" style="color:var(--text-4);flex-shrink:0"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
@@ -1465,7 +1467,7 @@ async function verSeriales(itemId) {
     el.innerHTML=filtrados.map(s=>`
       <div style="background:${s.estado==='disponible'?'rgba(34,197,94,.06)':'rgba(239,68,68,.06)'};border:1px solid ${s.estado==='disponible'?'rgba(34,197,94,.2)':'rgba(239,68,68,.2)'};border-radius:10px;padding:10px 14px;margin-bottom:6px">
         <div style="display:flex;align-items:center;justify-content:space-between">
-          <div style="font-size:13px;font-weight:700;font-family:monospace">${s.serial}</div>
+          <div style="font-size:13px;font-weight:700;font-family:monospace">${escapeHtml(s.serial)}</div>
           <div class="bod-badge" style="color:${s.estado==='disponible'?'#22c55e':'#ef4444'};border-color:${s.estado==='disponible'?'rgba(34,197,94,.3)':'rgba(239,68,68,.3)'};background:${s.estado==='disponible'?'rgba(34,197,94,.08)':'rgba(239,68,68,.08)'}">
             ${s.estado==='disponible'?'Disponible':'Despachado'}
           </div>
@@ -1527,7 +1529,7 @@ function abrirDevolucion(salida) {
         return `
         <div style="margin-bottom:16px;padding-bottom:16px;border-bottom:1px solid var(--border)">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-            <div style="font-size:13px;font-weight:600">${tc(i.nombre||i.name||'—')}</div>
+            <div style="font-size:13px;font-weight:600">${tcH(i.nombre||i.name||'—')}</div>
             <label style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text-3);cursor:pointer">
               <input type="checkbox" id="dev-chk-${i.itemId}" onchange="window.__dev_toggle('${i.itemId}',this.checked)"/>
               Devolver
@@ -1832,7 +1834,7 @@ function abrirDespacho(solicitud=null) {
             ${sel.map((s,idx)=>`
               <div class="bod-sel-row">
                 <div style="flex:1;min-width:0">
-                  <div style="font-size:13px;font-weight:600;line-height:1.3">${tc(s.name)}</div>
+                  <div style="font-size:13px;font-weight:600;line-height:1.3">${tcH(s.name)}</div>
                   ${s.requiereSerial?`<div style="font-size:11px;color:var(--bod-light);margin-top:2px">Requiere serial</div>`:''}
                 </div>
                 <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
@@ -1888,7 +1890,7 @@ function abrirDespacho(solicitud=null) {
         const sinDisp=disp<=0;
         return `<div class="bod-mat-row ${ag?'sel':''} ${sinDisp&&!ag?'off':''}" data-item="${item.id}">
           <div style="flex:1;min-width:0">
-            <div style="font-size:14px;font-weight:600;line-height:1.3">${tc(item.name)}</div>
+            <div style="font-size:14px;font-weight:600;line-height:1.3">${tcH(item.name)}</div>
             <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:5px">
               ${item.requiereSerial?'<span class="estado-badge muted">Serial</span>':''}
               <span style="font-size:12px;color:${sinDisp?'var(--text-4)':'var(--text-3)'}">${Math.max(0,disp)} ${safeStr(item.unit,'')} disponibles${reservado>0?` · ${reservado} reservados`:''}</span>
@@ -1949,7 +1951,7 @@ function abrirDespacho(solicitud=null) {
           <div class="ds-card">
 
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-              <div style="font-size:14px;font-weight:700">${tc(s.name)}</div>
+              <div style="font-size:14px;font-weight:700">${tcH(s.name)}</div>
               <div id="est-${idx}"></div>
             </div>
 
@@ -2352,8 +2354,8 @@ function showMemoCampana(salida) {
           </div></td></tr>`
       : '';
     return `<tr style="border-bottom:1px solid rgba(255,255,255,.05)">
-        <td style="padding:9px 10px;font-size:12px;text-transform:uppercase;letter-spacing:.02em">${tc(m.nombre)}</td>
-        <td style="padding:9px 10px;font-size:13px;font-weight:800;text-align:right;white-space:nowrap;color:${AC}">${m.cantidad} <span style="font-size:10px;font-weight:600;color:var(--text-4)">${m.unit}</span></td>
+        <td style="padding:9px 10px;font-size:12px;text-transform:uppercase;letter-spacing:.02em">${tcH(m.nombre)}</td>
+        <td style="padding:9px 10px;font-size:13px;font-weight:800;text-align:right;white-space:nowrap;color:${AC}">${m.cantidad} <span style="font-size:10px;font-weight:600;color:var(--text-4)">${escapeHtml(m.unit)}</span></td>
       </tr>${seriesTabla}`;
   };
 
@@ -2453,17 +2455,17 @@ function imprimirCampana(m) {
       ? `<tr><td colspan="2" style="border:0.4pt solid #000;border-top:none;padding:1.5mm 2mm;background:#fafafa">
            <div style="font-size:7pt;font-weight:bold;color:${AC};text-transform:uppercase;margin-bottom:1mm">Series entregadas (${it.series.length})</div>
            <div style="display:flex;flex-wrap:wrap;gap:1.5mm">
-             ${it.series.map(s=>`<span style="font-family:'Courier New',monospace;font-size:8pt;border:0.3pt solid #999;border-radius:1mm;padding:0.3mm 1.5mm">${s}</span>`).join('')}
+             ${it.series.map(s=>`<span style="font-family:'Courier New',monospace;font-size:8pt;border:0.3pt solid #999;border-radius:1mm;padding:0.3mm 1.5mm">${escapeHtml(s)}</span>`).join('')}
            </div>
          </td></tr>`
       : '';
     return `<tr>
       <td style="border:0.4pt solid #000;padding:1.5mm 2mm;font-size:9pt;text-transform:uppercase">${(it.nombre||'').toUpperCase()}</td>
-      <td style="border:0.4pt solid #000;padding:1.5mm 2mm;font-size:9pt;text-align:right;font-weight:bold;width:28mm">${it.cantidad} ${it.unit}</td>
+      <td style="border:0.4pt solid #000;padding:1.5mm 2mm;font-size:9pt;text-align:right;font-weight:bold;width:28mm">${it.cantidad} ${escapeHtml(it.unit)}</td>
     </tr>${serie}`;
   }).join('');
 
-  const html=`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Memo ${m.camp}</title>
+  const html=`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Memo ${escapeHtml(m.camp)}</title>
   <style>
     @page{size:215.9mm 279.4mm;margin:14mm 16mm;}
     *{margin:0;padding:0;box-sizing:border-box;}
@@ -2492,22 +2494,22 @@ function imprimirCampana(m) {
     <div class="head">
       <div class="emp">INNOVA</div>
       <div class="uni">Servicios Técnicos y Comerciales</div>
-      <div class="camp">Campaña: ${m.camp}</div>
+      <div class="camp">Campaña: ${escapeHtml(m.camp)}</div>
     </div>
 
     <div class="firmas">
       ${m.selloEntregaFecha
-        ? `<div class="firma"><div class="sello"><div class="sello-tit">&#10003; Entregado digitalmente</div><div class="sello-nom">${m.entrega||''}</div><div class="sello-fec">${m.selloEntregaFecha}</div></div><div class="rol">Entrega</div></div>`
-        : `<div class="firma"><div class="linea"></div><div class="rol">Entrega</div><div class="nom">${m.entrega||''}</div></div>`}
+        ? `<div class="firma"><div class="sello"><div class="sello-tit">&#10003; Entregado digitalmente</div><div class="sello-nom">${escapeHtml(m.entrega||'')}</div><div class="sello-fec">${m.selloEntregaFecha}</div></div><div class="rol">Entrega</div></div>`
+        : `<div class="firma"><div class="linea"></div><div class="rol">Entrega</div><div class="nom">${escapeHtml(m.entrega||'')}</div></div>`}
       ${m.selloRecibeFecha
-        ? `<div class="firma"><div class="sello"><div class="sello-tit">&#10003; Aceptado digitalmente</div><div class="sello-nom">${m.selloRecibeNombre||m.recibe||''}</div><div class="sello-fec">${m.selloRecibeFecha}</div></div><div class="rol">Recibe</div></div>`
-        : `<div class="firma"><div class="linea"></div><div class="rol">Recibe</div><div class="nom">${m.recibe||''}</div></div>`}
+        ? `<div class="firma"><div class="sello"><div class="sello-tit">&#10003; Aceptado digitalmente</div><div class="sello-nom">${escapeHtml(m.selloRecibeNombre||m.recibe||'')}</div><div class="sello-fec">${m.selloRecibeFecha}</div></div><div class="rol">Recibe</div></div>`
+        : `<div class="firma"><div class="linea"></div><div class="rol">Recibe</div><div class="nom">${escapeHtml(m.recibe||'')}</div></div>`}
     </div>
 
     <table class="datos">
-      <tr><td class="lbl">Usuario responsable:</td><td class="val">${m.usuarioResp||''}</td></tr>
-      <tr><td class="lbl">Persona que retira:</td><td class="val">${m.recibe||''}</td></tr>
-      <tr><td class="lbl">Acompañante:</td><td class="val">${m.pareja||''}</td></tr>
+      <tr><td class="lbl">Usuario responsable:</td><td class="val">${escapeHtml(m.usuarioResp||'')}</td></tr>
+      <tr><td class="lbl">Persona que retira:</td><td class="val">${escapeHtml(m.recibe||'')}</td></tr>
+      <tr><td class="lbl">Acompañante:</td><td class="val">${escapeHtml(m.pareja||'')}</td></tr>
       <tr><td class="lbl">Vehículo:</td><td class="val">${m.vehiculo||''}</td><td class="lbl" style="width:24mm;padding-left:6mm">Fecha:</td><td class="val">${m.fecha||''}</td></tr>
     </table>
 
@@ -2556,7 +2558,7 @@ function showMemo(salida) {
         ${[['TÉCNICO QUE RECIBE',memo.USUARIO_RESPONSABLE],['EMPRESA CONTRATISTA',memo.EMPRESA_CONTRATISTA],['ENTREGADO POR',memo.ENTREGADO_POR],['PLACA DE VEHICULO',memo.PLACA_VEHICULO],['FECHA SOLICITUD',memo.FECHA_SOLICITUD],['FECHA ENTREGA',memo.FECHA_ENTREGA]].map(([k,v])=>`
           <div style="display:flex;gap:8px;font-size:11px">
             <div style="font-size:9px;font-weight:700;text-transform:uppercase;color:var(--text-4);min-width:120px;padding-top:2px">${k}:</div>
-            <div style="font-weight:600;border-bottom:1px solid var(--border-md);flex:1;padding-bottom:2px">${v||'—'}</div>
+            <div style="font-weight:600;border-bottom:1px solid var(--border-md);flex:1;padding-bottom:2px">${escapeHtml(v||'—')}</div>
           </div>`).join('')}
       </div>
       <div style="font-size:9px;font-weight:700;text-transform:uppercase;color:var(--text-4);margin-bottom:8px">Materiales despachados</div>
@@ -2565,10 +2567,10 @@ function showMemo(salida) {
           ${['RESERVA','STOCK','CANT.','DESCRIPCIÓN'].map(h=>`<div style="font-size:8px;font-weight:700;padding:6px 8px;text-transform:uppercase;color:var(--text-4)">${h}</div>`).join('')}
         </div>
         ${memo.MATERIALES.map((m,i)=>`<div style="display:grid;grid-template-columns:3fr 2fr 1fr 3fr;${i%2===0?'background:rgba(255,255,255,.02)':''}border-bottom:1px solid rgba(255,255,255,.04)">
-          <div style="font-size:10px;padding:6px 8px;font-family:monospace">${m.RESERVA||'—'}</div>
-          <div style="font-size:10px;padding:6px 8px;font-family:monospace">${m.STOCK||'—'}</div>
-          <div style="font-size:11px;font-weight:700;padding:6px 8px;text-align:center">${m.CANTIDAD}</div>
-          <div style="font-size:10px;padding:6px 8px;text-transform:uppercase">${m.DESCRIPCION}</div>
+          <div style="font-size:10px;padding:6px 8px;font-family:monospace">${escapeHtml(m.RESERVA||'—')}</div>
+          <div style="font-size:10px;padding:6px 8px;font-family:monospace">${escapeHtml(m.STOCK||'—')}</div>
+          <div style="font-size:11px;font-weight:700;padding:6px 8px;text-align:center">${escapeHtml(m.CANTIDAD)}</div>
+          <div style="font-size:10px;padding:6px 8px;text-transform:uppercase">${escapeHtml(m.DESCRIPCION)}</div>
         </div>`).join('')}
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:24px">
@@ -2613,9 +2615,9 @@ function imprimirDespacho(memo) {
   const v=memo;
   const filas=FILAS_DOC.map(row=>{
     if(row.header==='col') return '<tr><th class="th">RESERVA</th><th class="th">STOCK</th><th class="th">DESCRIPICIÓN</th><th class="th cant">CANTIDAD</th></tr>';
-    if(row.header==='sec') return `<tr><td class="sec" colspan="4">${row.sap}</td></tr>`;
+    if(row.header==='sec') return `<tr><td class="sec" colspan="4">${escapeHtml(row.sap)}</td></tr>`;
     const cant=cantMap[row.sap]||'';
-    return `<tr><td class="code">${row.sap}</td><td class="code">${row.ax}</td><td>${row.desc}</td><td class="cant">${cant}</td></tr>`;
+    return `<tr><td class="code">${escapeHtml(row.sap)}</td><td class="code">${escapeHtml(row.ax)}</td><td>${escapeHtml(row.desc)}</td><td class="cant">${cant}</td></tr>`;
   }).join('');
 
   const p1=`<table style="width:196.9mm;border-collapse:collapse;margin-bottom:1.5mm;"><colgroup><col style="width:98mm"><col style="width:98.9mm"></colgroup>
@@ -2626,7 +2628,7 @@ function imprimirDespacho(memo) {
     <tr><td style="border:none;"><span class="lbl">FECHA DE SOLICITUD</span><span class="linea">${v.FECHA_SOLICITUD}</span></td><td style="border:none;"></td></tr>
   </table><table class="tm"><colgroup><col class="c-sap"><col class="c-ax"><col class="c-desc"><col class="c-cant"></colgroup>${filas}</table>`;
 
-  function buildHdrTd(b){return `<div class="tb-hdr"><table><tr><td class="cod">${b.ax}<br>${b.sap}</td><td class="nom">${b.nombre}</td></tr></table></div>`;}
+  function buildHdrTd(b){return `<div class="tb-hdr"><table><tr><td class="cod">${escapeHtml(b.ax)}<br>${escapeHtml(b.sap)}</td><td class="nom">${escapeHtml(b.nombre)}</td></tr></table></div>`;}
   function buildFilas(b){
     const serData=serialMap[b.sap]||null;
     let rows='';
@@ -2858,7 +2860,7 @@ function abrirNuevoItem(itemId=null) {
   sheet.innerHTML=`<div class="sheet"><div class="sheet-handle"></div>
     <div class="sheet-title">${item?'Editar item':'Nuevo item'}</div>
     <div class="sheet-body">
-      <div class="form-field"><div class="form-label">Nombre *</div><input class="form-input" id="ni-nombre" value="${tc(item?.name||'')}" placeholder="Ej. Medidor monofásico"/></div>
+      <div class="form-field"><div class="form-label">Nombre *</div><input class="form-input" id="ni-nombre" value="${tcH(item?.name||'')}" placeholder="Ej. Medidor monofásico"/></div>
       <div class="form-field"><div class="form-label">Código SAP</div><input class="form-input" id="ni-sap" value="${safeStr(item?.sapCode,'')}" placeholder="SAP"/></div>
       <div class="form-field"><div class="form-label">Código AX</div><input class="form-input" id="ni-ax" value="${safeStr(item?.axCode,'')}" placeholder="AX"/></div>
       <div class="form-field"><div class="form-label">Unidad *</div><input class="form-input" id="ni-unit" value="${safeStr(item?.unit,'')}" placeholder="Ej. unidades, metros"/></div>
@@ -2994,7 +2996,7 @@ function abrirEntrada(itemId) {
     <div class="sheet-title">Registrar entrada</div>
     <div class="sheet-body">
       <div style="background:var(--glass);border:1px solid var(--border);border-radius:var(--radius-sm);padding:14px;margin-bottom:16px">
-        <div style="font-size:14px;font-weight:700">${tc(item?.name||'—')}</div>
+        <div style="font-size:14px;font-weight:700">${tcH(item?.name||'—')}</div>
         <div style="font-size:11px;color:var(--text-4);margin-top:3px">Stock actual: ${item?.stock||0} ${safeStr(item?.unit,'')}</div>
       </div>
       ${esSerial?`
@@ -3194,13 +3196,13 @@ function mostrarModalCantidad(item, onAdd) {
   m.className='bod-scope';
   m.innerHTML=`<div style="background:#0d1f35;width:100%;max-width:520px;border-radius:24px 24px 0 0;padding:8px 22px max(34px,22px);border-top:1px solid rgba(255,255,255,.08);box-shadow:0 -8px 40px rgba(0,0,0,.5)">
     <div style="width:40px;height:4px;background:rgba(255,255,255,.18);border-radius:2px;margin:0 auto 20px"></div>
-    <div style="font-size:18px;font-weight:700;margin-bottom:4px">${tc(item.name)}</div>
-    <div style="font-size:12px;color:var(--text-4);margin-bottom:24px">${disp} ${item.unit} disponibles en bodega${reservado?` (${reservado} reservados en despachos pendientes)`:''}</div>
+    <div style="font-size:18px;font-weight:700;margin-bottom:4px">${tcH(item.name)}</div>
+    <div style="font-size:12px;color:var(--text-4);margin-bottom:24px">${disp} ${escapeHtml(item.unit)} disponibles en bodega${reservado?` (${reservado} reservados en despachos pendientes)`:''}</div>
     <div style="display:flex;align-items:center;justify-content:space-between;gap:18px;margin-bottom:24px">
       <button id="mc-dec" style="width:60px;height:60px;border-radius:16px;border:1px solid var(--border);background:var(--glass);color:var(--text);font-size:28px;font-weight:700;cursor:pointer;flex-shrink:0">−</button>
       <div style="flex:1;text-align:center">
         <input id="mc-cant" class="bod-num" type="number" inputmode="numeric" min="1" max="${disp}" value="1" style="width:100%;text-align:center;font-size:44px;font-weight:500;color:var(--bod-light);background:transparent;border:none;outline:none;font-family:'Outfit',sans-serif"/>
-        <div style="font-size:12px;color:var(--text-4);margin-top:-4px">${item.unit}</div>
+        <div style="font-size:12px;color:var(--text-4);margin-top:-4px">${escapeHtml(item.unit)}</div>
       </div>
       <button id="mc-inc" style="width:60px;height:60px;border-radius:16px;border:1px solid var(--bod-border);background:var(--bod-glass);color:var(--bod-light);font-size:28px;font-weight:700;cursor:pointer;flex-shrink:0">+</button>
     </div>

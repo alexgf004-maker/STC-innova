@@ -131,7 +131,7 @@ function renderDespachosPendientesTecnico(cont) {
               return `<div style="padding:7px 0;border-top:1px solid var(--border)">
                 <div style="display:flex;justify-content:space-between;font-size:12px">
                   <span style="color:var(--text-2)">${escapeHtml(m.nombre||m.name||'—')}</span>
-                  <span style="font-weight:700">${m.cantidad} ${m.unit||''}</span>
+                  <span style="font-weight:700">${m.cantidad} ${escapeHtml(m.unit||'')}</span>
                 </div>${series}
               </div>`;
             }).join('')}
@@ -1056,7 +1056,7 @@ window.__abrirDevolucion = async function(){
           return `<div style="background:var(--bg-card);border:1px solid ${on?'rgba(45,212,191,.4)':'var(--border)'};border-radius:12px;padding:12px">
             <div style="display:flex;align-items:center;gap:10px">
               <div style="flex:1">
-                <div style="font-size:13px;font-weight:600">${m.name||'—'}</div>
+                <div style="font-size:13px;font-weight:600">${escapeHtml(m.name||'—')}</div>
                 <div style="font-size:10px;color:var(--text-4)">${m.requiereSerial?'Con serie':m.unit||'unidades'}</div>
               </div>
               <button class="dev-toggle" data-id="${m.id}" style="cursor:pointer;padding:7px 14px;border-radius:20px;border:1px solid ${on?'rgba(45,212,191,.5)':'var(--border)'};background:${on?'rgba(45,212,191,.15)':'var(--glass)'};color:${on?'#2dd4bf':'var(--text-3)'};font-size:11px;font-weight:700">${on?'Quitar':'Devolver'}</button>

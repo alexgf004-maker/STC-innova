@@ -1701,10 +1701,10 @@ function renderSinActualizarItems(items) {
     return `
       <div style="padding:12px 14px;background:var(--glass);border:1px solid rgba(248,113,113,.2);border-radius:12px">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
-          <div style="font-size:13px;font-weight:700">WO ${o.wo || '—'}</div>
-          <div style="font-size:10px;color:var(--text-4)">${fechaStr} · ${o.hechaPor || o.parejaDelDia || '—'}</div>
+          <div style="font-size:13px;font-weight:700">WO ${escapeHtml(o.wo || '—')}</div>
+          <div style="font-size:10px;color:var(--text-4)">${fechaStr} · ${escapeHtml(o.hechaPor || o.parejaDelDia || '—')}</div>
         </div>
-        <div style="font-size:11px;color:var(--text-3);margin-bottom:8px">${o.cliente || '—'}</div>
+        <div style="font-size:11px;color:var(--text-3);margin-bottom:8px">${escapeHtml(o.cliente || '—')}</div>
         ${btnActualizar}
       </div>`;
   }).join('');
@@ -1858,7 +1858,7 @@ function handleUrgentesFileSelect(e) {
         <div class="import-info-box">
           <div class="import-info-num">${urgentesImportData.length}</div>
           <div class="import-info-label">WO urgentes en el archivo</div>
-          <div style="font-size:11px;color:var(--text-4);margin-top:4px">${file.name}</div>
+          <div style="font-size:11px;color:var(--text-4);margin-top:4px">${escapeHtml(file.name)}</div>
         </div>
       `;
       document.getElementById('urg-import-preview').style.display = '';
@@ -2073,7 +2073,7 @@ function handleFileSelect(e) {
         <div class="import-info-box">
           <div class="import-info-num">${importData.length}</div>
           <div class="import-info-label">órdenes encontradas en el archivo</div>
-          <div style="font-size:11px;color:var(--text-4);margin-top:4px">${file.name}</div>
+          <div style="font-size:11px;color:var(--text-4);margin-top:4px">${escapeHtml(file.name)}</div>
         </div>
       `;
       document.getElementById('import-preview').style.display = '';
@@ -2311,7 +2311,7 @@ function handleLecturasSelect(e) {
         <div class="import-info-box">
           <div class="import-info-num">${lecturasData_.length}</div>
           <div class="import-info-label">MRUs encontrados en el archivo</div>
-          <div style="font-size:11px;color:var(--text-4);margin-top:4px">${file.name}</div>
+          <div style="font-size:11px;color:var(--text-4);margin-top:4px">${escapeHtml(file.name)}</div>
         </div>
       `;
       document.getElementById('lect-preview').style.display = '';
@@ -2379,8 +2379,8 @@ async function openGestionarLecturas() {
         <div class="flex-col gap-6">
           ${items.map(m => `
             <div style="display:flex;align-items:center;gap:10px;padding:8px 12px;background:var(--glass);border:1px solid var(--border);border-radius:10px">
-              <div style="font-size:13px;font-weight:700;min-width:60px;color:var(--text-2)">${m.mru}</div>
-              <input type="date" class="form-input lect-fecha-input" data-mru="${m.mru}"
+              <div style="font-size:13px;font-weight:700;min-width:60px;color:var(--text-2)">${escapeHtml(m.mru)}</div>
+              <input type="date" class="form-input lect-fecha-input" data-mru="${escapeHtml(m.mru)}"
                 value="${m.fechaLectura || ''}"
                 style="flex:1;padding:6px 10px;font-size:13px"/>
             </div>

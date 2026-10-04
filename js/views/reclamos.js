@@ -167,7 +167,7 @@ function renderLista() {
     arr.map(r => `
       <div class="orden-card stacked" style="border-left:3px solid #fbbf24">
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-          <div class="orden-wo" style="color:#fbbf24;font-size:14px">WO ${r.wo || '—'}</div>
+          <div class="orden-wo" style="color:#fbbf24;font-size:14px">WO ${escapar(r.wo || '—')}</div>
           ${r.nc ? `<div style="font-size:11px;color:var(--text-3)">NC ${escapar(r.nc)}</div>` : ''}
           ${r.cliente ? `<div class="orden-cliente" style="flex:1;min-width:120px">${escapar(r.cliente)}</div>` : '<div style="flex:1"></div>'}
           <div style="font-size:10px;color:var(--text-4)">${fmtFecha(r.fecha)}</div>

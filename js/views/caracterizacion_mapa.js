@@ -1154,7 +1154,7 @@ function abrirAsignarIndividual(ordenId) {
     </div>
     <div class="form-label" style="margin-bottom:8px">Asignar a</div>
     <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px" id="crc-ind-parejas">
-      ${parejasDisponibles().map(p => `<div class="crc-ip" data-val="${p}" style="cursor:pointer;padding:9px 16px;border-radius:20px;border:1px solid ${o.pareja===p?'#a78bfa':'var(--border)'};background:${o.pareja===p?'rgba(167,139,250,.15)':'var(--glass)'};font-size:13px;font-weight:700">${p}</div>`).join('')}
+      ${parejasDisponibles().map(p => `<div class="crc-ip" data-val="${escapeHtml(p)}" style="cursor:pointer;padding:9px 16px;border-radius:20px;border:1px solid ${o.pareja===p?'#a78bfa':'var(--border)'};background:${o.pareja===p?'rgba(167,139,250,.15)':'var(--glass)'};font-size:13px;font-weight:700">${escapeHtml(p)}</div>`).join('')}
       <div class="crc-ip" data-val="null" style="cursor:pointer;padding:9px 16px;border-radius:20px;border:1px solid var(--border);background:var(--glass);font-size:13px;font-weight:700;color:var(--text-4)">Quitar</div>
     </div>
     <button id="crc-ind-cerrar" style="width:100%;padding:11px;border-radius:12px;border:1px solid var(--border);background:var(--glass);color:var(--text-3);font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">Cerrar</button>`;

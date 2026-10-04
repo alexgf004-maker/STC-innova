@@ -5,7 +5,7 @@
  * Exporta: abrirConsumoOrden({ orden, modulo, session, db, onSuccess })
  */
 
-import { toast } from './ui.js';
+import { toast, escapeHtml } from './ui.js';
 
 const safeNum = v => { const n = Number(v); return isNaN(n) ? 0 : n; };
 const safeStr = (v, fb='—') => (v !== undefined && v !== null && String(v).trim()) ? String(v).trim() : fb;
@@ -146,7 +146,7 @@ export async function abrirConsumoOrden({ orden, modulo, session, db, onSuccess 
             <div style="background:rgba(34,197,94,.08);border:2px solid rgba(34,197,94,.3);border-radius:12px;padding:12px 16px;display:flex;align-items:center;justify-content:space-between">
               <div>
                 <div style="font-size:11px;color:var(--text-4);margin-bottom:2px">Seleccionado</div>
-                <div style="font-size:16px;font-weight:800;font-family:monospace;color:#22c55e">${serialSeleccionado.serial}</div>
+                <div style="font-size:16px;font-weight:800;font-family:monospace;color:#22c55e">${escapeHtml(serialSeleccionado.serial)}</div>
                 <div style="font-size:10px;color:var(--text-4)">${safeStr(serialSeleccionado.itemNombre)}</div>
               </div>
               <button class="icon-btn" id="btn-quitar-serial" style="width:32px;height:32px">
@@ -256,7 +256,7 @@ export async function abrirConsumoOrden({ orden, modulo, session, db, onSuccess 
     return filtrados.map(s => `
       <div class="serial-item" data-id="${s.id}" style="padding:12px 16px;cursor:pointer;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;background:#0d1117">
         <div>
-          <div style="font-size:13px;font-weight:700;font-family:monospace">${s.serial}</div>
+          <div style="font-size:13px;font-weight:700;font-family:monospace">${escapeHtml(s.serial)}</div>
           <div style="font-size:10px;color:var(--text-4)">${safeStr(s.itemNombre)}</div>
         </div>
         <svg viewBox="0 0 24 24" fill="none" stroke="var(--text-4)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><polyline points="9 18 15 12 9 6"/></svg>
