@@ -17,6 +17,14 @@
   --border-md:  rgba(130,165,225,.16);
   /* Degradado de la marca (botón Ingresar del login) */
   --marca:      linear-gradient(135deg, #3b82f6, #22d3ee);
+  /* Tema por área (lo cambia body[data-area], ver el final del archivo) */
+  --tema-base:  #060c18;
+  --tema-glow:  rgba(59,130,246,.22);
+  --tema-glow2: rgba(34,211,238,.05);
+  --tema-glow3: rgba(37,99,235,.12);
+  --nav-bg:     #08101f;
+  --sheet-bg:   #0d1728;
+  --tema-acento: #38bdf8;
   --marca-sh:   0 12px 26px -12px rgba(59,130,246,.75);
   --text:       #ffffff;
   --text-2:     rgba(255,255,255,.65);
@@ -74,7 +82,7 @@
 html, body { height: 100%; overflow: hidden; }
 body {
   font-family: 'Outfit', sans-serif;
-  background: var(--bg-base);
+  background: var(--tema-base);
   color: var(--text);
   overscroll-behavior: none;
 }
@@ -83,9 +91,9 @@ body {
 #bg {
   position: fixed; inset: 0; z-index: 0; pointer-events: none;
   background:
-    radial-gradient(70% 34% at 50% -6%, rgba(59,130,246,.22), rgba(34,211,238,.05) 50%, transparent 75%),
-    radial-gradient(60% 30% at 50% 108%, rgba(37,99,235,.12), transparent 70%),
-    #060c18;
+    radial-gradient(70% 34% at 50% -6%, var(--tema-glow), var(--tema-glow2) 50%, transparent 75%),
+    radial-gradient(60% 30% at 50% 108%, var(--tema-glow3), transparent 70%),
+    var(--tema-base);
 }
 
 /* ── ANIMACIONES ─────────────────────────────── */
@@ -370,10 +378,10 @@ body {
 .topbar-logo {
   width: 36px; height: 36px;
   border-radius: 11px;
-  background: linear-gradient(135deg, #3b82f6, #22d3ee);
+  background: var(--marca);
   display: flex; align-items: center; justify-content: center;
   flex-shrink: 0;
-  box-shadow: 0 6px 16px -6px rgba(59,130,246,.6);
+  box-shadow: 0 6px 16px -6px var(--marca-glow, rgba(59,130,246,.6));
   -webkit-tap-highlight-color: transparent;
 }
 .topbar-logo svg { width: 17px; height: 17px; }
@@ -2319,7 +2327,7 @@ body {
 /* ── Marca: superficies internas y botones principales ── */
 .ds-card .buscar-wrap, .cm-par .buscar-wrap, .sheet .buscar-wrap, .hm-chip, .us-count, .bod-count,
 .cm-verif, .cm-est span { background: var(--glass-in); }
-.sheet { background: #0d1728; }
+.sheet { background: var(--sheet-bg); }
 .btn-marca, .btn-action.marca, .cm-btn.marca, .us-btn-main, .bod-btn-main {
   background: var(--marca) !important; border: none !important; color: #fff !important;
   box-shadow: var(--marca-sh); font-weight: 600;
@@ -2337,7 +2345,7 @@ body {
 .mapa-leyenda { bottom: calc(var(--nav-espacio, 0px) + 16px); }
 .leaflet-container .leaflet-bottom { bottom: var(--nav-espacio, 0px); }   /* más específico que leaflet.css */
 .mapa-panel {
-  background: #0d1728; border-top-color: rgba(130,165,225,.16);
+  background: var(--sheet-bg); border-top-color: rgba(130,165,225,.16);
   padding-bottom: calc(var(--nav-espacio, 0px) + 16px);
   max-height: calc(60% + var(--nav-espacio, 0px));
 }
@@ -2419,8 +2427,8 @@ body {
 .btn-primary.bod { background: var(--marca); border: none; color: #fff; box-shadow: var(--marca-sh); }
 .bod-flow {
   background:
-    radial-gradient(70% 30% at 50% -6%, rgba(59,130,246,.20), rgba(34,211,238,.05) 50%, transparent 75%),
-    #060c18;
+    radial-gradient(70% 30% at 50% -6%, var(--tema-glow), var(--tema-glow2) 50%, transparent 75%),
+    var(--tema-base);
 }
 .bod-flow-head {
   background: linear-gradient(180deg, #0b1528, #08101f);
@@ -2438,7 +2446,7 @@ body {
       sobresale de la barra. Reemplaza los estilos de menú anteriores. ── */
 @media (max-width: 767px) {
   .nav-pill {
-    background: #08101f;
+    background: var(--nav-bg);
     border: none; border-top: 1px solid rgba(255,255,255,.07);
     box-shadow: none; border-radius: 0;
     padding: 0 8px max(6px, env(safe-area-inset-bottom));
@@ -2456,11 +2464,58 @@ body {
     width: 46px; height: 46px; border-radius: 50%;
     transform: translateY(-14px);
     background: var(--marca);
-    box-shadow: 0 10px 22px -6px rgba(34,211,238,.6), 0 0 0 5px #08101f;
+    box-shadow: 0 10px 22px -6px var(--marca-glow, rgba(34,211,238,.6)), 0 0 0 5px var(--nav-bg);
   }
   .nav-item.active .nav-ico svg { stroke: #fff; }
   .nav-item.active .nav-lbl { transform: translateY(-10px); font-weight: 600; }
-  .nav-item .nav-badge { box-shadow: 0 0 0 2px #08101f !important; }
+  .nav-item .nav-badge { box-shadow: 0 0 0 2px var(--nav-bg) !important; }
   /* En el círculo activo el globo va en la esquina, sin tapar el ícono */
   .nav-item.active .nav-badge { top: -3px !important; right: -3px !important; }
+}
+
+
+/* ════════════════════════════════════════════════
+   TEMA POR ÁREA
+   El router pone body[data-area] según la pantalla (y para el técnico,
+   según su área). Cambian el fondo, las tarjetas, el menú, las hojas y
+   los botones principales. Sin data-area queda el azul de la marca.
+════════════════════════════════════════════════ */
+body[data-area] #bg, body[data-area] .nav-pill, body[data-area] .ds-card,
+body[data-area] .cm-ord, body[data-area] .hm-tile { transition: background-color .3s, border-color .3s; }
+
+body[data-area="cr"] {           /* Caracterización: rojo */
+  --tema-base: #100709; --tema-glow: rgba(239,68,68,.26); --tema-glow2: rgba(251,113,133,.06); --tema-glow3: rgba(185,28,28,.14);
+  --glass: #1c1116; --glass-in: #26171d; --glass-hov: #24151b;
+  --border: rgba(248,113,113,.13); --border-md: rgba(248,113,113,.2);
+  --nav-bg: #0f070a; --sheet-bg: #1a0f13;
+  --marca: linear-gradient(135deg, #dc2626, #fb7185);
+  --marca-sh: 0 12px 26px -12px rgba(239,68,68,.75); --marca-glow: rgba(239,68,68,.6);
+  --tema-acento: #f87171;
+}
+body[data-area="am"] {           /* AMI: violeta */
+  --tema-base: #09071a; --tema-glow: rgba(139,92,246,.30); --tema-glow2: rgba(192,132,252,.07); --tema-glow3: rgba(109,40,217,.16);
+  --glass: #151230; --glass-in: #1d1940; --glass-hov: #1b173a;
+  --border: rgba(167,139,250,.15); --border-md: rgba(167,139,250,.22);
+  --nav-bg: #08061a; --sheet-bg: #120f2b;
+  --marca: linear-gradient(135deg, #7c3aed, #c084fc);
+  --marca-sh: 0 12px 26px -12px rgba(139,92,246,.8); --marca-glow: rgba(139,92,246,.65);
+  --tema-acento: #a78bfa;
+}
+body[data-area="cm"] {           /* Cambios: turquesa */
+  --tema-base: #041012; --tema-glow: rgba(45,212,191,.24); --tema-glow2: rgba(94,234,212,.06); --tema-glow3: rgba(13,148,136,.15);
+  --glass: #0c1d21; --glass-in: #11272c; --glass-hov: #10252a;
+  --border: rgba(45,212,191,.13); --border-md: rgba(45,212,191,.2);
+  --nav-bg: #030e10; --sheet-bg: #0a191c;
+  --marca: linear-gradient(135deg, #0d9488, #2dd4bf);
+  --marca-sh: 0 12px 26px -12px rgba(45,212,191,.7); --marca-glow: rgba(45,212,191,.55);
+  --tema-acento: #2dd4bf;
+}
+body[data-area="rc"] {           /* Reclamos SIGET: ámbar */
+  --tema-base: #0f0b05; --tema-glow: rgba(251,191,36,.20); --tema-glow2: rgba(253,224,71,.05); --tema-glow3: rgba(217,119,6,.13);
+  --glass: #1b160d; --glass-in: #251e12; --glass-hov: #231c11;
+  --border: rgba(251,191,36,.13); --border-md: rgba(251,191,36,.2);
+  --nav-bg: #0e0a04; --sheet-bg: #18130b;
+  --marca: linear-gradient(135deg, #b45309, #f59e0b);
+  --marca-sh: 0 12px 26px -12px rgba(245,158,11,.7); --marca-glow: rgba(245,158,11,.55);
+  --tema-acento: #fbbf24;
 }

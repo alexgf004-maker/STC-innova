@@ -53,7 +53,7 @@ export async function init(container, session) {
     st.id = 'crc-pulso-css';
     st.textContent = `
       @keyframes crc-pulso{0%{transform:scale(.8);opacity:.5}100%{transform:scale(1.8);opacity:0}}
-      .crc-hoja{position:fixed;left:0;right:0;bottom:0;z-index:1200;transform:translateY(calc(100% + 120px));transition:transform .25s ease;background:#0d1728;border-top:1px solid var(--border-md);border-radius:20px 20px 0 0;padding:18px 20px calc(var(--nav-espacio,0px) + 22px);max-height:85vh;overflow-y:auto}
+      .crc-hoja{position:fixed;left:0;right:0;bottom:0;z-index:1200;transform:translateY(calc(100% + 120px));transition:transform .25s ease;background:var(--sheet-bg);border-top:1px solid var(--border-md);border-radius:20px 20px 0 0;padding:18px 20px calc(var(--nav-espacio,0px) + 22px);max-height:85vh;overflow-y:auto}
       .crc-hoja.abierta{transform:translateY(0)}
       #crc-leaflet .leaflet-top.leaflet-left{display:none}
       #crc-leaflet .leaflet-control-attribution{display:none}

@@ -113,6 +113,7 @@ export async function navigateTo(tabId, _esRegreso) {
   document.querySelectorAll('.nav-item').forEach(el => {
     el.classList.toggle('active', el.dataset.tab === tabResaltado);
   });
+  aplicarTemaArea(tabId);
 
   // otc_mapa — renderiza mapa OTC directamente
   if (tabId === 'otc_mapa') {
@@ -189,6 +190,29 @@ export async function navigateTo(tabId, _esRegreso) {
       </div>
     `;
   }
+}
+
+// Tema por área: el fondo, las tarjetas, el menú y los botones toman el color
+// del área (ver "TEMA POR ÁREA" en styles.css). El técnico lo lleva en todas
+// sus pantallas; la oficina solo dentro de cada área (inicio, áreas, bodega y
+// usuarios quedan con el azul de la marca).
+const AREA_POR_TAB = {
+  cambios: 'cm', mapa: 'cm',
+  caracterizacion: 'cr', caracterizacion_mapa: 'cr',
+  ami: 'am', ami_mapa: 'am',
+  reclamos: 'rc',
+};
+const AREA_TECNICO = { CAMBIOS: 'cm', Caracterizacion: 'cr', AMI: 'am', Reclamos: 'rc' };
+
+function aplicarTemaArea(tabId) {
+  const s = currentSession || {};
+  const area = s.role === 'tecnico'
+    ? AREA_TECNICO[s.asignacionActual?.area] || null
+    : AREA_POR_TAB[tabId] || null;
+  if (area) document.body.dataset.area = area;
+  else delete document.body.dataset.area;
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.setAttribute('content', area ? getComputedStyle(document.body).getPropertyValue('--tema-base').trim() : '#0a1628');
 }
 
 function buildNavbar(session) {
