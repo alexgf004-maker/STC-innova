@@ -16,7 +16,9 @@
   --border:     rgba(130,165,225,.11);
   --border-md:  rgba(130,165,225,.16);
   /* Degradado de la marca (botón Ingresar del login) */
-  --marca:      linear-gradient(135deg, #3b82f6, #22d3ee);
+  --marca-a:    #3b82f6;
+  --marca-b:    #22d3ee;
+  --marca:      linear-gradient(135deg, var(--marca-a), var(--marca-b));
   /* Tema por área (lo cambia body[data-area], ver el final del archivo) */
   --tema-base:  #060c18;
   --tema-glow:  rgba(59,130,246,.22);
@@ -25,7 +27,9 @@
   --nav-bg:     #08101f;
   --sheet-bg:   #0d1728;
   --tema-acento: #38bdf8;
-  --marca-sh:   0 12px 26px -12px rgba(59,130,246,.75);
+  --marca-sombra: rgba(59,130,246,.75);
+  --marca-glow: rgba(59,130,246,.6);
+  --marca-sh:   0 12px 26px -12px var(--marca-sombra);
   --text:       #ffffff;
   --text-2:     rgba(255,255,255,.65);
   --text-3:     rgba(255,255,255,.52);
@@ -2480,16 +2484,43 @@ body {
    según su área). Cambian el fondo, las tarjetas, el menú, las hojas y
    los botones principales. Sin data-area queda el azul de la marca.
 ════════════════════════════════════════════════ */
-body[data-area] #bg, body[data-area] .nav-pill, body[data-area] .ds-card,
-body[data-area] .cm-ord, body[data-area] .hm-tile { transition: background-color .3s, border-color .3s; }
+/* Cambio de color suave al entrar o salir de un área: los colores del tema
+   están registrados con @property para que el navegador los pueda
+   interpolar; --marca y --marca-sh se recalculan en body con los valores
+   que van cambiando. Sin soporte de @property el cambio es inmediato. */
+@property --tema-base   { syntax: '<color>'; inherits: true; initial-value: #060c18; }
+@property --tema-glow   { syntax: '<color>'; inherits: true; initial-value: transparent; }
+@property --tema-glow2  { syntax: '<color>'; inherits: true; initial-value: transparent; }
+@property --tema-glow3  { syntax: '<color>'; inherits: true; initial-value: transparent; }
+@property --glass       { syntax: '<color>'; inherits: true; initial-value: #0f1a2c; }
+@property --glass-in    { syntax: '<color>'; inherits: true; initial-value: #16243b; }
+@property --glass-hov   { syntax: '<color>'; inherits: true; initial-value: #14223a; }
+@property --border      { syntax: '<color>'; inherits: true; initial-value: transparent; }
+@property --border-md   { syntax: '<color>'; inherits: true; initial-value: transparent; }
+@property --nav-bg      { syntax: '<color>'; inherits: true; initial-value: #08101f; }
+@property --sheet-bg    { syntax: '<color>'; inherits: true; initial-value: #0d1728; }
+@property --marca-a     { syntax: '<color>'; inherits: true; initial-value: #3b82f6; }
+@property --marca-b     { syntax: '<color>'; inherits: true; initial-value: #22d3ee; }
+@property --marca-sombra { syntax: '<color>'; inherits: true; initial-value: transparent; }
+@property --marca-glow  { syntax: '<color>'; inherits: true; initial-value: transparent; }
+@property --tema-acento { syntax: '<color>'; inherits: true; initial-value: #38bdf8; }
+body {
+  --marca: linear-gradient(135deg, var(--marca-a), var(--marca-b));
+  --marca-sh: 0 12px 26px -12px var(--marca-sombra);
+  transition: --tema-base .6s ease, --tema-glow .6s ease, --tema-glow2 .6s ease, --tema-glow3 .6s ease,
+    --glass .6s ease, --glass-in .6s ease, --glass-hov .6s ease, --border .6s ease, --border-md .6s ease,
+    --nav-bg .6s ease, --sheet-bg .6s ease, --marca-a .6s ease, --marca-b .6s ease,
+    --marca-sombra .6s ease, --marca-glow .6s ease, --tema-acento .6s ease;
+}
+@media (prefers-reduced-motion: reduce) { body { transition: none; } }
 
 body[data-area="cr"] {           /* Caracterización: rojo */
   --tema-base: #120f1a; --tema-glow: rgba(239,68,68,.15); --tema-glow2: rgba(251,113,133,.04); --tema-glow3: rgba(185,28,28,.08);
   --glass: #1f1d2e; --glass-in: #25263c; --glass-hov: #23243b;
   --border: rgba(200,160,190,.12); --border-md: rgba(200,160,190,.17);
   --nav-bg: #141321; --sheet-bg: #1d1a2a;
-  --marca: linear-gradient(135deg, #dc2626, #fb7185);
-  --marca-sh: 0 12px 26px -12px rgba(239,68,68,.75); --marca-glow: rgba(239,68,68,.6);
+  --marca-a: #dc2626; --marca-b: #fb7185;
+  --marca-sombra: rgba(239,68,68,.75); --marca-glow: rgba(239,68,68,.6);
   --tema-acento: #f87171;
 }
 body[data-area="am"] {           /* AMI: violeta */
@@ -2497,8 +2528,8 @@ body[data-area="am"] {           /* AMI: violeta */
   --glass: #181f3a; --glass-in: #1e2848; --glass-hov: #1c2647;
   --border: rgba(160,150,235,.12); --border-md: rgba(160,150,235,.17);
   --nav-bg: #0f142a; --sheet-bg: #161c36;
-  --marca: linear-gradient(135deg, #7c3aed, #c084fc);
-  --marca-sh: 0 12px 26px -12px rgba(139,92,246,.8); --marca-glow: rgba(139,92,246,.65);
+  --marca-a: #7c3aed; --marca-b: #c084fc;
+  --marca-sombra: rgba(139,92,246,.8); --marca-glow: rgba(139,92,246,.65);
   --tema-acento: #a78bfa;
 }
 body[data-area="cm"] {           /* Cambios: turquesa */
@@ -2506,8 +2537,8 @@ body[data-area="cm"] {           /* Cambios: turquesa */
   --glass: #0f2535; --glass-in: #162e42; --glass-hov: #142c42;
   --border: rgba(120,200,215,.12); --border-md: rgba(120,200,215,.17);
   --nav-bg: #091826; --sheet-bg: #0d2231;
-  --marca: linear-gradient(135deg, #0d9488, #2dd4bf);
-  --marca-sh: 0 12px 26px -12px rgba(45,212,191,.7); --marca-glow: rgba(45,212,191,.55);
+  --marca-a: #0d9488; --marca-b: #2dd4bf;
+  --marca-sombra: rgba(45,212,191,.7); --marca-glow: rgba(45,212,191,.55);
   --tema-acento: #2dd4bf;
 }
 body[data-area="rc"] {           /* Reclamos SIGET: ámbar */
@@ -2515,8 +2546,8 @@ body[data-area="rc"] {           /* Reclamos SIGET: ámbar */
   --glass: #1f232a; --glass-in: #262d38; --glass-hov: #242b37;
   --border: rgba(215,190,150,.12); --border-md: rgba(215,190,150,.17);
   --nav-bg: #14171e; --sheet-bg: #1d2026;
-  --marca: linear-gradient(135deg, #b45309, #f59e0b);
-  --marca-sh: 0 12px 26px -12px rgba(245,158,11,.7); --marca-glow: rgba(245,158,11,.55);
+  --marca-a: #b45309; --marca-b: #f59e0b;
+  --marca-sombra: rgba(245,158,11,.7); --marca-glow: rgba(245,158,11,.55);
   --tema-acento: #fbbf24;
 }
 

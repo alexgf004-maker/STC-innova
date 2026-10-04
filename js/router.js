@@ -213,7 +213,11 @@ function aplicarTemaArea(tabId) {
   if (area) document.body.dataset.area = area;
   else delete document.body.dataset.area;
   const meta = document.querySelector('meta[name="theme-color"]');
-  if (meta) meta.setAttribute('content', area ? getComputedStyle(document.body).getPropertyValue('--tema-base').trim() : '#0a1628');
+  // Los colores pasan suavemente (~0.6 s); la barra del teléfono toma el final.
+  clearTimeout(aplicarTemaArea._t);
+  aplicarTemaArea._t = setTimeout(() => {
+    if (meta) meta.setAttribute('content', area ? getComputedStyle(document.body).getPropertyValue('--tema-base').trim() : '#0a1628');
+  }, 650);
 }
 
 function buildNavbar(session) {
