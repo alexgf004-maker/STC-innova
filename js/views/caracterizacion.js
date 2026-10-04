@@ -374,6 +374,7 @@ function filaC(cls, ico, titulo, sub, accion) {
 const esLograda   = o => (o.estado === 'por_confirmar' || o.estado === 'confirmada');
 const esPorHacer  = o => !o.estado || o.estado === 'pendiente';
 const retHecho    = r => r.estado === 'retirado' || r.estado === 'no_retirado';
+const retFalta    = r => retHecho(r) && !r.confirmado;   // hecho, falta que admin lo revise
 const ordenPareja = (a, b) => (parseInt(String(a).replace(/\D/g, ''), 10) || 0) - (parseInt(String(b).replace(/\D/g, ''), 10) || 0);
 
 // ── Buscador global (admin): NC, medidor o nombre en instalaciones y retiros ──
@@ -633,7 +634,7 @@ function renderPanel() {
   const revisar = [
     faltaRevisar.length ? filaC('warn', ICO_C.check, `${faltaRevisar.length} hecha${faltaRevisar.length > 1 ? 's' : ''}, falta revisar`, 'Marcar listas por día o todas', 'confirmar') : '',
     sinAsignar ? filaC('muted', ICO_C.pin, `${sinAsignar} sin asignar`, 'Asignar zonas en el mapa', 'mapa') : '',
-    noPudo ? filaC('crit', ICO_C.x, `${noPudo} retiro${noPudo > 1 ? 's' : ''} no se pudo`, 'Ver motivos', 'nopudo') : '',
+    retiros_.some(retFalta) ? (() => { const n = retiros_.filter(retFalta).length; return filaC('warn', ICO_C.check, `${n} retiro${n > 1 ? 's' : ''}, falta revisar`, 'Revisar por día o todos (salen del mapa)', 'conf-ret'); })() : '',
   ].join('');
 
   el.innerHTML = `
@@ -707,7 +708,8 @@ function renderPanel() {
 
   el.querySelectorAll('[data-accion]').forEach(f => f.onclick = () => {
     const a = f.dataset.accion;
-    if (a === 'confirmar') abrirConfirmarCrc();
+    if (a === 'confirmar') abrirConfirmarCrc('o');
+    else if (a === 'conf-ret') abrirConfirmarCrc('r');
     else if (a === 'mapa') window.__router.navigateTo('caracterizacion_mapa');
     else if (a === 'nopudo') { filtroRet_ = 'nopudo'; setPestana('retiro'); }
   });
@@ -828,7 +830,7 @@ function renderInstalaciones() {
   const extra = esAdmin_ && filtroInst_ === 'falta' && grupos[1].arr.length
     ? `<button class="btn-action marca" id="crc-conf-btn" style="margin-bottom:12px">${svgC(ICO_C.check, 16)} Marcar listas por día o todas</button>` : '';
   pintarLista(lista, grupos, filtroInst_, tarjetaInst, extra);
-  lista.querySelector('#crc-conf-btn')?.addEventListener('click', () => abrirConfirmarCrc());
+  lista.querySelector('#crc-conf-btn')?.addEventListener('click', () => abrirConfirmarCrc('o'));
   engancharTarjetas(lista);
 }
 
@@ -844,14 +846,22 @@ function renderRetiros() {
   }
   const base = retiros_.filter(pasaPareja);
   const reciente = arr => arr.sort((a, b) => (b.fechaHecho?.seconds || 0) - (a.fechaHecho?.seconds || 0));
-  const grupos = [
+  const grupos = esAdmin_ ? [
+    { id: 'porretirar', t: 'Por retirar',   arr: base.filter(r => !retHecho(r)) },
+    { id: 'falta',      t: 'Falta revisar', arr: reciente(base.filter(retFalta)) },
+    { id: 'revisados',  t: 'Revisados',     arr: reciente(base.filter(r => retHecho(r) && r.confirmado)) },
+  ] : [
     { id: 'porretirar', t: 'Por retirar', arr: base.filter(r => !retHecho(r)) },
     { id: 'nopudo',     t: 'No se pudo',  arr: reciente(base.filter(r => r.estado === 'no_retirado')) },
     { id: 'retirados',  t: 'Retirados',   arr: reciente(base.filter(r => r.estado === 'retirado')) },
   ];
+  if (!grupos.some(g => g.id === filtroRet_)) filtroRet_ = 'porretirar';
   res.innerHTML = chipsParejas(retiros_) + chipsEstado(grupos, filtroRet_);
   engancharFiltros(res, id => { filtroRet_ = id; });
-  pintarLista(lista, grupos, filtroRet_, tarjetaRet);
+  const extra = esAdmin_ && filtroRet_ === 'falta' && grupos[1].arr.length
+    ? `<button class="btn-action marca" id="crc-conf-ret-btn" style="margin-bottom:12px">${svgC(ICO_C.check, 16)} Revisar por día o todos</button>` : '';
+  pintarLista(lista, grupos, filtroRet_, tarjetaRet, extra);
+  lista.querySelector('#crc-conf-ret-btn')?.addEventListener('click', () => abrirConfirmarCrc('r'));
   engancharTarjetas(lista);
 }
 
@@ -912,11 +922,17 @@ function tarjetaRet(r) {
       <div class="cm-cli">NC ${escapeHtml(r.nc || '—')}${r.direccion ? ' · ' + escapeHtml(String(r.direccion).split(',')[0]) : ''}</div>
       ${r.estado === 'no_retirado' && r.motivo ? `<div class="cm-meta" style="color:#f87171">Motivo: ${escapeHtml(r.motivo)}</div>` : ''}
       ${meta ? `<div class="cm-meta">${meta}</div>` : ''}
+      ${esAdmin_ && r.confirmado ? `<div class="cm-meta" style="color:#22c55e">Revisado${r.confirmadoPor ? ' por ' + escapeHtml(r.confirmadoPor) : ''}</div>` : ''}
+      ${esAdmin_ && retFalta(r) ? `
+      <div class="cm-ord-acc">
+        <button class="cm-btn ok" data-confirmar-ret="${r.id}">${svgC(ICO_C.check, 14)} Revisado</button>
+      </div>` : ''}
     </div>`;
 }
 
 function engancharTarjetas(el) {
   el.querySelectorAll('[data-confirmar]').forEach(btn => btn.onclick = (e) => { e.stopPropagation(); confirmarDesdeLista(btn.dataset.confirmar); });
+  el.querySelectorAll('[data-confirmar-ret]').forEach(btn => btn.onclick = (e) => { e.stopPropagation(); confirmarLoteCrc(null, [retiros_.find(x => x.id === btn.dataset.confirmarRet)].filter(Boolean)); });
   el.querySelectorAll('.cm-ord[data-orden]').forEach(c => c.onclick = () => verEnMapa('o', c.dataset.orden));
   el.querySelectorAll('.cm-ord[data-retiro]').forEach(c => c.onclick = () => verEnMapa('r', c.dataset.retiro));
 }
@@ -936,10 +952,12 @@ async function confirmarDesdeLista(ordenId) {
   } catch (err) { toast('Error: ' + err.message, 'error'); }
 }
 
-// ── Marcar listas: por día o todas ──
+// ── Marcar listas (instalaciones) o revisados (retiros): por día o todas ──
 let confGruposCrc_ = [];
+let confTipo_ = 'o';
 
-function abrirConfirmarCrc() {
+function abrirConfirmarCrc(tipo = 'o') {
+  confTipo_ = tipo;
   renderConfirmarCrc();
   container_.querySelector('#crc-sheet-confirmar')?.classList.add('open');
 }
@@ -947,65 +965,86 @@ function abrirConfirmarCrc() {
 function renderConfirmarCrc() {
   const body = container_.querySelector('#crc-conf-body');
   if (!body) return;
+  const esRet = confTipo_ === 'r';
   const pareja = parejaF_ !== 'todas' && parejaF_ !== 'sin' ? parejaF_ : null;
-  const lista = ordenes_.filter(o => o.estado === 'por_confirmar' && (!pareja || o.pareja === pareja))
-    .sort((a, b) => (b.fechaHecha?.seconds || 0) - (a.fechaHecha?.seconds || 0));
+  const fechaDe = x => esRet ? x.fechaHecho : x.fechaHecha;
+  const lista = (esRet ? retiros_.filter(retFalta) : ordenes_.filter(o => o.estado === 'por_confirmar'))
+    .filter(x => !pareja || x.pareja === pareja)
+    .sort((a, b) => (fechaDe(b)?.seconds || 0) - (fechaDe(a)?.seconds || 0));
   const porDia = {};
-  lista.forEach(o => { const k = claveDia(o.fechaHecha) || 'sin-fecha'; (porDia[k] = porDia[k] || []).push(o); });
-  confGruposCrc_ = Object.keys(porDia).sort().reverse().map(k => ({ k, fecha: k === 'sin-fecha' ? 'Sin fecha' : etiquetaDia(k), ordenes: porDia[k] }));
-  container_.querySelector('#crc-conf-title').textContent = 'Falta revisar' + (pareja ? ' · ' + pareja : '');
+  lista.forEach(x => { const k = claveDia(fechaDe(x)) || 'sin-fecha'; (porDia[k] = porDia[k] || []).push(x); });
+  confGruposCrc_ = Object.keys(porDia).sort().reverse().map(k => ({ k, fecha: k === 'sin-fecha' ? 'Sin fecha' : etiquetaDia(k), items: porDia[k] }));
+  container_.querySelector('#crc-conf-title').textContent = (esRet ? 'Retiros, falta revisar' : 'Falta revisar') + (pareja ? ' · ' + pareja : '');
+  const verbo = esRet ? 'Revisar' : 'Marcar';
+
+  const fila = x => esRet ? `
+    <div class="cm-verif">
+      <div style="flex:1;min-width:0">
+        <div class="cm-wo" style="font-size:13.5px">${escapeHtml(x.nombre || 'NC ' + x.nc)}</div>
+        <div class="cm-cli">NC ${escapeHtml(x.nc || '—')}${!pareja && x.pareja ? ' · ' + escapeHtml(x.pareja) : ''}</div>
+        <div class="cm-meta">${x.estado === 'retirado' ? '<span style="color:#22c55e">Retirado</span>' : `<span style="color:#f87171">No se pudo${x.motivo ? ': ' + escapeHtml(x.motivo) : ''}</span>`}${x.hechoPor ? ' · ' + escapeHtml(x.hechoPor) : ''}</div>
+      </div>
+      <button class="cm-btn ok" data-uno="${x.id}">${svgC(ICO_C.check, 14)}</button>
+    </div>` : `
+    <div class="cm-verif">
+      <div style="flex:1;min-width:0">
+        <div class="cm-wo" style="font-size:13.5px">${escapeHtml(x.titular?.nombre || 'NC ' + x.ncTitular)}</div>
+        <div class="cm-cli">NC ${escapeHtml(x.ncTitular || '—')}${!pareja && x.pareja ? ' · ' + escapeHtml(x.pareja) : ''}</div>
+        <div class="cm-meta">${x.logranoEn ? `Hecha en ${LOGRO_LABEL[x.logranoEn]}` : '<span style="color:#f87171">Sin lograr</span>'}${x.hechaPor ? ' · ' + escapeHtml(x.hechaPor) : ''}</div>
+      </div>
+      <button class="cm-btn ok" data-uno="${x.id}">${svgC(ICO_C.check, 14)}</button>
+    </div>`;
 
   body.innerHTML = lista.length ? `
-    <div style="font-size:12.5px;color:var(--text-3);margin-bottom:12px">${lista.length} hecha${lista.length > 1 ? 's' : ''} esperando revisión${pareja ? '' : ' en todas las parejas'}.</div>
-    <button class="btn-action marca" style="margin-bottom:16px" data-lote="-1">${svgC(ICO_C.check, 16)} Marcar todas como listas (${lista.length})</button>
+    <div style="font-size:12.5px;color:var(--text-3);margin-bottom:12px">${lista.length} ${esRet ? `retiro${lista.length > 1 ? 's' : ''} hecho${lista.length > 1 ? 's' : ''} esperando revisión. Al revisarlos salen del mapa.` : `hecha${lista.length > 1 ? 's' : ''} esperando revisión${pareja ? '' : ' en todas las parejas'}.`}</div>
+    <button class="btn-action marca" style="margin-bottom:16px" data-lote="-1">${svgC(ICO_C.check, 16)} ${esRet ? `Revisar todos (${lista.length})` : `Marcar todas como listas (${lista.length})`}</button>
     <div class="flex-col" style="gap:16px">
       ${confGruposCrc_.map((g, i) => `
         <div>
           <div class="cm-dia">
-            <div style="flex:1;min-width:0"><div class="cm-dia-t">${g.fecha}</div><div class="cm-dia-s">${g.ordenes.length} ${g.ordenes.length > 1 ? 'puntos' : 'punto'}</div></div>
-            <button class="cm-btn ok" data-lote="${i}">${svgC(ICO_C.check, 14)} Marcar día</button>
+            <div style="flex:1;min-width:0"><div class="cm-dia-t">${g.fecha}</div><div class="cm-dia-s">${g.items.length} ${g.items.length > 1 ? 'puntos' : 'punto'}</div></div>
+            <button class="cm-btn ok" data-lote="${i}">${svgC(ICO_C.check, 14)} ${verbo} día</button>
           </div>
-          <div class="flex-col gap-6">
-            ${g.ordenes.map(o => `
-              <div class="cm-verif">
-                <div style="flex:1;min-width:0">
-                  <div class="cm-wo" style="font-size:13.5px">${escapeHtml(o.titular?.nombre || 'NC ' + o.ncTitular)}</div>
-                  <div class="cm-cli">NC ${escapeHtml(o.ncTitular || '—')}${!pareja && o.pareja ? ' · ' + escapeHtml(o.pareja) : ''}</div>
-                  <div class="cm-meta">${o.logranoEn ? `Hecha en ${LOGRO_LABEL[o.logranoEn]}` : '<span style="color:#f87171">Sin lograr</span>'}${o.hechaPor ? ' · ' + escapeHtml(o.hechaPor) : ''}</div>
-                </div>
-                <button class="cm-btn ok" data-uno="${o.id}">${svgC(ICO_C.check, 14)}</button>
-              </div>`).join('')}
-          </div>
+          <div class="flex-col gap-6">${g.items.map(fila).join('')}</div>
         </div>`).join('')}
     </div>` : `
     <div style="text-align:center;padding:26px 10px">
       <div class="hm-ic cr" style="margin:0 auto 12px">${svgC(ICO_C.check, 20)}</div>
       <div style="font-size:15px;font-weight:600">Nada por revisar</div>
-      <div style="font-size:12.5px;color:var(--text-3);margin-top:4px">Todas las hechas ya están listas.</div>
+      <div style="font-size:12.5px;color:var(--text-3);margin-top:4px">${esRet ? 'Todos los retiros hechos ya están revisados.' : 'Todas las hechas ya están listas.'}</div>
     </div>`;
   body.querySelectorAll('[data-lote]').forEach(b => b.onclick = () => confirmarLoteCrc(parseInt(b.dataset.lote, 10)));
-  body.querySelectorAll('[data-uno]').forEach(b => b.onclick = () => confirmarDesdeLista(b.dataset.uno));
+  body.querySelectorAll('[data-uno]').forEach(b => b.onclick = () => esRet
+    ? confirmarLoteCrc(null, [retiros_.find(x => x.id === b.dataset.uno)].filter(Boolean))
+    : confirmarDesdeLista(b.dataset.uno));
 }
 
-async function confirmarLoteCrc(i) {
-  const lista = i === -1 ? confGruposCrc_.flatMap(g => g.ordenes) : (confGruposCrc_[i]?.ordenes || []);
+// i: índice del día (-1 = todos) en la hoja abierta; o una lista directa de retiros
+async function confirmarLoteCrc(i, directa = null) {
+  const esRet = directa ? true : confTipo_ === 'r';
+  const lista = directa || (i === -1 ? confGruposCrc_.flatMap(g => g.items) : (confGruposCrc_[i]?.items || []));
   if (!lista.length) return;
-  const que = i === -1 ? `todas (${lista.length})` : `${lista.length} del ${confGruposCrc_[i].fecha.replace(/^(Hoy|Ayer) · /, '')}`;
-  if (!confirm(`¿Marcar como listas ${que}?`)) return;
-  const datos = { estado: 'confirmada', confirmadaPor: session_.displayName, fechaConfirmacion: firebase.firestore.Timestamp.now() };
+  if (!directa) {
+    const que = i === -1 ? `todos (${lista.length})` : `${lista.length} del ${confGruposCrc_[i].fecha.replace(/^(Hoy|Ayer) · /, '')}`;
+    if (!confirm(esRet ? `¿Marcar como revisados ${que}? Saldrán del mapa.` : `¿Marcar como listas ${que}?`)) return;
+  }
+  const ahora = firebase.firestore.Timestamp.now();
+  const datos = esRet
+    ? { confirmado: true, confirmadoPor: session_.displayName, fechaConfirmacion: ahora }
+    : { estado: 'confirmada', confirmadaPor: session_.displayName, fechaConfirmacion: ahora };
+  const col = esRet ? 'caracterizacion_retiros' : 'caracterizacion_ordenes';
   try {
     for (let k = 0; k < lista.length; k += 400) {
       const batch = db.batch();
-      lista.slice(k, k + 400).forEach(o => batch.update(db.collection('caracterizacion_ordenes').doc(o.id), datos));
+      lista.slice(k, k + 400).forEach(x => batch.update(db.collection(col).doc(x.id), datos));
       await batch.commit();
     }
-    const ids = new Set(lista.map(o => o.id));
-    ordenes_.forEach(o => { if (ids.has(o.id)) Object.assign(o, datos); });
-    toast(`${lista.length} marcada${lista.length > 1 ? 's' : ''} como lista${lista.length > 1 ? 's' : ''}`, 'ok');
-    renderConfirmarCrc();
+    lista.forEach(x => Object.assign(x, datos));
+    toast(esRet ? `${lista.length} retiro${lista.length > 1 ? 's' : ''} revisado${lista.length > 1 ? 's' : ''}` : `${lista.length} marcada${lista.length > 1 ? 's' : ''} como lista${lista.length > 1 ? 's' : ''}`, 'ok');
+    if (container_.querySelector('#crc-sheet-confirmar')?.classList.contains('open')) renderConfirmarCrc();
     render();
   } catch (err) {
-    toast('Error al marcar: ' + err.message, 'error');
+    toast('Error: ' + err.message, 'error');
   }
 }
 
@@ -1548,6 +1587,8 @@ function descargarExcelRetiros() {
       'Motivo': r.motivo || '',
       'Hecho por': r.hechoPor || '',
       'Fecha': r.fechaHecho ? fmtFechaHora(r.fechaHecho) : '',
+      'Revisado': r.confirmado ? 'Sí' : 'No',
+      'Revisado por': r.confirmadoPor || '',
     }));
     const headers = Object.keys(filas[0]);
     const ws = XLSX.utils.json_to_sheet(filas, { header: headers });

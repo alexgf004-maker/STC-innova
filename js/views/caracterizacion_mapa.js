@@ -91,6 +91,9 @@ export async function init(container, session) {
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>
         </button>`}
         <button class="mapa-btn-icon" id="crc-buscar-btn" title="Buscar NC, medidor o nombre" style="border-color:rgba(239,68,68,.45);color:#f87171">${lupa}</button>
+        <button class="mapa-btn-icon" id="crc-ver-ret" title="Mostrar u ocultar retiros" style="width:auto;padding:0 11px;gap:6px;font-size:11.5px;font-weight:700;font-family:inherit;color:${RETIRO_COLOR}">
+          <span style="width:10px;height:10px;border-radius:2px;background:${RETIRO_COLOR}"></span><span id="crc-ver-ret-lbl">Retiros</span>
+        </button>
       </div>
 
       <!-- Buscador (oculto hasta tocar la lupa) -->
@@ -132,6 +135,13 @@ export async function init(container, session) {
   container.querySelector('#crc-buscar-cerrar').onclick = () => { container.querySelector('#crc-buscar-box').style.display = 'none'; };
   container.querySelector('#crc-buscar-input').oninput = e => buscar(e.target.value);
   container.querySelector('#crc-zona-cancelar').onclick = cancelarZona;
+  container.querySelector('#crc-ver-ret').onclick = () => {
+    verRetiros_ = !verRetiros_;
+    try { localStorage.setItem('crc_ver_retiros', verRetiros_ ? '1' : '0'); } catch {}
+    marcarBotonRetiros();
+    retiros_.forEach(pintarRetiro);
+  };
+  marcarBotonRetiros();
   container.querySelector('#crc-cerrar-poli').onclick = cerrarPoligono;
 
   if (esAdmin_) {
@@ -460,6 +470,16 @@ function crearMarcador(p, color, texto, activo, destacar, atenuado) {
   return L.marker([p.lat, p.lng], { icon });
 }
 
+// Mostrar u ocultar los retiros en el mapa (se recuerda en este teléfono).
+// Con cientos de puntos, ocultarlos hace el mapa más ligero.
+let verRetiros_ = (() => { try { return localStorage.getItem('crc_ver_retiros') !== '0'; } catch { return true; } })();
+function marcarBotonRetiros() {
+  const b = container_?.querySelector('#crc-ver-ret');
+  if (!b) return;
+  b.style.opacity = verRetiros_ ? '1' : '.55';
+  b.querySelector('#crc-ver-ret-lbl').textContent = verRetiros_ ? 'Retiros' : 'Retiros ocultos';
+}
+
 function quitarRetiro(id) {
   if (markersRet_[id]) { if (map_) map_.removeLayer(markersRet_[id]); delete markersRet_[id]; }
 }
@@ -469,6 +489,9 @@ function pintarRetiro(r) {
   if (!map_) return;
   quitarRetiro(r.id);
   if (r.lat == null || r.lng == null) return;
+  // Revisados por admin/asistente: salen del mapa (como las instalaciones listas)
+  if (r.confirmado) return;
+  if (!verRetiros_) return;
 
   // Pendiente: gris si no tiene pareja, color de su pareja si está asignado.
   // Retirado = verde, No se pudo = rojo (el estado manda sobre la asignación).
@@ -537,7 +560,11 @@ function abrirDetalleRetiro(retiroId) {
         ${r.motivo ? `<div style="font-size:11px;color:#f87171;margin-top:4px">${escapeHtml(r.motivo)}</div>` : ''}
         ${r.hechoPor ? `<div style="font-size:10px;color:var(--text-4);margin-top:6px">Por ${escapeHtml(r.hechoPor)}${r.fechaHecho ? ' · ' + fmtFechaCorta(r.fechaHecho) : ''}</div>` : ''}
       </div>
-      ${!esAdmin_ ? `<button id="crc-ret-deshacer" style="width:100%;padding:11px;border-radius:12px;border:1px solid var(--border);background:var(--glass);color:var(--text-3);font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">Volver a marcar</button>` : ''}
+      ${!esAdmin_ ? `<button id="crc-ret-deshacer" style="width:100%;padding:11px;border-radius:12px;border:1px solid var(--border);background:var(--glass);color:var(--text-3);font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">Volver a marcar</button>` : `
+      <div style="display:flex;gap:8px">
+        <button id="crc-ret-devolver" style="flex:1;padding:13px;border-radius:12px;border:1px solid var(--border);background:var(--glass);color:var(--text-2);font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">Devolver a pendiente</button>
+        <button id="crc-ret-confirmar" class="btn-marca" style="flex:1.4;padding:13px;border-radius:12px;font-size:13px;cursor:pointer;font-family:inherit">Revisado · quitar del mapa</button>
+      </div>`}
     ` : `
       <div style="display:flex;gap:8px">
         <button id="crc-ret-nopudo" style="flex:1;padding:13px;border-radius:12px;border:1px solid rgba(239,68,68,.4);background:rgba(239,68,68,.1);color:#f87171;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">No se pudo</button>
@@ -554,6 +581,11 @@ function abrirDetalleRetiro(retiroId) {
   } else if (!esAdmin_) {
     const btn = sheet.querySelector('#crc-ret-deshacer');
     if (btn) btn.onclick = () => marcarRetiro(retiroId, 'pendiente');
+  } else {
+    sheet.querySelector('#crc-ret-confirmar').onclick = () => confirmarRetiro(retiroId);
+    sheet.querySelector('#crc-ret-devolver').onclick = () => {
+      if (confirm('¿Devolver este retiro a pendiente? Volverá a salirle a su pareja.')) marcarRetiro(retiroId, 'pendiente');
+    };
   }
 }
 
@@ -586,6 +618,7 @@ async function marcarRetiro(retiroId, estado, motivo) {
       patch.motivo = '';
       patch.hechoPor = '';
       patch.fechaHecho = null;
+      if (esAdmin_) { patch.confirmado = false; patch.confirmadoPor = null; patch.fechaConfirmacion = null; }
     } else {
       patch.motivo = motivo || '';
       patch.hechoPor = session_.displayName;
@@ -603,6 +636,21 @@ async function marcarRetiro(retiroId, estado, motivo) {
   } catch (err) {
     toast('Error: ' + err.message, 'error');
   }
+}
+
+// Admin/asistente: marca un retiro hecho como revisado; sale del mapa.
+async function confirmarRetiro(retiroId) {
+  const r = retiros_.find(x => x.id === retiroId);
+  if (!r) return;
+  const patch = { confirmado: true, confirmadoPor: session_.displayName, fechaConfirmacion: firebase.firestore.Timestamp.now() };
+  try {
+    await db.collection('caracterizacion_retiros').doc(retiroId).update(patch);
+    Object.assign(r, patch);
+    pintarRetiro(r);
+    cerrarTodasLasHojas();
+    updateStat();
+    toast('Retiro revisado', 'ok');
+  } catch (err) { toast('Error: ' + err.message, 'error'); }
 }
 
 function fmtFechaCorta(ts) {
