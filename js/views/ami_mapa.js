@@ -738,7 +738,11 @@ function plotMarkers() {
 
   visibles.forEach(orden => {
     if (!orden.latitud || !orden.longitud) return;
-    const latlng = [orden.latitud, orden.longitud];
+    // Las coordenadas pueden venir como texto (del Excel): con texto,
+    // vista.contains() de Leaflet entra en recursión infinita al acercar
+    // (zoom 16+, cuando se ponen las etiquetas) y no se dibujaba ningún punto.
+    const latlng = [parseFloat(orden.latitud), parseFloat(orden.longitud)];
+    if (!isFinite(latlng[0]) || !isFinite(latlng[1])) return;
     const bloqueada = !orden.estadoCampo && isBlocked_(orden);
     const yaCambiado  = orden.estadoCampo === 'ya_cambiado';
     const esMalUbicado = orden.estadoCampo === 'mal_ubicado';

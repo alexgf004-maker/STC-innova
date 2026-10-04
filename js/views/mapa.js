@@ -559,7 +559,11 @@ function plotMarkers() {
     const yaCambiado   = orden.estadoCampo === 'ya_cambiado';
     const esMalUbicado = orden.estadoCampo === 'mal_ubicado';
     const esUrgente    = orden.urgente && !orden.estadoCampo && !esMalUbicado;
-    const latlng = [orden.latitud, orden.longitud];
+    // Las coordenadas pueden venir como texto (del Excel): con texto,
+    // vista.contains() de Leaflet entra en recursión infinita al acercar
+    // (zoom 16+, cuando se ponen las etiquetas) y no se dibujaba ningún punto.
+    const latlng = [parseFloat(orden.latitud), parseFloat(orden.longitud)];
+    if (!isFinite(latlng[0]) || !isFinite(latlng[1])) return;
     let marker;
 
     if (esUrgente || yaCambiado || esMalUbicado) {
