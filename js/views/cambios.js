@@ -11,6 +11,7 @@
 import { db } from '../firebase.js';
 import { leer, tecnicosActivos } from '../vivo.js';
 import { toast, escapeHtml } from '../ui.js';
+import { avisoOrdenDuplicada } from './orden_duplicada.js';
 
 // ── Caché ─────────────────────────────────────────
 const cache = {
@@ -1946,6 +1947,14 @@ async function guardarOrdenCampo() {
     return;
   }
 
+  setLoading('btn-campo-label', 'Revisando…', true);
+  const dup = await avisoOrdenDuplicada('cambios_ordenes', 'wo', wo, 'WO');
+  if (dup) {
+    setLoading('btn-campo-label', 'Registrar orden', false);
+    errEl.textContent = dup;
+    errEl.style.display = 'block';
+    return;
+  }
   setLoading('btn-campo-label', 'Registrando…', true);
   try {
     const data = {

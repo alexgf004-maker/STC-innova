@@ -11,8 +11,9 @@
 import { db } from '../firebase.js';
 import { suscribir, leer, tecnicosActivos } from '../vivo.js';
 import { padronAmi } from './ami_padron.js';
-import { toast, escapeHtml } from '../ui.js';
+import { toast, escapeHtml, guardarConEspera } from '../ui.js';
 import { ponerEtiquetas } from './etiquetas_mapa.js';
+import { avisoOrdenDuplicada } from './orden_duplicada.js';
 import { devolverAPendiente, puedeDevolverse } from './ami_devolver.js';
 import { abrirVistaCondominio, refrescarVistaCondominio, cerrarVistaCondominio, claveEdificio } from './ami_condominio.js';
 
@@ -1138,11 +1139,11 @@ async function confirmarOrden(id) {
   if (!o) return;
   if (!confirm(`Confirmar NC ${o.nc} como aprobada?`)) return;
   try {
-    await db.collection('ami_ordenes').doc(id).update({
+    await guardarConEspera(db.collection('ami_ordenes').doc(id).update({
       estadoCampo: 'aprobada',
       aprobadoPor: session_.displayName,
       fechaAprobacion: firebase.firestore.Timestamp.now(),
-    });
+    }));
     o.estadoCampo = 'aprobada';
     if (typeof toast === 'function') toast('Orden confirmada', 'ok');
     closePanel();
@@ -1212,12 +1213,12 @@ async function confirmarRealizada() {
 
   try {
     const now = firebase.firestore.Timestamp.now();
-    await db.collection('ami_ordenes').doc(id).update({
+    await guardarConEspera(db.collection('ami_ordenes').doc(id).update({
       estadoCampo:       'hecha',
       fechaHecha:        now,
       hechaPor:          session_.displayName,
       parejaDelDia,
-    });
+    }));
     const o = ordenes_.find(x => x.id === id);
     if (o) { o.estadoCampo = 'hecha'; o.parejaDelDia = parejaDelDia; }
     plotMarkers();
@@ -1261,13 +1262,13 @@ async function confirmarVisita() {
 
   try {
     const now = firebase.firestore.Timestamp.now();
-    await db.collection('ami_ordenes').doc(id).update({
+    await guardarConEspera(db.collection('ami_ordenes').doc(id).update({
       estadoCampo:       'visita',
       fechaVisita:       now,
       visitadoPor:       session_.displayName,
       motivoVisita:      motivo,
       observacionVisita: obs || null,
-    });
+    }));
 
     const o = ordenes_.find(x => x.id === id);
     if (o) {
@@ -1304,12 +1305,12 @@ async function confirmarYaCambiado() {
   const comentario = document.getElementById('ya-cambiado-comentario').value.trim();
   setLoading('btn-ya-cambiado-lbl', 'Guardando…', true);
   try {
-    await db.collection('ami_ordenes').doc(selectedOrden_.id).update({
+    await guardarConEspera(db.collection('ami_ordenes').doc(selectedOrden_.id).update({
       estadoCampo:  'ya_cambiado',
       yaCambiadoPor: session_.displayName,
       yaCambiadoEn:  firebase.firestore.Timestamp.now(),
       yaCambiadoComentario: comentario || null,
-    });
+    }));
     const o = ordenes_.find(x => x.id === selectedOrden_.id);
     if (o) o.estadoCampo = 'ya_cambiado';
     closeSheet('sheet-ya-cambiado');
@@ -1563,6 +1564,14 @@ async function guardarOrdenCampoMapa() {
     return;
   }
 
+  setLoading('btn-campo-mapa-lbl', 'Revisando…', true);
+  const dup = await avisoOrdenDuplicada('ami_ordenes', 'nc', nc, 'NC');
+  if (dup) {
+    setLoading('btn-campo-mapa-lbl', 'Registrar orden', false);
+    errEl.textContent = dup;
+    errEl.style.display = 'block';
+    return;
+  }
   setLoading('btn-campo-mapa-lbl', 'Registrando…', true);
   try {
     const data = {
@@ -1620,10 +1629,10 @@ async function confirmarIndividual() {
 
   setLoading('btn-indiv-label', 'Guardando…', true);
   try {
-    await db.collection('ami_ordenes').doc(id).update({
+    await guardarConEspera(db.collection('ami_ordenes').doc(id).update({
       pareja,
       asignadoEn: firebase.firestore.FieldValue.serverTimestamp(),
-    });
+    }));
     const o = ordenes_.find(x => x.id === id);
     if (o) o.pareja = pareja;
     selectedOrden_ = null;

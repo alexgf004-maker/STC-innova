@@ -161,3 +161,24 @@ export function activarPestanasAnimadas(raiz) {
   }).observe(raiz, { childList: true, subtree: true });
   buscar();
 }
+
+// ── Guardar sin señal ─────────────────────────────
+// Sin señal, Firestore deja el cambio guardado en el teléfono y lo manda solo
+// al volver la conexión, pero la promesa no termina hasta entonces: la
+// pantalla se quedaba "Registrando…" sin confirmar y el técnico reintentaba
+// (con material, duplicaba el consumo). Esto espera hasta `ms`; si no hubo
+// respuesta del servidor, lo da por guardado en el teléfono y avisa.
+// Un error que llegue antes (por ejemplo, permisos) se lanza igual que antes.
+export async function guardarConEspera(promesa, ms = 4000) {
+  let t;
+  const r = await Promise.race([
+    promesa.then(() => 'ok'),
+    new Promise(res => { t = setTimeout(() => res('pendiente'), ms); }),
+  ]);
+  clearTimeout(t);
+  if (r === 'pendiente') {
+    toast('Sin señal: quedó guardado en el teléfono y se enviará solo al volver la conexión', 'warn', 6000);
+    promesa.catch(err => toast('No se pudo enviar un cambio guardado sin señal: ' + err.message, 'error', 8000));
+  }
+  return r;
+}

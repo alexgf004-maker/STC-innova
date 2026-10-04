@@ -5,7 +5,7 @@
  * Exporta: abrirConsumoOrden({ orden, modulo, session, db, onSuccess })
  */
 
-import { toast, escapeHtml } from './ui.js';
+import { toast, escapeHtml, guardarConEspera } from './ui.js';
 
 const safeNum = v => { const n = Number(v); return isNaN(n) ? 0 : n; };
 const safeStr = (v, fb='—') => (v !== undefined && v !== null && String(v).trim()) ? String(v).trim() : fb;
@@ -338,7 +338,7 @@ export async function abrirConsumoOrden({ orden, modulo, session, db, onSuccess 
       console.log('[consumo] ordenUpdate completo:', ordenUpdate);
       batch.update(db.collection(col).doc(orden.id), ordenUpdate);
 
-      await batch.commit();
+      await guardarConEspera(batch.commit());
 
       ov.remove();
       toast('Orden marcada como realizada', 'ok');

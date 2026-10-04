@@ -13,7 +13,7 @@
 
 import { db } from '../firebase.js';
 import { suscribir as suscribirVivo, tecnicosActivos } from '../vivo.js';
-import { toast, escapeHtml } from '../ui.js';
+import { toast, escapeHtml, guardarConEspera } from '../ui.js';
 
 let map_ = null;
 let session_ = null;
@@ -636,7 +636,7 @@ async function marcarRetiro(retiroId, estado, motivo) {
       patch.hechoPor = session_.displayName;
       patch.fechaHecho = firebase.firestore.Timestamp.now();
     }
-    await db.collection('caracterizacion_retiros').doc(retiroId).update(patch);
+    await guardarConEspera(db.collection('caracterizacion_retiros').doc(retiroId).update(patch));
     Object.assign(r, patch);
     pintarRetiro(r);
     cerrarTodasLasHojas();
@@ -656,7 +656,7 @@ async function confirmarRetiro(retiroId) {
   if (!r) return;
   const patch = { confirmado: true, confirmadoPor: session_.displayName, fechaConfirmacion: firebase.firestore.Timestamp.now() };
   try {
-    await db.collection('caracterizacion_retiros').doc(retiroId).update(patch);
+    await guardarConEspera(db.collection('caracterizacion_retiros').doc(retiroId).update(patch));
     Object.assign(r, patch);
     pintarRetiro(r);
     cerrarTodasLasHojas();
@@ -777,10 +777,10 @@ async function marcarHecha(ordenId, nivel) {
   if (!o) return;
   const visitas = Array.isArray(o.visitas) ? o.visitas : [];
   try {
-    await db.collection('caracterizacion_ordenes').doc(ordenId).update({
+    await guardarConEspera(db.collection('caracterizacion_ordenes').doc(ordenId).update({
       estado: 'por_confirmar', logranoEn: nivel, visitas,
       hechaPor: session_.displayName, fechaHecha: firebase.firestore.Timestamp.now(),
-    });
+    }));
     o.estado = 'por_confirmar'; o.logranoEn = nivel; o.visitas = visitas; o.hechaPor = session_.displayName;
     pintarOrden(o);
     cerrarSheet(); updateStat();
@@ -827,9 +827,9 @@ function retrocederCascada(ordenId, nivelActual) {
     let nuevasVisitas = visitas;
     if (borrarVisita) nuevasVisitas = visitas.filter(v => v !== anterior);
     try {
-      await db.collection('caracterizacion_ordenes').doc(ordenId).update({
+      await guardarConEspera(db.collection('caracterizacion_ordenes').doc(ordenId).update({
         _nivelVisible: anterior, visitas: nuevasVisitas,
-      });
+      }));
       o._nivelVisible = anterior;
       o.visitas = nuevasVisitas;
       pintarOrden(o);
@@ -864,7 +864,7 @@ async function marcarVisita(ordenId, nivel) {
   if (siguiente && o[siguiente]) {
     // Revelar el siguiente punto (persistimos la visita para no perderla)
     try {
-      await db.collection('caracterizacion_ordenes').doc(ordenId).update({ visitas, _nivelVisible: siguiente });
+      await guardarConEspera(db.collection('caracterizacion_ordenes').doc(ordenId).update({ visitas, _nivelVisible: siguiente }));
     } catch (err) { /* si falla, seguimos localmente */ }
     o._nivelVisible = siguiente;
     pintarOrden(o);
@@ -874,10 +874,10 @@ async function marcarVisita(ordenId, nivel) {
   } else {
     // No hay más suplentes: la orden termina sin lograrse (solo visitas).
     try {
-      await db.collection('caracterizacion_ordenes').doc(ordenId).update({
+      await guardarConEspera(db.collection('caracterizacion_ordenes').doc(ordenId).update({
         estado: 'por_confirmar', logranoEn: null, visitas,
         hechaPor: session_.displayName, fechaHecha: firebase.firestore.Timestamp.now(),
-      });
+      }));
       o.estado = 'por_confirmar';
       pintarOrden(o);
       cerrarSheet(); updateStat();
@@ -1107,10 +1107,10 @@ async function confirmarOrden(ordenId, sheet) {
   const btn = sheet.querySelector('#crc-conf-ok'); btn.disabled = true;
   sheet.querySelector('#crc-conf-lbl').textContent = 'Confirmando…';
   try {
-    await db.collection('caracterizacion_ordenes').doc(ordenId).update({
+    await guardarConEspera(db.collection('caracterizacion_ordenes').doc(ordenId).update({
       estado: 'confirmada',
       confirmadaPor: session_.displayName, fechaConfirmacion: firebase.firestore.Timestamp.now(),
-    });
+    }));
     const o = ordenes_.find(x => x.id === ordenId);
     if (o) { o.estado = 'confirmada'; pintarOrden(o); }
     sheet.classList.remove('abierta');
@@ -1123,9 +1123,9 @@ async function confirmarOrden(ordenId, sheet) {
 
 async function regresarPendiente(ordenId, sheet) {
   try {
-    await db.collection('caracterizacion_ordenes').doc(ordenId).update({
+    await guardarConEspera(db.collection('caracterizacion_ordenes').doc(ordenId).update({
       estado: 'pendiente', logranoEn: null, _nivelVisible: 'titular',
-    });
+    }));
     const o = ordenes_.find(x => x.id === ordenId);
     if (o) { o.estado = 'pendiente'; o.logranoEn = null; o._nivelVisible = 'titular'; pintarOrden(o); }
     sheet.classList.remove('abierta');
@@ -1163,7 +1163,7 @@ function abrirAsignarIndividual(ordenId) {
   sheet.querySelectorAll('.crc-ip').forEach(chip => chip.onclick = async () => {
     const val = chip.dataset.val === 'null' ? null : chip.dataset.val;
     try {
-      await db.collection('caracterizacion_ordenes').doc(ordenId).update({ pareja: val, asignadoEn: firebase.firestore.Timestamp.now() });
+      await guardarConEspera(db.collection('caracterizacion_ordenes').doc(ordenId).update({ pareja: val, asignadoEn: firebase.firestore.Timestamp.now() }));
       o.pareja = val; pintarOrden(o);
       sheet.classList.remove('abierta');
       toast(val ? `Asignada a ${val}` : 'Asignación quitada', 'ok');

@@ -10,8 +10,9 @@
 
 import { db } from '../firebase.js';
 import { suscribir, leer } from '../vivo.js';
-import { toast, escapeHtml } from '../ui.js';
+import { toast, escapeHtml, guardarConEspera } from '../ui.js';
 import { ponerEtiquetas } from './etiquetas_mapa.js';
+import { avisoOrdenDuplicada } from './orden_duplicada.js';
 
 const PAREJA_COLORS = {
   'Pareja 1': '#2dd4bf',
@@ -868,12 +869,12 @@ async function confirmarRealizada() {
 
   try {
     const now = firebase.firestore.Timestamp.now();
-    await db.collection('cambios_ordenes').doc(id).update({
+    await guardarConEspera(db.collection('cambios_ordenes').doc(id).update({
       estadoCampo:       'hecha',
       fechaHecha:        now,
       hechaPor:          session_.displayName,
       parejaDelDia,
-    });
+    }));
     const o = ordenes_.find(x => x.id === id);
     if (o) { o.estadoCampo = 'hecha'; o.parejaDelDia = parejaDelDia; }
     plotMarkers();
@@ -917,13 +918,13 @@ async function confirmarVisita() {
 
   try {
     const now = firebase.firestore.Timestamp.now();
-    await db.collection('cambios_ordenes').doc(id).update({
+    await guardarConEspera(db.collection('cambios_ordenes').doc(id).update({
       estadoCampo:       'visita',
       fechaVisita:       now,
       visitadoPor:       session_.displayName,
       motivoVisita:      motivo,
       observacionVisita: obs || null,
-    });
+    }));
 
     const o = ordenes_.find(x => x.id === id);
     if (o) {
@@ -978,12 +979,12 @@ async function confirmarYaCambiado() {
   const comentario = document.getElementById('ya-cambiado-comentario').value.trim();
   setLoading('btn-ya-cambiado-lbl', 'Guardando…', true);
   try {
-    await db.collection('cambios_ordenes').doc(selectedOrden_.id).update({
+    await guardarConEspera(db.collection('cambios_ordenes').doc(selectedOrden_.id).update({
       estadoCampo:  'ya_cambiado',
       yaCambiadoPor: session_.displayName,
       yaCambiadoEn:  firebase.firestore.Timestamp.now(),
       yaCambiadoComentario: comentario || null,
-    });
+    }));
     const o = ordenes_.find(x => x.id === selectedOrden_.id);
     if (o) o.estadoCampo = 'ya_cambiado';
     closeSheet('sheet-ya-cambiado');
@@ -1240,6 +1241,14 @@ async function guardarOrdenCampoMapa() {
     return;
   }
 
+  setLoading('btn-campo-mapa-lbl', 'Revisando…', true);
+  const dup = await avisoOrdenDuplicada('cambios_ordenes', 'wo', wo, 'WO');
+  if (dup) {
+    setLoading('btn-campo-mapa-lbl', 'Registrar orden', false);
+    errEl.textContent = dup;
+    errEl.style.display = 'block';
+    return;
+  }
   setLoading('btn-campo-mapa-lbl', 'Registrando…', true);
   try {
     const data = {
@@ -1298,10 +1307,10 @@ async function confirmarIndividual() {
 
   setLoading('btn-indiv-label', 'Guardando…', true);
   try {
-    await db.collection('cambios_ordenes').doc(id).update({
+    await guardarConEspera(db.collection('cambios_ordenes').doc(id).update({
       pareja,
       asignadoEn: firebase.firestore.FieldValue.serverTimestamp(),
-    });
+    }));
     const o = ordenes_.find(x => x.id === id);
     if (o) o.pareja = pareja;
     selectedOrden_ = null;
