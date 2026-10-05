@@ -1383,14 +1383,10 @@ async function cargarContiguosData() {
   }
   contiguosLoading_ = true;
   try {
-    // Ahora vive en Firestore (solo usuarios activos, ver padrones.js); el
-    // archivo público queda solo como respaldo mientras se migra.
-    contiguosData_ = await leerPadron('contiguos').catch(() => null);
-    if (!contiguosData_) {
-      const resp = await fetch('contiguos.json');
-      if (!resp.ok) throw new Error('No se pudo cargar la base');
-      contiguosData_ = await resp.json();
-    }
+    // Vive en Firestore (solo usuarios activos, ver padrones.js). Antes era
+    // un archivo público del sitio.
+    contiguosData_ = await leerPadron('contiguos');
+    if (!contiguosData_) throw new Error('La base de contiguos no está cargada');
     // Construir índice NC -> posición
     contiguosIndex_ = {};
     for (let i = 0; i < contiguosData_.length; i++) {

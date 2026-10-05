@@ -6,7 +6,7 @@
  * El técnico intenta en orden; al cerrar se registra cuál de los tres logró.
  *
  * Datos:
- *  - Padrón base fijo: /STC-innova/caracterizacion_padron.json (indexado por NC)
+ *  - Padrón base fijo: colección padrones/caracterizacion en Firestore (indexado por NC, ver padrones.js)
  *  - Órdenes del día: colección Firestore 'caracterizacion_ordenes'
  *
  * Este archivo arranca con la CARGA DEL DÍA (importador que cruza
@@ -19,7 +19,6 @@ import { leerPadron } from '../padrones.js';
 import { leer } from '../vivo.js';
 import { toast, escapeHtml } from '../ui.js';
 
-const PADRON_URL = '/STC-innova/caracterizacion_padron.json';
 
 let session_   = null;
 let container_ = null;
@@ -49,27 +48,27 @@ function verEnMapa(tipo, id) {
 }
 
 // ── Carga del padrón (una vez, cacheado en memoria) ──
+let padronFallo_ = false;   // si falló, se reintenta la próxima vez
 async function cargarPadron() {
-  if (padron_) return padron_;
-  // Timeout: si el padrón no responde en 8s, no colgar todo el proceso.
+  if (padron_ && !padronFallo_) return padron_;
+  // Timeout: si el padrón no responde en 20s, no colgar todo el proceso.
   // El padrón es un respaldo opcional; sin él se sigue con los datos del Excel.
   const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort(), 8000);
+  const t = setTimeout(() => ctrl.abort(), 20000);
   try {
-    // Ahora vive en Firestore (solo usuarios activos, ver padrones.js); el
-    // archivo público queda solo como respaldo mientras se migra.
-    const enFirebase = await Promise.race([
-      leerPadron('caracterizacion').catch(() => null),
+    // Vive en Firestore (solo usuarios activos, ver padrones.js). Antes era
+    // un archivo público del sitio.
+    const datos = await Promise.race([
+      leerPadron('caracterizacion'),
       new Promise((_, rej) => ctrl.signal.addEventListener('abort', () => rej(new Error('tiempo')))),
     ]);
-    if (enFirebase) { clearTimeout(t); padron_ = enFirebase; return padron_; }
-    const res = await fetch(PADRON_URL, { cache: 'force-cache', signal: ctrl.signal });
     clearTimeout(t);
-    if (!res.ok) throw new Error('No se pudo leer el padrón base.');
-    padron_ = await res.json();
+    if (!datos) throw new Error('El padrón base no está cargado.');
+    padron_ = datos; padronFallo_ = false;
     return padron_;
   } catch (err) {
     clearTimeout(t);
+    padronFallo_ = true;
     padron_ = padron_ || {};   // seguir sin padrón en vez de colgarse
     return padron_;
   }

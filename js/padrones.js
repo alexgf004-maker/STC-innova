@@ -16,8 +16,8 @@
 import { db } from './firebase.js';
 
 export const PADRONES = {
-  caracterizacion: { titulo: 'Padrón de Caracterización', archivoAnterior: '/STC-innova/caracterizacion_padron.json' },
-  contiguos:       { titulo: 'Contiguos (Cambios y AMI)', archivoAnterior: '/STC-innova/contiguos.json' },
+  caracterizacion: { titulo: 'Padrón de Caracterización' },
+  contiguos:       { titulo: 'Contiguos (Cambios y AMI)' },
 };
 
 const MAX_BYTES = 800 * 1024;   // margen bajo el límite de 1 MiB por documento

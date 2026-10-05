@@ -182,8 +182,7 @@ function abrirPadrones() {
       <div style="font-size:14px;font-weight:600"></div>
       <div class="pad-estado" style="font-size:12px;color:var(--text-3);margin-top:4px">Revisando…</div>
       <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
-        <button class="cm-btn marca pad-sitio">Copiar del sitio</button>
-        <button class="cm-btn pad-archivo">Subir archivo .json</button>
+        <button class="cm-btn marca pad-archivo">Subir archivo .json</button>
         <input type="file" accept=".json,application/json" style="display:none"/>
       </div>
       <div class="pad-prog" style="font-size:12px;color:var(--text-2);margin-top:8px"></div>`;
@@ -221,11 +220,6 @@ function abrirPadrones() {
         botones.forEach(b => b.disabled = false);
       }
     };
-    card.querySelector('.pad-sitio').onclick = () => subir(async () => {
-      const r = await fetch(def.archivoAnterior, { cache: 'no-store' });
-      if (!r.ok) throw new Error('El archivo ya no está en el sitio. Usa "Subir archivo".');
-      return r.json();
-    });
     const inp = card.querySelector('input[type=file]');
     card.querySelector('.pad-archivo').onclick = () => inp.click();
     inp.onchange = () => {
