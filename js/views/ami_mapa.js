@@ -724,13 +724,30 @@ function iniciarGeolocalizacion() {
 let lienzo_ = null;
 function radioPorZoom(z) { return z <= 10 ? 3 : z <= 11 ? 4 : z <= 12 ? 5 : z <= 13 ? 6 : z <= 14 ? 7 : 8; }
 
+// El toque puede alcanzar a varios puntos (con la tolerancia del lienzo):
+// abrir el que quede más cerca del dedo, no el que se dibujó encima.
+function ordenMasCercana(e, porDefecto) {
+  const p = e?.containerPoint;
+  if (!p || !map_) return porDefecto;
+  let mejor = porDefecto, dist = Infinity;
+  markers_.forEach(m => {
+    if (!m._ordenId) return;
+    const d = map_.latLngToContainerPoint(m.getLatLng()).distanceTo(p);
+    if (d < dist) { dist = d; mejor = m._ordenId; }
+  });
+  return mejor;
+}
+
 function plotMarkers() {
   // Si el mapa aún no existe (el snapshot llegó antes de initMap), no hacer
   // nada: initMap llamará a plotMarkers al terminar y dibujará lo que haya.
   if (!map_) return;
   markers_.forEach(m => map_.removeLayer(m));
   markers_ = [];
-  if (!lienzo_) lienzo_ = L.canvas({ padding: 0.5 });
+  // tolerance: los puntos son pequeños y con el dedo costaba atinarles
+  // (solo respondían justo encima). Ahora el toque cuenta hasta ~14 px
+  // alrededor, y si alcanza a varios se abre el más cercano al dedo.
+  if (!lienzo_) lienzo_ = L.canvas({ padding: 0.5, tolerance: 14 });
 
   const z = map_.getZoom();
   const r = radioPorZoom(z);
@@ -778,7 +795,8 @@ function plotMarkers() {
         dashArray: bloqueada && cerca ? '3 3' : null,
       });
     }
-    marker.on('click', () => tocarPunto(orden.id));
+    marker._ordenId = orden.id;
+    marker.on('click', e => tocarPunto(ordenMasCercana(e, orden.id)));
     marker.addTo(map_);
     markers_.push(marker);
 
