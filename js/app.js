@@ -8,6 +8,7 @@ import { auth, db } from './firebase.js';
 import { initRouter, navigateTo, goBack, canGoBack } from './router.js';
 import { hashPin, generateSalt } from './crypto.js';
 import { toast as __appToast } from './ui.js';
+import { PADRONES, infoPadron, subirPadron } from './padrones.js';
 
 const SESSION_KEY = 'innova_session';
 const LOGIN_PATH  = '/STC-innova/login.html';
@@ -149,6 +150,90 @@ function abrirCambioPin(obligatorio) {
     });
 
     setTimeout(() => ov.querySelector('#pin-actual')?.focus(), 120);
+  });
+}
+
+// ── Padrones de clientes (solo admin) ─────────────
+// Los padrones con datos de clientes ya no son archivos públicos del sitio:
+// viven en Firestore (ver padrones.js). Aquí el admin los sube o actualiza.
+function abrirPadrones() {
+  const ov = document.createElement('div');
+  ov.style.cssText = 'position:fixed;inset:0;z-index:900;background:var(--tema-base,#060c18);overflow-y:auto;padding:24px 16px';
+  ov.innerHTML = `
+    <div style="max-width:460px;margin:0 auto">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
+        <div style="flex:1;font-size:20px;font-weight:600">Padrones de clientes</div>
+        <button class="cm-ico-btn" id="pad-cerrar" title="Cerrar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" width="18" height="18"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+      </div>
+      <div style="font-size:12.5px;color:var(--text-3);line-height:1.5;margin-bottom:16px">
+        Se guardan en Firebase y solo los ven usuarios con sesión activa. Para actualizar uno, sube su archivo .json.
+      </div>
+      <div id="pad-lista" style="display:flex;flex-direction:column;gap:10px"></div>
+    </div>`;
+  document.body.appendChild(ov);
+  ov.querySelector('#pad-cerrar').onclick = () => ov.remove();
+
+  const lista = ov.querySelector('#pad-lista');
+  Object.entries(PADRONES).forEach(([nombre, def]) => {
+    const card = document.createElement('div');
+    card.className = 'ds-card';
+    card.style.padding = '16px';
+    card.innerHTML = `
+      <div style="font-size:14px;font-weight:600"></div>
+      <div class="pad-estado" style="font-size:12px;color:var(--text-3);margin-top:4px">Revisando…</div>
+      <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
+        <button class="cm-btn marca pad-sitio">Copiar del sitio</button>
+        <button class="cm-btn pad-archivo">Subir archivo .json</button>
+        <input type="file" accept=".json,application/json" style="display:none"/>
+      </div>
+      <div class="pad-prog" style="font-size:12px;color:var(--text-2);margin-top:8px"></div>`;
+    card.firstElementChild.textContent = def.titulo;
+    lista.appendChild(card);
+
+    const estado = card.querySelector('.pad-estado');
+    const prog = card.querySelector('.pad-prog');
+    const botones = card.querySelectorAll('button');
+    const pintarEstado = async () => {
+      try {
+        const info = await infoPadron(nombre);
+        if (info?.partes) {
+          const f = info.actualizadoEn?.toDate?.();
+          estado.textContent = `En Firebase: ${Number(info.total || 0).toLocaleString('es-SV')} registros`
+            + (f ? ` · ${f.toLocaleDateString('es-SV', { day: 'numeric', month: 'short', year: 'numeric' })}` : '');
+          estado.style.color = '#22c55e';
+        } else {
+          estado.textContent = 'Todavía no está en Firebase';
+          estado.style.color = '#fbbf24';
+        }
+      } catch (e) { estado.textContent = 'No se pudo revisar: ' + e.message; }
+    };
+    const subir = async (obtener) => {
+      botones.forEach(b => b.disabled = true);
+      try {
+        prog.textContent = 'Leyendo…';
+        const datos = await obtener();
+        const n = await subirPadron(nombre, datos, session.displayName, (i, t) => { prog.textContent = `Subiendo parte ${i} de ${t}…`; });
+        prog.textContent = `Listo: ${n} parte${n > 1 ? 's' : ''}.`;
+        await pintarEstado();
+      } catch (e) {
+        prog.textContent = 'Error: ' + e.message;
+      } finally {
+        botones.forEach(b => b.disabled = false);
+      }
+    };
+    card.querySelector('.pad-sitio').onclick = () => subir(async () => {
+      const r = await fetch(def.archivoAnterior, { cache: 'no-store' });
+      if (!r.ok) throw new Error('El archivo ya no está en el sitio. Usa "Subir archivo".');
+      return r.json();
+    });
+    const inp = card.querySelector('input[type=file]');
+    card.querySelector('.pad-archivo').onclick = () => inp.click();
+    inp.onchange = () => {
+      const f = inp.files[0];
+      inp.value = '';
+      if (f) subir(async () => JSON.parse(await f.text()));
+    };
+    pintarEstado();
   });
 }
 
@@ -332,6 +417,7 @@ function setupTopbar(session) {
       </div>
       <div class="topbar-menu-item" id="menu-pin">${icono('<rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/>')}<span>Cambiar PIN</span></div>
       ${role === 'admin' ? `<div class="topbar-menu-item" id="menu-mant">${icono('<path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"/>')}<span>Modo mantenimiento</span><span class="estado-badge muted" id="menu-mant-estado" style="margin-left:auto">Apagado</span></div>` : ''}
+      ${role === 'admin' ? `<div class="topbar-menu-item" id="menu-padrones">${icono('<ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/>')}<span>Padrones de clientes</span></div>` : ''}
       <div class="topbar-menu-item salir" id="menu-salir">${icono('<path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>')}<span>Cerrar sesión</span></div>`;
     document.getElementById('topbar').appendChild(menu);
 
@@ -340,6 +426,7 @@ function setupTopbar(session) {
     document.addEventListener('click', e => { if (!menu.contains(e.target)) cerrar(); });
     menu.querySelector('#menu-pin').addEventListener('click', () => { cerrar(); abrirCambioPin(false); });
     menu.querySelector('#menu-mant')?.addEventListener('click', () => { cerrar(); toggleMantenimiento(); });
+    menu.querySelector('#menu-padrones')?.addEventListener('click', () => { cerrar(); abrirPadrones(); });
     menu.querySelector('#menu-salir').addEventListener('click', () => { cerrar(); salir.click(); });
   }
   // Datos del menú (se actualizan si la sesión se refrescó)

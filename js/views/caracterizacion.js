@@ -15,6 +15,7 @@
  */
 
 import { db } from '../firebase.js';
+import { leerPadron } from '../padrones.js';
 import { leer } from '../vivo.js';
 import { toast, escapeHtml } from '../ui.js';
 
@@ -55,6 +56,13 @@ async function cargarPadron() {
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), 8000);
   try {
+    // Ahora vive en Firestore (solo usuarios activos, ver padrones.js); el
+    // archivo público queda solo como respaldo mientras se migra.
+    const enFirebase = await Promise.race([
+      leerPadron('caracterizacion').catch(() => null),
+      new Promise((_, rej) => ctrl.signal.addEventListener('abort', () => rej(new Error('tiempo')))),
+    ]);
+    if (enFirebase) { clearTimeout(t); padron_ = enFirebase; return padron_; }
     const res = await fetch(PADRON_URL, { cache: 'force-cache', signal: ctrl.signal });
     clearTimeout(t);
     if (!res.ok) throw new Error('No se pudo leer el padrón base.');

@@ -9,6 +9,7 @@
  */
 
 import { db } from '../firebase.js';
+import { leerPadron } from '../padrones.js';
 import { suscribir, leer, tecnicosActivos } from '../vivo.js';
 import { padronAmi } from './ami_padron.js';
 import { toast, escapeHtml, guardarConEspera } from '../ui.js';
@@ -1382,9 +1383,14 @@ async function cargarContiguosData() {
   }
   contiguosLoading_ = true;
   try {
-    const resp = await fetch('contiguos.json');
-    if (!resp.ok) throw new Error('No se pudo cargar la base');
-    contiguosData_ = await resp.json();
+    // Ahora vive en Firestore (solo usuarios activos, ver padrones.js); el
+    // archivo público queda solo como respaldo mientras se migra.
+    contiguosData_ = await leerPadron('contiguos').catch(() => null);
+    if (!contiguosData_) {
+      const resp = await fetch('contiguos.json');
+      if (!resp.ok) throw new Error('No se pudo cargar la base');
+      contiguosData_ = await resp.json();
+    }
     // Construir índice NC -> posición
     contiguosIndex_ = {};
     for (let i = 0; i < contiguosData_.length; i++) {
