@@ -553,6 +553,26 @@ function initMap() {
 
   // Redibujar etiquetas al cambiar zoom
   map_.on('zoomend', () => plotMarkers());
+  // Al pellizcar, Leaflet solo estira la imagen del lienzo: las gotas se
+  // agrandaban con el zoom y en el mapa con giro (técnico) además se corrían
+  // de su lugar, y al soltar "saltaban". Ahora se redibujan en su sitio y con
+  // su tamaño en cada paso del pellizco (el zoom animado de los botones no
+  // pasa por aquí).
+  map_.on('zoom', () => {
+    if (map_._animatingZoom || !lienzo_ || !map_.hasLayer(lienzo_)) return;
+    // Con el mapa girado, leaflet-rotate ubica mal el lienzo a medio gesto:
+    // ahí se oculta mientras dura el pellizco y vuelve al soltar, ya en su
+    // lugar (mejor que verlas correrse).
+    const giro = map_._rotate ? (map_.getBearing() || 0) : 0;   // solo el mapa del técnico gira
+    if (Math.round(giro) % 360 !== 0) {
+      lienzo_._container.style.opacity = '0';
+      return;
+    }
+    lienzo_._reset();
+    // Dibujar ya (no en el próximo cuadro) para que no se vean un paso atrás.
+    if (lienzo_._redrawRequest) { L.Util.cancelAnimFrame(lienzo_._redrawRequest); lienzo_._redraw(); }
+  });
+  map_.on('zoomend', () => { if (lienzo_?._container) lienzo_._container.style.opacity = ''; });
   map_.on('moveend', () => { if (map_.getZoom() >= 16) plotMarkers(); });
 
   // Brújula — solo para técnicos
