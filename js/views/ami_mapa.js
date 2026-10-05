@@ -721,9 +721,13 @@ function iniciarGeolocalizacion() {
             iconAnchor: [8, 8],
           }),
           zIndexOffset: 1000,
+          // Sin interacción: el toque pasa a la gota que esté debajo (antes
+          // la ubicación propia y su círculo tapaban los puntos cercanos).
+          interactive: false,
         }).addTo(map_);
 
         geoCircle_ = L.circle([lat, lng], {
+          interactive: false,
           radius:      accuracy,
           color:       '#3b82f6',
           fillColor:   '#3b82f6',

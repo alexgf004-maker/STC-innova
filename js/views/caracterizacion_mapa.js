@@ -1225,8 +1225,8 @@ function initGPS() {
         if (!map_.hasLayer(geoMarker_)) geoMarker_.addTo(map_);
         if (!map_.hasLayer(geoCircle_)) geoCircle_.addTo(map_);
       } else {
-        geoMarker_ = L.marker([lat, lng], { icon: L.divIcon({ className:'', html: iconHtml, iconSize:[16,16], iconAnchor:[8,8] }), zIndexOffset: 1000 }).addTo(map_);
-        geoCircle_ = L.circle([lat, lng], { radius: accuracy, color:'#3b82f6', fillColor:'#3b82f6', fillOpacity:.08, weight:1 }).addTo(map_);
+        geoMarker_ = L.marker([lat, lng], { icon: L.divIcon({ className:'', html: iconHtml, iconSize:[16,16], iconAnchor:[8,8] }), zIndexOffset: 1000, interactive: false }).addTo(map_);
+        geoCircle_ = L.circle([lat, lng], { radius: accuracy, color:'#3b82f6', fillColor:'#3b82f6', fillOpacity:.08, weight:1, interactive: false }).addTo(map_);
       }
     },
     err => console.warn('[crc-mapa] GPS:', err.message),
