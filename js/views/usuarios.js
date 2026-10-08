@@ -8,7 +8,10 @@ import { db, auth, SEED } from '../firebase.js';
 import { hashPin, derivePassword, generateSalt } from '../crypto.js';
 import { toast, escapeHtml } from '../ui.js';
 
-const AREAS    = ['CAMBIOS', 'Caracterizacion', 'Reclamos', 'AMI'];
+const AREAS    = ['CAMBIOS', 'Caracterizacion', 'Reclamos', 'AMI', 'Factibilidades'];
+// Áreas donde el técnico trabaja solo (sin pareja): se guarda un destino fijo
+// para que las vistas que esperan asignacionActual.destino no se rompan.
+const SIN_PAREJA = { Factibilidades: 'Individual' };
 const DESTINOS = {
   CAMBIOS: ['Pareja 1', 'Pareja 2', 'Pareja 3', 'Pareja 4'],
   Caracterizacion: ['Pareja 1', 'Pareja 2', 'Pareja 3'],
@@ -22,8 +25,10 @@ let container_, session_;
 let usuarios = [];
 let filtro_ = 'todos', busq_ = '', verInactivos_ = false;
 
-const AREA_TXT  = { CAMBIOS: 'Cambios', Caracterizacion: 'Caracterización', Reclamos: 'Reclamos SIGET', AMI: 'AMI', OTC: 'OTC' };
-const AREA_CLS  = { CAMBIOS: 'cm', Caracterizacion: 'cr', Reclamos: 'rc', AMI: 'am', OTC: 'otc' };
+const AREA_TXT  = { CAMBIOS: 'Cambios', Caracterizacion: 'Caracterización', Reclamos: 'Reclamos SIGET', AMI: 'AMI', OTC: 'OTC', Factibilidades: 'Factibilidades' };
+const AREA_CLS  = { CAMBIOS: 'cm', Caracterizacion: 'cr', Reclamos: 'rc', AMI: 'am', OTC: 'otc', Factibilidades: 'fb' };
+// "Cambios · Pareja 2" / "Factibilidades" (sin el destino fijo de las áreas individuales)
+const textoAsig = (area, dest) => SIN_PAREJA[area] ? (AREA_TXT[area] || area) : `${AREA_TXT[area] || area} · ${dest || '—'}`;
 const ICO = {
   plus:  '<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>',
   pin:   '<path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/>',
@@ -124,6 +129,7 @@ function renderShell() {
               <div class="select-chip" data-val="Caracterizacion">Caracterización</div>
               <div class="select-chip" data-val="Reclamos">Reclamos SIGET</div>
               <div class="select-chip" data-val="AMI">AMI</div>
+              <div class="select-chip" data-val="Factibilidades">Factibilidades</div>
               <div class="select-chip" data-val="null">Sin asignación</div>
             </div>
           </div>
@@ -255,7 +261,7 @@ function renderLista(filtroArg) {
   const inact = lista.filter(u => u.active === false);
   const grupos = [];
   const tecAct = act.filter(u => u.role === 'tecnico');
-  ['CAMBIOS', 'Caracterizacion', 'AMI', 'Reclamos', 'OTC'].forEach(a => {
+  ['CAMBIOS', 'Caracterizacion', 'AMI', 'Reclamos', 'Factibilidades', 'OTC'].forEach(a => {
     const arr = tecAct.filter(u => u.asignacionActual?.area === a);
     if (arr.length) grupos.push({ titulo: AREA_TXT[a], cls: AREA_CLS[a], arr });
   });
@@ -289,7 +295,7 @@ function tarjetaUsuario(u) {
   const asignacion = u.role !== 'tecnico' || u.active === false ? '' : `
     <button class="us-asig ${area ? cls : 'sin'}" data-asignar="${u.id}">
       ${svg(ICO.pin, 12)}
-      ${area ? `${escapeHtml(AREA_TXT[area] || area)} · ${escapeHtml(dest || '—')}` : 'Sin asignar · tocar para asignar'}
+      ${area ? escapeHtml(textoAsig(area, dest)) : 'Sin asignar · tocar para asignar'}
     </button>`;
   return `
     <div class="us-card ${u.active === false ? 'inactivo' : ''}">
@@ -331,7 +337,7 @@ function abrirAcciones(uid) {
         </div>
       </div>
       <div class="flex-col gap-8">
-        ${u.role === 'tecnico' && u.active !== false ? item('us-a-asig', ICO.pin, 'Asignar área y pareja', area ? `${escapeHtml(AREA_TXT[area] || area)} · ${escapeHtml(u.asignacionActual?.destino || '—')}` : 'Sin asignar hoy') : ''}
+        ${u.role === 'tecnico' && u.active !== false ? item('us-a-asig', ICO.pin, 'Asignar área y pareja', area ? escapeHtml(textoAsig(area, u.asignacionActual?.destino)) : 'Sin asignar hoy') : ''}
         ${session_.role === 'admin' ? item('us-a-cred', ICO.lock, 'Cambiar usuario o PIN', '') : ''}
         ${puedeToggle(u) ? item('us-a-toggle', u.active === false ? ICO.on : ICO.off, u.active === false ? 'Activar usuario' : 'Desactivar usuario', u.active === false ? 'Podrá volver a entrar' : 'Ya no podrá entrar a la app', u.active === false ? 'ok' : 'danger') : ''}
       </div>
@@ -488,7 +494,7 @@ function updateDestinoRow(area, selectedDestino = null) {
   const label = document.getElementById('asig-destino-label');
   const row   = document.getElementById('asig-destino-row');
 
-  if (!area || area === 'null') {
+  if (!area || area === 'null' || SIN_PAREJA[area]) {
     wrap.style.display = 'none';
     return;
   }
@@ -511,7 +517,7 @@ function updateDestinoRow(area, selectedDestino = null) {
 
 async function guardarAsignacion() {
   const area    = getSelectedChip('asig-area-row');
-  const destino = getSelectedChip('asig-destino-row');
+  const destino = SIN_PAREJA[area] || getSelectedChip('asig-destino-row');
 
   if (!area) {
     showFormError('asig-error', 'Selecciona un área.');

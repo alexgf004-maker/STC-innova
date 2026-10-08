@@ -56,6 +56,10 @@
   --am-light:   #a78bfa;
   --am-glass:   rgba(139,92,246,.10);
   --am-border:  rgba(139,92,246,.30);
+  /* Factibilidades (rosa) */
+  --fb-light:   #f472b6;
+  --fb-glass:   rgba(236,72,153,.10);
+  --fb-border:  rgba(236,72,153,.30);
   /* Reclamos SIGET (amarillo) */
   --rc:         #d97706;
   --rc-light:   #fbbf24;
@@ -506,6 +510,7 @@ body {
 .nav-item.otc      { --nav-acc: var(--otc-light); --nav-tint: rgba(96,165,250,.16); }
 .nav-item.cr       { --nav-acc: var(--cr-light);  --nav-tint: rgba(239,68,68,.16); }
 .nav-item.am       { --nav-acc: var(--am-light);  --nav-tint: rgba(139,92,246,.18); }
+.nav-item.fb       { --nav-acc: var(--fb-light);  --nav-tint: rgba(236,72,153,.16); }
 .nav-item.rc       { --nav-acc: var(--rc-light);  --nav-tint: rgba(251,191,36,.16); }
 .nav-item.bod      { --nav-acc: var(--bod-light); --nav-tint: rgba(139,92,246,.16); }
 .nav-item {
@@ -594,6 +599,7 @@ body {
 .welcome-card.otc    { background: var(--otc-glass); border-color: var(--otc-border); color: var(--otc-light); }
 .welcome-card.cr     { background: var(--cr-glass);  border-color: var(--cr-border);  color: var(--cr-light); }
 .welcome-card.am     { background: var(--am-glass);  border-color: var(--am-border);  color: var(--am-light); }
+.welcome-card.fb     { background: var(--fb-glass);  border-color: var(--fb-border);  color: var(--fb-light); }
 .welcome-card.rc     { background: var(--rc-glass);  border-color: var(--rc-border);  color: var(--rc-light); }
 .welcome-card.office { background: var(--glass);     border-color: var(--border);     color: var(--text-2); }
 .welcome-card::before {
@@ -624,6 +630,8 @@ body {
 .stat-chip.cr-accent .val  { color: var(--cr-light); }
 .stat-chip.am-accent     { border-color: var(--am-border);     background: var(--am-glass); }
 .stat-chip.am-accent .val  { color: var(--am-light); }
+.stat-chip.fb-accent     { border-color: var(--fb-border);     background: var(--fb-glass); }
+.stat-chip.fb-accent .val  { color: var(--fb-light); }
 .stat-chip.rc-accent     { border-color: var(--rc-border);     background: var(--rc-glass); }
 .stat-chip.rc-accent .val  { color: var(--rc-light); }
 .stat-chip.warn-accent   { border-color: rgba(245,158,11,.2);  background: rgba(245,158,11,.06); }
@@ -931,6 +939,7 @@ body {
 .user-avatar.otc { background: var(--otc-glass); border-color: var(--otc-border); color: var(--otc-light); }
 .user-avatar.cr  { background: var(--cr-glass);  border-color: var(--cr-border);  color: var(--cr-light); }
 .user-avatar.am  { background: var(--am-glass);  border-color: var(--am-border);  color: var(--am-light); }
+.user-avatar.fb  { background: var(--fb-glass);  border-color: var(--fb-border);  color: var(--fb-light); }
 .user-avatar.rc  { background: var(--rc-glass);  border-color: var(--rc-border);  color: var(--rc-light); }
 
 /* User info */
@@ -948,6 +957,7 @@ body {
 .user-asign.otc { color: var(--otc-light); }
 .user-asign.cr  { color: var(--cr-light); }
 .user-asign.am  { color: var(--am-light); }
+.user-asign.fb  { color: var(--fb-light); }
 .user-asign.rc  { color: var(--rc-light); }
 .sin-asign { color: var(--text-4); font-style: italic; }
 .dot-sep { opacity: .4; }
@@ -1062,6 +1072,7 @@ body {
 .area-tab.active.cr { background: var(--cr-glass); color: var(--cr-light); }
 .area-tab.active.rc { background: var(--rc-glass); color: var(--rc-light); }
 .area-tab.active.am { background: rgba(139,92,246,.15); color: #a78bfa; }
+.area-tab.active.fb { background: var(--fb-glass); color: var(--fb-light); }
 
 /* Panel header */
 .panel-header {
@@ -1086,6 +1097,7 @@ body {
 .progress-bar-fill.otc { background: var(--otc-light); }
 .progress-bar-fill.cr  { background: var(--cr-light); }
 .progress-bar-fill.am  { background: var(--am-light); }
+.progress-bar-fill.fb  { background: var(--fb-light); }
 .progress-bar-fill.rc  { background: var(--rc-light); }
 .progress-stats {
   display: flex; gap: 12px; margin-top: 10px;
@@ -1206,6 +1218,7 @@ body {
 }
 .btn-action.cm      { color: var(--cm-light);    border-color: var(--cm-border);    background: var(--cm-glass); }
 .btn-action.am      { color: var(--am-light);    border-color: var(--am-border);    background: var(--am-glass); }
+.btn-action.fb      { color: var(--fb-light);    border-color: var(--fb-border);    background: var(--fb-glass); }
 .btn-action.outline { color: var(--text-2);       border-color: var(--border);       background: var(--glass); }
 .btn-action.warn    { color: var(--warn-light);   border-color: rgba(245,158,11,.3); background: rgba(245,158,11,.08); }
 .btn-action.danger  { color: var(--crit-light);   border-color: rgba(239,68,68,.3);  background: rgba(239,68,68,.08); }
@@ -2025,6 +2038,7 @@ body {
 .ds-pcard.cr { background: linear-gradient(150deg,#f87171 0%,#c2443f 60%,#7a2825 100%); box-shadow: 0 16px 34px -14px rgba(239,68,68,.4); }
 .ds-pcard.am { background: linear-gradient(150deg,#6d54c8 0%,#4f3a9e 60%,#332363 100%); box-shadow: 0 16px 34px -14px rgba(109,84,200,.5); }
 .ds-pcard.rc { background: linear-gradient(150deg,#fbbf24 0%,#d97706 60%,#92590a 100%); box-shadow: 0 16px 34px -14px rgba(251,191,36,.4); }
+.ds-pcard.fb { background: linear-gradient(150deg,#f472b6 0%,#c0307a 60%,#6e1846 100%); box-shadow: 0 16px 34px -14px rgba(236,72,153,.45); }
 .ds-pcard.otc{ background: linear-gradient(150deg,#5b8def 0%,#3f63b0 60%,#26386e 100%); box-shadow: 0 16px 34px -14px rgba(96,165,250,.4); }
 .ds-pcard-badge { font-size:11px; font-weight:500; background:rgba(255,255,255,.16); padding:4px 12px; border-radius:20px; }
 .ds-pcard-lbl   { font-size:12px; color:rgba(255,255,255,.65); }
@@ -2050,6 +2064,7 @@ body {
 .ds-bar > i.am { background: var(--am-light); }
 .ds-bar > i.rc { background: var(--rc-light); }
 .ds-bar > i.otc{ background: var(--otc-light); }
+.ds-bar > i.fb { background: var(--fb-light); }
 
 /* — Recuadro de dato destacado (para leer bajo el sol: dirección, medidor) — */
 .ds-hilite { background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.12); border-radius: 11px; padding: 10px 12px; }
@@ -2163,6 +2178,7 @@ body {
 .us-sec-dot.cm { background: var(--cm-light); }  .us-sec-dot.cr { background: var(--cr-light); }
 .us-sec-dot.am { background: var(--am-light); }  .us-sec-dot.rc { background: var(--rc-light); }
 .us-sec-dot.otc { background: var(--otc-light); }
+.us-sec-dot.fb { background: var(--fb-light); }
 .us-count { font-size: 11px; font-weight: 600; color: var(--text-3); background: var(--glass); border: 1px solid var(--border); border-radius: 999px; padding: 2px 9px; }
 .us-mini-btn { font-family: inherit; font-size: 11px; font-weight: 600; color: var(--text-2); background: none; border: 1px solid var(--border); border-radius: 999px; padding: 3px 10px; cursor: pointer; }
 .us-card {
@@ -2186,6 +2202,7 @@ body {
 .us-asig.am  { color: var(--am-light);  border-color: var(--am-border);  background: var(--am-glass); }
 .us-asig.rc  { color: var(--rc-light);  border-color: var(--rc-border);  background: var(--rc-glass); }
 .us-asig.otc { color: var(--otc-light); border-color: var(--otc-border); background: var(--otc-glass); }
+.us-asig.fb  { color: var(--fb-light);  border-color: var(--fb-border);  background: var(--fb-glass); }
 .us-asig:disabled { cursor: default; opacity: .6; }
 .us-dots {
   width: 34px; height: 34px; flex-shrink: 0; display: flex; align-items: center; justify-content: center;
@@ -2241,6 +2258,7 @@ body {
 .hm-ic.cr  { background: linear-gradient(140deg,#f87171,#b91c1c); box-shadow: 0 8px 20px -8px rgba(239,68,68,.7); }
 .hm-ic.am, .hm-ic.bod { background: linear-gradient(140deg,#a78bfa,#5b21b6); box-shadow: 0 8px 20px -8px rgba(139,92,246,.7); }
 .hm-ic.rc  { background: linear-gradient(140deg,#fbbf24,#b45309); box-shadow: 0 8px 20px -8px rgba(251,191,36,.6); }
+.hm-ic.fb  { background: linear-gradient(140deg,#f472b6,#9d174d); box-shadow: 0 8px 20px -8px rgba(236,72,153,.7); }
 .hm-ic.us  { background: linear-gradient(140deg,#64748b,#334155); box-shadow: 0 8px 20px -8px rgba(100,116,139,.6); }
 /* Pastillas de estado (pendiente / al día) */
 .hm-pill { display: inline-block; padding: 3px 9px; border-radius: 999px; font-size: 11px; font-weight: 600; margin-top: 3px; }
@@ -2549,6 +2567,15 @@ body[data-area="rc"] {           /* Reclamos SIGET: ámbar */
   --marca-a: #b45309; --marca-b: #f59e0b;
   --marca-sombra: rgba(245,158,11,.7); --marca-glow: rgba(245,158,11,.55);
   --tema-acento: #fbbf24;
+}
+body[data-area="fb"] {           /* Factibilidades: rosa */
+  --tema-base: #140d1a; --tema-glow: rgba(236,72,153,.14); --tema-glow2: rgba(249,168,212,.04); --tema-glow3: rgba(157,23,77,.09);
+  --glass: #221a2e; --glass-in: #2a213a; --glass-hov: #282038;
+  --border: rgba(220,160,200,.12); --border-md: rgba(220,160,200,.17);
+  --nav-bg: #160f1f; --sheet-bg: #1f172a;
+  --marca-a: #db2777; --marca-b: #f472b6;
+  --marca-sombra: rgba(236,72,153,.72); --marca-glow: rgba(236,72,153,.58);
+  --tema-acento: #f472b6;
 }
 
 /* ── Pestañas animadas (ver activarPestanasAnimadas en ui.js): píldora

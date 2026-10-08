@@ -55,6 +55,8 @@ js/
     caracterizacion.js + caracterizacion_mapa.js   instalación + retiro (titular/suplentes)
     ami.js + ami_mapa.js           área AMI (identificador: NC, NO tiene WO)
     reclamos.js             bitácora Reclamos SIGET
+    factibilidades.js + factibilidades_mapa.js   área Factibilidades (técnico individual, semáforo de días)
+  factibilidades_comun.js  listeners compartidos de órdenes abiertas de Factibilidades
     bodega.js, usuarios.js, areas.js
 ```
 
@@ -71,12 +73,17 @@ XLSX (SheetJS) y Firebase compat son **globales** (`XLSX.utils.*`,
 | Caracterización | NC | `caracterizacion_ordenes` + `caracterizacion_retiros` | instalación (titular+2 suplentes, cascada de niveles) y retiro son colecciones separadas; el dashboard debe sumar AMBAS |
 | AMI | **NC (no WO)** | `ami_ordenes` | ruta diaria (no lista completa como Cambios); tiene sistema de residuos (`fechaRuta`), padrón de "ya cambiados" (`ami_cambiados`), historial (`ami_historial`), metas configurables (`ami_config`) |
 | Reclamos | WO+NC | `reclamos_siget` | solo obligatorios: WO, NC, Concepto; el resto opcional |
+| Factibilidades | `numeroOrden` | `factibilidades_ordenes` + `factibilidades_config` | ver SPEC_Factibilidades.md. **Sin parejas**: el técnico se asigna con `destino:'Individual'` (fijo, para no romper vistas que esperan destino) y las órdenes van por `asignadoUid`. El semáforo de días hábiles se calcula en el cliente, nunca se guarda |
 
 **Estados reales que escriben los mapas** (usar exactamente estos, no inventar):
 - Cambios/AMI: `estadoCampo` = `null` (pendiente) → `'hecha'` → `'aprobada'`
 - Caracterización instalación: `estado` = `null` → `'por_confirmar'` → `'confirmada'`
   (NUNCA usa el valor `'hecha'` — es un error común confundirlo con Cambios/AMI)
 - Caracterización retiro: `estado` = `null` → `'retirado'` / `'no_retirado'`
+- Factibilidades: `estado` = `null` (abierta) / `'visita'` (sin acceso, sigue
+  abierta) → `'cerrada'`, con `resultado` `'factible'` / `'no_factible'` /
+  `'sin_acceso'`. Toda orden nueva se guarda con `estado: null` EXPLÍCITO
+  (las consultas de abiertas usan `== null` y no encuentran el campo faltante)
 
 ## Sistema de diseño (rediseño premium en curso, ir por partes)
 
@@ -91,7 +98,8 @@ Estilo de referencia: tarjeta premium con degradado (una sola por vista, la
 protagonista — no abusar de varias tarjetas con degradado en la misma
 pantalla), tipografía fina (peso 500, no 800), mucho aire entre secciones.
 Colores de acento por área ya definidos: cm (aqua, Cambios), cr (rojo,
-Caracterización), am (morado, AMI), rc (amarillo, Reclamos).
+Caracterización), am (morado, AMI), rc (amarillo, Reclamos), fb (rosa,
+Factibilidades; no verde/amarillo/rojo para no confundirse con el semáforo).
 
 **Legibilidad de campo:** los técnicos trabajan bajo el sol — cualquier
 panel de detalle en un mapa necesita alto contraste (blancos, no grises
@@ -270,7 +278,8 @@ reintroducir clustering sin que el usuario lo pida de nuevo explícitamente.
 **Colores de degradado de tarjeta premium por área** (ya en `ds-pcard`):
 cm (Cambios) `#2dd4bf→#1a9e94→#0f5f5a`, cr (Caracterización)
 `#f87171→#c2443f→#7a2825`, am (AMI) `#6d54c8→#4f3a9e→#332363`, rc
-(Reclamos) `#fbbf24→#d97706→#92590a`, otc/admin `#5b8def→#3f63b0→#26386e`.
+(Reclamos) `#fbbf24→#d97706→#92590a`, fb (Factibilidades)
+`#f472b6→#c0307a→#6e1846`, otc/admin `#5b8def→#3f63b0→#26386e`.
 
 **Login**: rediseño solo de CSS (no se tocó el HTML ni la lógica de auth).
 Logo con degradado azul-cian (`#3b82f6→#22d3ee`) con sombra, botón de

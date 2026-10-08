@@ -42,6 +42,11 @@ const NAV_CONFIGS = {
     { id: 'ami_mapa', label: 'Mapa',    icon: 'map',  color: 'am' },
     { id: 'bodega',   label: 'Bodega',  icon: 'box', color: 'bod' },
   ],
+  tecnico_factibilidades: [
+    { id: 'home',               label: 'Inicio',  icon: 'home' },
+    { id: 'factibilidades',     label: 'Órdenes', icon: 'list', color: 'fb' },
+    { id: 'factibilidades_mapa',label: 'Mapa',    icon: 'map',  color: 'fb' },
+  ],
   tecnico_none: [
     { id: 'home', label: 'Inicio', icon: 'home' },
   ],
@@ -105,7 +110,7 @@ export async function navigateTo(tabId, _esRegreso) {
 
   // 'cambios' y 'caracterizacion' viven bajo la pestaña 'areas'
   // (admin/asistente no tienen pestaña propia de cada área).
-  const bajoAreas = ['cambios','caracterizacion','caracterizacion_mapa','reclamos','ami','ami_mapa'];
+  const bajoAreas = ['cambios','caracterizacion','caracterizacion_mapa','reclamos','ami','ami_mapa','factibilidades','factibilidades_mapa'];
   // Si la vista tiene su propia pestaña (el técnico sí tiene "Órdenes" y
   // "Mapa"), se resalta esa; si no, la de Áreas. Antes al técnico no se le
   // marcaba ninguna pestaña en Órdenes ni en Mapa.
@@ -202,8 +207,9 @@ const AREA_POR_TAB = {
   caracterizacion: 'cr', caracterizacion_mapa: 'cr',
   ami: 'am', ami_mapa: 'am',
   reclamos: 'rc',
+  factibilidades: 'fb', factibilidades_mapa: 'fb',
 };
-const AREA_TECNICO = { CAMBIOS: 'cm', Caracterizacion: 'cr', AMI: 'am', Reclamos: 'rc' };
+const AREA_TECNICO = { CAMBIOS: 'cm', Caracterizacion: 'cr', AMI: 'am', Reclamos: 'rc', Factibilidades: 'fb' };
 
 function aplicarTemaArea(tabId) {
   const s = currentSession || {};
@@ -230,6 +236,7 @@ function buildNavbar(session) {
               : area === 'Caracterizacion' ? 'tecnico_caracterizacion'
               : area === 'Reclamos' ? 'tecnico_reclamos'
               : area === 'AMI' ? 'tecnico_ami'
+              : area === 'Factibilidades' ? 'tecnico_factibilidades'
               : 'tecnico_none';
   }
 

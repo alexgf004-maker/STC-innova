@@ -442,7 +442,7 @@ function getSubtitle(role, area) {
   if (role === 'asistente') return 'Asistente · Operación diaria';
   if (role === 'tecnico') {
     if (!area) return 'Técnico · Sin asignación hoy';
-    const AREA_TXT = { CAMBIOS: 'Cambios', Caracterizacion: 'Caracterización', Reclamos: 'Reclamos SIGET', AMI: 'AMI' };
+    const AREA_TXT = { CAMBIOS: 'Cambios', Caracterizacion: 'Caracterización', Reclamos: 'Reclamos SIGET', AMI: 'AMI', Factibilidades: 'Factibilidades' };
     return `Técnico · ${AREA_TXT[area] || area}`;
   }
   return 'INNOVA STC';

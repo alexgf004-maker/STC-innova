@@ -19,6 +19,7 @@ export async function init(container, session) {
   if (role === 'tecnico') {
     __containerTec = container;
     if (!area) { renderNoAsignacion(container, session); }
+    else if (area === 'Factibilidades') { abrirHomeFactibilidades(container, session); }
     else { renderHomeTecnico(container, session, area, destino); if (area !== 'Reclamos') cargarDatosTecnico(session, area, destino); }
     cargarDespachosPendientesTecnico(session);
     return;
@@ -74,6 +75,21 @@ function cargarDespachosPendientesTecnico(session) {
 // El router llama a esto al salir de la vista
 export function cleanup() {
   if (__unsubPendientes) { try { __unsubPendientes(); } catch {} __unsubPendientes = null; }
+  if (__cleanupFb) { try { __cleanupFb(); } catch {} __cleanupFb = null; }
+}
+
+// Factibilidades trabaja individual y con semáforo de días: su inicio vive en
+// su propio módulo (no tiene pareja, meta por pareja ni bodega).
+let __cleanupFb = null;
+async function abrirHomeFactibilidades(container, session) {
+  try {
+    const m = await import('./factibilidades.js');
+    if (__containerTec !== container || !container.isConnected) return;
+    __cleanupFb = m.initHomeTecnico(container, session) || null;
+  } catch (err) {
+    console.warn('[home] Factibilidades:', err.message);
+    renderNoAsignacion(container, session);
+  }
 }
 
 function intentarPintarPendientes(intento){
@@ -90,8 +106,8 @@ function intentarPintarPendientes(intento){
   renderDespachosPendientesTecnico(cont);
 }
 
-const CAMP_LABEL_HOME = { CAMBIOS:'Cambio de Medidores', AMI:'AMI', Caracterizacion:'Caracterización', Reclamos:'Reclamos SIGET', ReclamosSIGET:'Reclamos SIGET', OTC:'OTC' };
-const CAMP_COLOR_HOME = { CAMBIOS:'#2dd4bf', AMI:'#a78bfa', Caracterizacion:'#ef4444', Reclamos:'#fbbf24', ReclamosSIGET:'#fbbf24', OTC:'#60a5fa' };
+const CAMP_LABEL_HOME = { CAMBIOS:'Cambio de Medidores', AMI:'AMI', Caracterizacion:'Caracterización', Reclamos:'Reclamos SIGET', ReclamosSIGET:'Reclamos SIGET', OTC:'OTC', Factibilidades:'Factibilidades' };
+const CAMP_COLOR_HOME = { CAMBIOS:'#2dd4bf', AMI:'#a78bfa', Caracterizacion:'#ef4444', Reclamos:'#fbbf24', ReclamosSIGET:'#fbbf24', OTC:'#60a5fa', Factibilidades:'#f472b6' };
 
 function renderDespachosPendientesTecnico(cont) {
   document.getElementById('despachos-pend-tec')?.remove();
@@ -701,15 +717,17 @@ const AREA_INFO_HOME = {
   Caracterizacion: { label: 'Caracterización', color: '#ef4444', rgb: '239,68,68',   ruta: 'caracterizacion', cls: 'cr' },
   AMI:             { label: 'AMI',             color: '#a78bfa', rgb: '167,139,250', ruta: 'ami', cls: 'am' },
   Reclamos:        { label: 'Reclamos SIGET',  color: '#fbbf24', rgb: '251,191,36',  ruta: 'reclamos', cls: 'rc' },
+  Factibilidades:  { label: 'Factibilidades',  color: '#f472b6', rgb: '244,114,182', ruta: 'factibilidades', cls: 'fb', individual: true },
   OTC:             { label: 'OTC',             color: '#60a5fa', rgb: '96,165,250',  ruta: null, cls: 'otc' },
 };
-const ORDEN_AREAS = ['CAMBIOS', 'Caracterizacion', 'AMI', 'Reclamos', 'OTC'];
+const ORDEN_AREAS = ['CAMBIOS', 'Caracterizacion', 'AMI', 'Reclamos', 'Factibilidades', 'OTC'];
 
 const IC_HOME = {
   CAMBIOS:  '<circle cx="12" cy="12" r="3"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
   Caracterizacion: '<path d="M3 3v18h18"/><path d="M18 17V9M13 17V5M8 17v-3"/>',
   AMI:      '<path d="M4.9 16.1a10 10 0 010-8.2M7.8 13.8a6 6 0 010-3.6M19.1 7.9a10 10 0 010 8.2M16.2 10.2a6 6 0 010 3.6"/><circle cx="12" cy="12" r="2"/>',
   Reclamos: '<path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>',
+  Factibilidades: '<path d="M9 11l3 3 8-8"/><path d="M20 12v7a2 2 0 01-2 2H6a2 2 0 01-2-2V5a2 2 0 012-2h9"/>',
   bodega:   '<path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/>',
   usuarios: '<path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/>',
   devolver: '<polyline points="9 10 4 15 9 20"/><path d="M20 4v7a4 4 0 01-4 4H4"/>',
@@ -771,10 +789,10 @@ function renderHomeOficina(container, session) {
 
       <div class="ds-sec">Áreas</div>
       <div class="hm-grid" style="margin-bottom:22px">
-        ${['CAMBIOS', 'Caracterizacion', 'AMI', 'Reclamos'].map(a => {
+        ${['CAMBIOS', 'Caracterizacion', 'AMI', 'Reclamos', 'Factibilidades'].map(a => {
           const i = AREA_INFO_HOME[a];
           return tile('hm-sub-' + a, i.ruta, i.cls, i.label, icHome(a, '#fff'),
-            a === 'Reclamos' ? 'Bitácora de órdenes' : '<span class="hm-cargando">…</span>');
+            a === 'Reclamos' ? 'Bitácora de órdenes' : a === 'Factibilidades' ? 'Semáforo de días hábiles' : '<span class="hm-cargando">…</span>');
         }).join('')}
       </div>
 
@@ -893,10 +911,15 @@ async function cargarPersonalHoy() {
               <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
                 <span style="width:8px;height:8px;border-radius:50%;background:${info.color}"></span>
                 <span style="font-size:13px;font-weight:600;color:${info.color}">${escapeHtml(info.label)}</span>
-                <span style="margin-left:auto;font-size:11px;color:var(--text-3)">${parejas.length} pareja${parejas.length !== 1 ? 's' : ''} · ${n} técnico${n !== 1 ? 's' : ''}</span>
+                <span style="margin-left:auto;font-size:11px;color:var(--text-3)">${info.individual ? '' : `${parejas.length} pareja${parejas.length !== 1 ? 's' : ''} · `}${n} técnico${n !== 1 ? 's' : ''}</span>
               </div>
               <div class="flex-col gap-8">
-                ${parejas.map(pareja => `
+                ${info.individual ? `
+                  <div style="display:flex;flex-wrap:wrap;gap:6px">
+                    ${parejas.flatMap(p => porArea[area][p]).sort(porNombre).map(nombre => `
+                      <div class="hm-chip" style="background:rgba(${info.rgb},.1);border-color:rgba(${info.rgb},.28)">${escapeHtml(nombre)}</div>
+                    `).join('')}
+                  </div>` : parejas.map(pareja => `
                   <div style="display:flex;align-items:flex-start;gap:10px">
                     <div style="font-size:12px;font-weight:600;color:var(--text-3);min-width:64px;flex-shrink:0;padding-top:4px">${escapeHtml(pareja)}</div>
                     <div style="display:flex;flex-wrap:wrap;gap:6px">
