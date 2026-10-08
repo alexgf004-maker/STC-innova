@@ -10,17 +10,24 @@
  *   admin/asistente -> todas las órdenes abiertas
  */
 
-import { suscribirAbiertas, suscribirConfig, META_DEFECTO } from '../factibilidades_comun.js';
+import { db } from '../firebase.js';
+import { tecnicosActivos } from '../vivo.js';
+import { suscribirAbiertas, suscribirConfig, META_DEFECTO, AREA } from '../factibilidades_comun.js';
 import { semaforoOrden, SEMAFORO, aFecha } from '../dias_habiles.js';
 import { escapeHtml } from '../ui.js';
 import { ponerEtiquetas } from './etiquetas_mapa.js';
-import { abrirResultado, corregirUbicacion, puedeActuar, cerrarHojas } from './factibilidades_acciones.js';
+import { abrirResultado, corregirUbicacion, abrirReasignar, puedeActuar, cerrarHojas } from './factibilidades_acciones.js';
 
 const COLOR_SIN_FECHA = '#94a3b8';
 
 let map_ = null, lienzo_ = null, markers_ = [], yaCentrado_ = false;
 let session_, role_;
 let ordenes_ = [];
+// Oficina: filtros por semáforo y técnico, y técnicos del área para reasignar
+let semF_ = 'todas', tecF_ = 'todos', tecnicos_ = [];
+const pasaFiltro = o => (semF_ === 'todas' || sem(o).color === semF_)
+  && (tecF_ === 'todos' || (tecF_ === 'sin' ? !o.asignadoUid : o.asignadoUid === tecF_));
+const visibles = () => ordenes_.filter(pasaFiltro);
 let off_ = null, offCfg_ = null;
 let cfg_ = { festivos: [], festivosSet: new Set(), meta: META_DEFECTO };
 let geoMarker_ = null, geoCircle_ = null, watchId_ = null;
@@ -61,6 +68,11 @@ export function init(container, session) {
   session_ = session;
   role_    = session.role;
   yaCentrado_ = false;
+  semF_ = 'todas'; tecF_ = 'todos'; tecnicos_ = [];
+  if (role_ !== 'tecnico') {
+    tecnicosActivos(db).then(l => { tecnicos_ = l.filter(u => u.asignacionActual?.area === AREA); })
+      .catch(err => console.warn('[fb-mapa] técnicos:', err.message));
+  }
 
   renderShell(container);
   initMap();
@@ -89,6 +101,7 @@ export function cleanup() {
   if (off_) { try { off_(); } catch {} off_ = null; }
   if (offCfg_) { try { offCfg_(); } catch {} offCfg_ = null; }
   cerrarHojas();
+  document.getElementById('fbm-sheet-filtro')?.remove();
   abierta_ = null;
   if (watchId_ != null && navigator.geolocation) { navigator.geolocation.clearWatch(watchId_); watchId_ = null; }
   if (map_) { try { map_.remove(); } catch {} map_ = null; }
@@ -112,6 +125,10 @@ function renderShell(container) {
           <span style="font-weight:800;color:var(--fb-light);letter-spacing:.04em;margin-right:2px">FACT</span>
           <span id="fbm-stat-txt">Cargando…</span>
         </div>
+        ${role_ !== 'tecnico' ? `
+        <button class="mapa-btn-icon" id="fbm-filtro" title="Filtrar" style="border-color:var(--fb-border);color:var(--fb-light)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+        </button>` : ''}
         <button class="mapa-btn-icon" id="fbm-mi-ubicacion" title="Mi ubicación">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>
         </button>
@@ -141,10 +158,13 @@ function renderShell(container) {
   container.querySelector('#fbm-mi-ubicacion').onclick = () => {
     if (geoMarker_ && map_) map_.setView(geoMarker_.getLatLng(), 17);
   };
+  const btnF = container.querySelector('#fbm-filtro');
+  if (btnF) btnF.onclick = abrirFiltro;
   window.__fbMapa = {
     verOrden, abrirGoogleMaps,
     resultado: id => abrirResultado(ordenes_.find(x => x.id === id), session_, () => cerrarPanel()),
     gps: id => corregirUbicacion(ordenes_.find(x => x.id === id), session_, null, watchId_ != null ? fuenteGpsMapa : undefined),
+    reasignar: id => abrirReasignar([ordenes_.find(x => x.id === id)], session_, tecnicos_),
   };
 }
 
@@ -238,7 +258,7 @@ function plotMarkers() {
   const etiquetas = [], puntos = [];
 
   // Las rojas se dibujan al final para que queden encima
-  const orden = [...ordenes_].sort((a, b) => (sem(a).dias ?? -1) - (sem(b).dias ?? -1));
+  const orden = visibles().sort((a, b) => (sem(a).dias ?? -1) - (sem(b).dias ?? -1));
   orden.forEach(o => {
     const ll = latLngDe(o);
     if (!coordValida(ll[0], ll[1])) return;
@@ -262,8 +282,11 @@ function plotMarkers() {
 function actualizarChip() {
   const el = document.getElementById('fbm-stat-txt');
   if (!el) return;
-  const rojas = ordenes_.filter(o => sem(o).color === 'rojo').length;
-  el.innerHTML = `${ordenes_.length} abierta${ordenes_.length !== 1 ? 's' : ''}${rojas ? ` · <span style="color:${SEMAFORO.rojo.color}">${rojas} en rojo</span>` : ''}`;
+  const vis = visibles();
+  const rojas = vis.filter(o => sem(o).color === 'rojo').length;
+  const filtrado = semF_ !== 'todas' || tecF_ !== 'todos';
+  el.innerHTML = `${vis.length}${filtrado ? ' de ' + ordenes_.length : ''} abierta${ordenes_.length !== 1 ? 's' : ''}${rojas ? ` · <span style="color:${SEMAFORO.rojo.color}">${rojas} en rojo</span>` : ''}`;
+  document.getElementById('fbm-filtro')?.style.setProperty('background', filtrado ? 'var(--fb-glass)' : '');
 }
 
 // ── Panel ─────────────────────────────────────────
@@ -272,7 +295,7 @@ function tocarPunto(id) {
   const o = ordenes_.find(x => x.id === id);
   if (!o || !map_) return;
   const pt = map_.latLngToContainerPoint(latLngDe(o));
-  const cercanas = ordenes_.filter(x => {
+  const cercanas = visibles().filter(x => {
     const ll = latLngDe(x);
     if (!coordValida(ll[0], ll[1])) return false;
     const p = map_.latLngToContainerPoint(ll);
@@ -356,6 +379,11 @@ function verOrden(id) {
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg>
         Navegar
       </button>
+      ${role_ !== 'tecnico' ? `
+      <button class="btn-action fb" onclick="window.__fbMapa.reasignar('${o.id}')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        Reasignar
+      </button>` : ''}
       ${actua ? `
       <button class="btn-action outline" style="flex-basis:100%" onclick="window.__fbMapa.gps('${o.id}')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>
@@ -372,4 +400,47 @@ function cerrarPanel() {
 
 function abrirGoogleMaps(lat, lng) {
   window.open(`https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`, '_blank');
+}
+
+// ── Filtros de la oficina ─────────────────────────
+function abrirFiltro() {
+  document.getElementById('fbm-sheet-filtro')?.remove();
+  const tecs = new Map(tecnicos_.map(u => [u.id, u.displayName]));
+  ordenes_.forEach(o => { if (o.asignadoUid && !tecs.has(o.asignadoUid)) tecs.set(o.asignadoUid, o.asignadoNombre || 'Sin nombre'); });
+  const listaTec = [['todos', 'Todos'], ...[...tecs.entries()].sort((a, b) => String(a[1]).localeCompare(String(b[1]), 'es')), ['sin', 'Sin asignar']];
+  const sems = [['todas', 'Todas'], ['rojo', SEMAFORO.rojo.texto], ['amarillo', SEMAFORO.amarillo.texto], ['verde', SEMAFORO.verde.texto]];
+  document.body.insertAdjacentHTML('beforeend', `
+    <div class="sheet-backdrop" id="fbm-sheet-filtro">
+      <div class="sheet">
+        <div class="sheet-handle"></div>
+        <div class="sheet-title">Filtrar el mapa</div>
+        <div class="sheet-body" style="padding-bottom:16px">
+          <div class="form-field">
+            <div class="form-label">Semáforo</div>
+            <div class="select-row flex-wrap" id="fbm-f-sem">${sems.map(([k, t]) => `<div class="select-chip ${semF_ === k ? 'active' : ''}" data-val="${k}">${t}</div>`).join('')}</div>
+          </div>
+          <div class="form-field">
+            <div class="form-label">Técnico</div>
+            <div class="select-row flex-wrap" id="fbm-f-tec">${listaTec.map(([k, t]) => `<div class="select-chip ${tecF_ === k ? 'active' : ''}" data-val="${esc(k)}">${esc(t)}</div>`).join('')}</div>
+          </div>
+          <button class="btn-primary full" id="fbm-f-ok">Ver en el mapa</button>
+        </div>
+      </div>
+    </div>`);
+  const sh = document.getElementById('fbm-sheet-filtro');
+  const cerrar = () => sh.remove();
+  sh.addEventListener('click', e => { if (e.target === sh) cerrar(); });
+  ['fbm-f-sem', 'fbm-f-tec'].forEach(id => sh.querySelectorAll(`#${id} .select-chip`).forEach(c => c.onclick = () => {
+    sh.querySelectorAll(`#${id} .select-chip`).forEach(x => x.classList.toggle('active', x === c));
+  }));
+  sh.querySelector('#fbm-f-ok').onclick = () => {
+    semF_ = sh.querySelector('#fbm-f-sem .active')?.dataset.val || 'todas';
+    tecF_ = sh.querySelector('#fbm-f-tec .active')?.dataset.val || 'todos';
+    cerrar(); cerrarPanel();
+    plotMarkers(); actualizarChip();
+    // Encuadrar lo filtrado
+    const pts = visibles().map(latLngDe).filter(ll => coordValida(ll[0], ll[1]));
+    if (pts.length && map_) map_.fitBounds(L.latLngBounds(pts).pad(0.15), { maxZoom: 16 });
+  };
+  requestAnimationFrame(() => sh.classList.add('open'));
 }

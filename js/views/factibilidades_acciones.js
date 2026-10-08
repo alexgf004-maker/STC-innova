@@ -16,6 +16,7 @@ import { toast, escapeHtml, guardarConEspera } from '../ui.js';
 const esc = v => escapeHtml(v == null ? '' : String(v));
 const ID_RESULTADO = 'fb-sheet-resultado';
 const ID_GPS = 'fb-sheet-gps';
+const ID_REASIGNAR = 'fb-sheet-reasignar';
 
 export const RESULTADOS = {
   factible:    { texto: 'Factible',    pill: 'ok',   cierra: true,  obsObligatoria: false },
@@ -55,7 +56,7 @@ function cerrar(id) {
 /** Quitar las hojas al salir de la vista. */
 export function cerrarHojas() {
   pararGps();
-  [ID_RESULTADO, ID_GPS].forEach(id => document.getElementById(id)?.remove());
+  [ID_RESULTADO, ID_GPS, ID_REASIGNAR].forEach(id => document.getElementById(id)?.remove());
 }
 
 // ── Registrar resultado ───────────────────────────
@@ -220,6 +221,64 @@ export function corregirUbicacion(o, session, alGuardar, fuenteGps = gpsPropio) 
       err.textContent = 'No se pudo guardar: ' + e.message;
       err.style.display = 'block';
       btnG.disabled = false;
+    }
+  };
+}
+
+// ── Reasignar (admin / asistente) ─────────────────
+// Una o varias órdenes a otro técnico del área. Marca asignacionManual para
+// que una nueva importación del Excel no pise la decisión del admin.
+export function abrirReasignar(ordenes, session, tecnicos, alGuardar) {
+  const lista = (ordenes || []).filter(Boolean);
+  if (!lista.length || session.role === 'tecnico') return;
+  const tecs = [...tecnicos].sort((a, b) => String(a.displayName).localeCompare(String(b.displayName), 'es'));
+  const actual = new Set(lista.map(o => o.asignadoUid || ''));
+  const unico = actual.size === 1 ? [...actual][0] : null;
+  const sh = hoja(ID_REASIGNAR, lista.length === 1 ? `Reasignar · ${esc(lista[0].numeroOrden || '')}` : `Reasignar ${lista.length} órdenes`, `
+    <div class="form-field">
+      <div class="form-label">Asignar a</div>
+      ${tecs.length ? `<div class="select-row flex-wrap" id="fbx-tecs">
+        ${tecs.map(u => `<div class="select-chip ${unico === u.id ? 'active' : ''}" data-uid="${esc(u.id)}">${esc(u.displayName)}</div>`).join('')}
+        <div class="select-chip ${unico === '' ? 'active' : ''}" data-uid="">Sin asignar</div>
+      </div>` : '<div style="font-size:13px;color:var(--text-3)">No hay técnicos activos asignados a Factibilidades. Asígnalos en Usuarios.</div>'}
+    </div>
+    <div class="form-error" id="fbx-error"></div>
+    <button class="btn-primary full" id="fbx-guardar" ${tecs.length ? '' : 'disabled'}><span id="fbx-guardar-lbl">Reasignar</span></button>`);
+
+  let elegido = unico;
+  sh.querySelectorAll('#fbx-tecs .select-chip').forEach(c => c.onclick = () => {
+    sh.querySelectorAll('#fbx-tecs .select-chip').forEach(x => x.classList.toggle('active', x === c));
+    elegido = c.dataset.uid;
+  });
+  sh.querySelector('#fbx-guardar').onclick = async () => {
+    const err = sh.querySelector('#fbx-error');
+    if (elegido == null) { err.textContent = 'Elige a quién asignar.'; err.style.display = 'block'; return; }
+    const tec = tecs.find(u => u.id === elegido) || null;
+    const btn = sh.querySelector('#fbx-guardar');
+    btn.disabled = true;
+    sh.querySelector('#fbx-guardar-lbl').innerHTML = '<div class="spinner"></div>';
+    const datos = {
+      asignadoUid: tec ? tec.id : null,
+      asignadoNombre: tec ? tec.displayName : null,
+      asignacionManual: true,
+      reasignadoPor: session.displayName,
+      reasignadoEn: firebase.firestore.Timestamp.now(),
+    };
+    try {
+      // Lotes de hasta 450 escrituras (el límite de Firestore es 500)
+      for (let i = 0; i < lista.length; i += 450) {
+        const lote = db.batch();
+        lista.slice(i, i + 450).forEach(o => lote.update(db.collection(COL_ORDENES).doc(o.id), datos));
+        await guardarConEspera(lote.commit());
+      }
+      cerrar(ID_REASIGNAR);
+      toast(`${lista.length === 1 ? 'Orden reasignada' : lista.length + ' órdenes reasignadas'} ${tec ? 'a ' + tec.displayName : 'sin técnico'}`, 'ok');
+      if (alGuardar) alGuardar(tec);
+    } catch (e) {
+      console.error('[factibilidades] reasignar:', e);
+      err.textContent = 'No se pudo guardar: ' + e.message; err.style.display = 'block';
+      btn.disabled = false;
+      sh.querySelector('#fbx-guardar-lbl').textContent = 'Reasignar';
     }
   };
 }

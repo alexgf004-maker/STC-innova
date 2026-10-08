@@ -15,10 +15,10 @@
 
 import { db } from '../firebase.js';
 import { tecnicosActivos } from '../vivo.js';
-import { suscribirAbiertas, suscribirConfig, suscribirCerradas, guardarConfig, META_DEFECTO, AREA } from '../factibilidades_comun.js';
+import { suscribirAbiertas, suscribirConfig, suscribirCerradas, guardarConfig, META_DEFECTO, AREA, COL_ORDENES } from '../factibilidades_comun.js';
 import { semaforoOrden, SEMAFORO, aFecha, claveDia } from '../dias_habiles.js';
 import { toast, escapeHtml } from '../ui.js';
-import { abrirResultado, puedeActuar, cerrarHojas } from './factibilidades_acciones.js';
+import { abrirResultado, abrirReasignar, puedeActuar, cerrarHojas } from './factibilidades_acciones.js';
 
 const ICO = {
   lista:  '<line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>',
@@ -30,6 +30,11 @@ const ICO = {
   nav:    '<polygon points="3 11 22 2 13 21 11 13 3 11"/>',
   alerta: '<path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>',
   meta:   '<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/>',
+  dots:   '<circle cx="12" cy="5" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="12" cy="19" r="1.4"/>',
+  bajar:  '<path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>',
+  usuario:'<path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/>',
+  marcar: '<polyline points="20 6 9 17 4 12"/>',
+  cerrar: '<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>',
   basura: '<polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/>',
 };
 const svg = (d, n = 16, extra = '') => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="${n}" height="${n}" ${extra}>${d}</svg>`;
@@ -42,6 +47,7 @@ let cfg_ = { festivos: [], festivosSet: new Set(), meta: META_DEFECTO };
 let filtroSem_ = 'todas', busq_ = '', limite_ = 40;
 let filtroPedido_ = null;          // el inicio del técnico pide abrir la lista ya filtrada
 let cerradas_ = [], offCerr_ = null, tecnicos_ = [];   // oficina: cerradas del mes y técnicos del área
+let tecF_ = 'todos', modoSel_ = false, selec_ = new Set();   // oficina: filtro por técnico y selección para reasignar
 
 // Días hábiles y color de cada orden (una sola función compartida)
 const sem = o => semaforoOrden(o, cfg_.festivosSet);
@@ -60,6 +66,7 @@ export function init(container, session) {
   ordenes_ = []; cargado_ = false; error_ = null;
   filtroSem_ = filtroPedido_ || 'todas'; filtroPedido_ = null; busq_ = ''; limite_ = 40;
   cerradas_ = []; tecnicos_ = [];
+  tecF_ = 'todos'; modoSel_ = false; selec_ = new Set();
 
   renderShell();
   setTab(activeTab_);
@@ -109,19 +116,39 @@ function renderShell() {
 
   container_.innerHTML = `
     <div class="fb-scope" style="max-width:1100px;margin:0 auto">
-      <div style="margin-bottom:16px">
-        <div style="font-size:24px;font-weight:600;letter-spacing:-.02em;line-height:1.15">Factibilidades</div>
-        <div style="font-size:12px;color:var(--text-3);margin-top:4px">Verificación de conexión${esAdmin_ ? '' : ' · ' + esc(session_.displayName)}</div>
+      <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:16px">
+        <div style="flex:1;min-width:0">
+          <div style="font-size:24px;font-weight:600;letter-spacing:-.02em;line-height:1.15">Factibilidades</div>
+          <div style="font-size:12px;color:var(--text-3);margin-top:4px">Verificación de conexión${esAdmin_ ? '' : ' · ' + esc(session_.displayName)}</div>
+        </div>
+        ${esAdmin_ ? `<button class="cm-ico-btn" id="fb-menu" title="Acciones">${svg(ICO.dots, 18)}</button>` : ''}
       </div>
       ${tabs.length > 1 ? `
       <div class="area-tabs" style="margin-bottom:14px">
         ${tabs.map(t => `<button class="area-tab fb-tab" data-tab="${t.id}">${t.label}</button>`).join('')}
       </div>` : ''}
       <div id="fb-content"></div>
-      ${esAdmin_ ? hoja('fb-sheet-festivos', 'Días festivos', '') + hoja('fb-sheet-meta', 'Meta diaria', '') : ''}
+      ${esAdmin_ ? hoja('fb-sheet-festivos', 'Días festivos', '') + hoja('fb-sheet-meta', 'Meta diaria', '')
+        + hoja('fb-sheet-acciones', 'Acciones de Factibilidades', `<div class="flex-col gap-8">
+            ${accion('fb-a-excel', ICO.bajar, 'Exportar a Excel', 'Días hábiles, resultado y coordenada corregida')}
+            ${accion('fb-a-meta', ICO.meta, 'Meta diaria', 'Órdenes cerradas por técnico al día')}
+            ${accion('fb-a-festivos', ICO.cal, 'Días festivos', 'No cuentan como días hábiles')}
+          </div>`)
+        + hoja('fb-sheet-excel', 'Exportar a Excel', '') : ''}
     </div>`;
   container_.querySelectorAll('.fb-tab').forEach(t => { t.onclick = () => setTab(t.dataset.tab); });
   container_.querySelectorAll('.sheet-backdrop').forEach(sh => sh.addEventListener('click', e => { if (e.target === sh) sh.classList.remove('open'); }));
+  if (!esAdmin_) return;
+  const abrirH = id => container_.querySelector('#' + id).classList.add('open');
+  const cerrarH = id => container_.querySelector('#' + id).classList.remove('open');
+  container_.querySelector('#fb-menu').onclick = () => abrirH('fb-sheet-acciones');
+  container_.querySelector('#fb-a-excel').onclick = () => { cerrarH('fb-sheet-acciones'); abrirExportar(); };
+  container_.querySelector('#fb-a-meta').onclick = () => { cerrarH('fb-sheet-acciones'); abrirMeta(); };
+  container_.querySelector('#fb-a-festivos').onclick = () => { cerrarH('fb-sheet-acciones'); abrirFestivos(); };
+}
+
+function accion(id, ico, txt, sub) {
+  return `<button class="us-accion" id="${id}">${svg(ico, 18)}<span style="flex:1;text-align:left"><span style="display:block">${txt}</span><span class="us-accion-sub">${sub}</span></span></button>`;
 }
 
 function hoja(id, titulo, cuerpo) {
@@ -258,11 +285,12 @@ function renderPanel(cont) {
     </div>`;
   cont.querySelector('#fb-abrir-festivos').onclick = abrirFestivos;
   cont.querySelector('#fb-abrir-meta').onclick = abrirMeta;
-  cont.querySelectorAll('[data-ir]').forEach(el => el.onclick = () => irALista(el.dataset.ir));
+  cont.querySelectorAll('[data-ir]').forEach(el => el.onclick = () => el.dataset.ir === 'sin' ? irALista('todas', 'sin') : irALista(el.dataset.ir));
+  cont.querySelectorAll('[data-tec]').forEach(el => el.onclick = () => irALista('todas', el.dataset.tec));
 }
 
-function irALista(filtro) {
-  filtroSem_ = filtro; busq_ = ''; limite_ = 40;
+function irALista(filtro, tec = 'todos') {
+  filtroSem_ = filtro; tecF_ = tec; busq_ = ''; limite_ = 40;
   setTab('ordenes');
 }
 
@@ -289,6 +317,88 @@ function abrirMeta() {
     }
   };
   container_.querySelector('#fb-sheet-meta').classList.add('open');
+}
+
+// ── Exportar a Excel (admin / asistente) ──────────
+// Para reportar a DELSUR: abiertas y cerradas desde una fecha, con días
+// hábiles, resultado y si la coordenada fue corregida.
+function abrirExportar() {
+  const hoy = new Date();
+  const ini = claveDia(new Date(hoy.getFullYear(), hoy.getMonth(), 1));
+  const body = container_.querySelector('#fb-sheet-excel-body');
+  body.innerHTML = `
+    <div style="font-size:12px;color:var(--text-3);line-height:1.5;margin-bottom:14px">Incluye todas las órdenes abiertas y las cerradas desde la fecha que elijas. Los días hábiles se calculan igual que en la app.</div>
+    <div class="form-field">
+      <div class="form-label">Cerradas desde</div>
+      <input class="form-input" id="fb-exp-desde" type="date" value="${ini}" max="${claveDia(hoy)}"/>
+    </div>
+    <div class="form-error" id="fb-exp-error"></div>
+    <button class="btn-primary full" id="fb-exp-btn"><span id="fb-exp-lbl">Descargar Excel</span></button>`;
+  body.querySelector('#fb-exp-btn').onclick = async () => {
+    const v = body.querySelector('#fb-exp-desde').value;
+    const err = body.querySelector('#fb-exp-error');
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) { err.textContent = 'Elige la fecha.'; err.style.display = 'block'; return; }
+    const btn = body.querySelector('#fb-exp-btn');
+    btn.disabled = true;
+    body.querySelector('#fb-exp-lbl').innerHTML = '<div class="spinner"></div>';
+    try {
+      await exportarExcel(aFecha(v));
+      container_.querySelector('#fb-sheet-excel').classList.remove('open');
+    } catch (e) {
+      console.error('[factibilidades] excel:', e);
+      err.textContent = 'No se pudo generar: ' + e.message; err.style.display = 'block';
+    } finally {
+      btn.disabled = false;
+      body.querySelector('#fb-exp-lbl').textContent = 'Descargar Excel';
+    }
+  };
+  container_.querySelector('#fb-sheet-excel').classList.add('open');
+}
+
+async function exportarExcel(desde) {
+  if (typeof XLSX === 'undefined') throw new Error('falta la librería de Excel (revisa la conexión)');
+  // Cerradas desde la fecha: una consulta puntual (no queda escuchando)
+  const snap = await db.collection(COL_ORDENES).where('fechaHecha', '>=', firebase.firestore.Timestamp.fromDate(desde)).get();
+  const cerradas = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(o => o.estado === 'cerrada');
+  const ESTADO = { null: 'Abierta', visita: 'Abierta (sin acceso)', cerrada: 'Cerrada' };
+  const RES = { factible: 'Factible', no_factible: 'No factible', sin_acceso: 'Sin acceso' };
+  const f = v => { const d = aFecha(v); return d ? d.toLocaleDateString('es-SV', { day: '2-digit', month: '2-digit', year: 'numeric' }) : ''; };
+  const fh = v => { const d = aFecha(v); return d ? d.toLocaleString('es-SV', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : ''; };
+  const num = v => { const n = parseFloat(v); return isFinite(n) ? n : ''; };
+  const filas = [...ordenes_, ...cerradas].sort(porDias).map(o => {
+    const { dias, color } = sem(o);
+    const visitas = Array.isArray(o.visitas) ? o.visitas : [];
+    return {
+      'Orden': o.numeroOrden || '',
+      'Cliente': o.cliente || '',
+      'Dirección': o.direccion || '',
+      'Técnico': o.asignadoNombre || 'Sin asignar',
+      'Reasignada en la app': o.asignacionManual ? 'Sí' : 'No',
+      'Fecha liberación': f(o.fechaLiberacion),
+      'Días hábiles': dias ?? '',
+      'Semáforo': color ? SEMAFORO[color].texto : '',
+      'Estado': ESTADO[o.estado ?? null] || o.estado || '',
+      'Resultado': RES[o.resultado] || '',
+      'Observación': o.observacion || '',
+      'Visitas sin acceso': visitas.length || '',
+      'Fecha cierre': fh(o.fechaHecha),
+      'Cerrada por': o.hechaPor || '',
+      'Coordenada corregida': o.coordCorregida ? 'Sí' : 'No',
+      'Corregida por': o.corregidaPor || '',
+      'Fecha corrección': fh(o.fechaCorreccion),
+      'Latitud': num(o.latitud),
+      'Longitud': num(o.longitud),
+      'Latitud original': num(o.latOriginal),
+      'Longitud original': num(o.lngOriginal),
+    };
+  });
+  const ws = filas.length ? XLSX.utils.json_to_sheet(filas) : XLSX.utils.aoa_to_sheet([['Sin órdenes']]);
+  const anchos = { 'Orden': 13, 'Cliente': 28, 'Dirección': 40, 'Técnico': 22, 'Fecha liberación': 14, 'Semáforo': 12, 'Estado': 20, 'Observación': 36, 'Fecha cierre': 18, 'Cerrada por': 20, 'Corregida por': 20, 'Fecha corrección': 18 };
+  if (filas.length) ws['!cols'] = Object.keys(filas[0]).map(k => ({ wch: anchos[k] || Math.max(10, k.length + 2) }));
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Factibilidades');
+  XLSX.writeFile(wb, `Factibilidades_${claveDia(new Date())}.xlsx`);
+  toast(`Excel descargado · ${filas.length} órdenes`, 'ok');
 }
 
 // ── Festivos (admin / asistente) ──────────────────
@@ -354,8 +464,15 @@ const FILTROS = [
   { id: 'amarillo', t: 'Por vencer', f: o => sem(o).color === 'amarillo' },
   { id: 'verde',    t: 'A tiempo',   f: o => sem(o).color === 'verde' },
   { id: 'visita',   t: 'Sin acceso', f: o => o.estado === 'visita' },
-  { id: 'sin',      t: 'Sin asignar', f: o => !o.asignadoUid, soloOficina: true },
 ];
+
+// Técnicos para filtrar y reasignar: los activos del área y quien tenga órdenes
+function tecnicosConOrdenes() {
+  const m = new Map(tecnicos_.map(u => [u.id, u.displayName]));
+  ordenes_.forEach(o => { if (o.asignadoUid && !m.has(o.asignadoUid)) m.set(o.asignadoUid, o.asignadoNombre || 'Sin nombre'); });
+  return [...m.entries()].map(([id, nombre]) => ({ id, nombre })).sort((a, b) => String(a.nombre).localeCompare(String(b.nombre), 'es'));
+}
+const pasaTec = o => tecF_ === 'todos' || (tecF_ === 'sin' ? !o.asignadoUid : o.asignadoUid === tecF_);
 
 function renderOrdenes(cont) {
   if (!ordenes_.length) {
@@ -366,20 +483,35 @@ function renderOrdenes(cont) {
   const enfocado = document.activeElement?.id === 'fb-buscar' ? document.activeElement.selectionStart : null;
   const q = busq_.trim().toLowerCase();
   const filtro = FILTROS.find(x => x.id === filtroSem_) || FILTROS[0];
-  const mostrar = ordenes_
+  const base = ordenes_.filter(pasaTec);
+  const mostrar = (q ? ordenes_ : base)
     .filter(o => q ? [o.numeroOrden, o.cliente, o.direccion, o.asignadoNombre].some(v => v && String(v).toLowerCase().includes(q)) : filtro.f(o))
     .sort(porDias);
   const vis = mostrar.slice(0, limite_);
+  const tecs = esAdmin_ ? tecnicosConOrdenes() : [];
+  [...selec_].forEach(id => { if (!ordenes_.some(o => o.id === id)) selec_.delete(id); });   // ya se cerraron
 
   cont.innerHTML = `
     <div class="buscar-wrap" style="margin-bottom:12px">
       ${svg(ICO.buscar, 14, 'style="color:var(--text-4);flex-shrink:0"')}
       <input class="buscar-input" id="fb-buscar" placeholder="Buscar orden, cliente o dirección…" autocomplete="off" spellcheck="false" value="${esc(busq_)}"/>
     </div>
+    ${!q && esAdmin_ ? `
+    <div class="filter-row" style="margin-bottom:8px">
+      ${[{ id: 'todos', nombre: 'Todos los técnicos' }, ...tecs, { id: 'sin', nombre: 'Sin asignar' }].map(t => `<div class="filter-chip ${tecF_ === t.id ? 'active' : ''}" data-tecf="${esc(t.id)}">${esc(t.nombre)}</div>`).join('')}
+    </div>` : ''}
     ${q ? `<div style="font-size:12px;color:var(--text-3);margin:2px 2px 10px">${mostrar.length} resultado${mostrar.length !== 1 ? 's' : ''}</div>` : `
     <div class="cm-tabs-est">
-      ${FILTROS.filter(x => esAdmin_ || !x.soloOficina).map(x => { const n = ordenes_.filter(x.f).length; return `<div class="cm-est ${x.id === filtroSem_ ? 'active' : ''} ${n ? '' : 'vacio'}" data-sem="${x.id}">${x.t}<span>${n}</span></div>`; }).join('')}
+      ${FILTROS.map(x => { const n = base.filter(x.f).length; return `<div class="cm-est ${x.id === filtroSem_ ? 'active' : ''} ${n ? '' : 'vacio'}" data-sem="${x.id}">${x.t}<span>${n}</span></div>`; }).join('')}
     </div>`}
+    ${esAdmin_ && mostrar.length ? (modoSel_ ? `
+    <div class="ds-card" style="position:sticky;top:0;z-index:5;display:flex;align-items:center;gap:8px;padding:10px 12px;margin-bottom:12px">
+      <button class="cm-ico-btn" id="fb-sel-salir" title="Cancelar" style="flex-shrink:0">${svg(ICO.cerrar, 16)}</button>
+      <div style="flex:1;min-width:0;font-size:13px;font-weight:600;white-space:nowrap">${selec_.size} selec.</div>
+      <button class="cm-btn" id="fb-sel-todas">${mostrar.every(o => selec_.has(o.id)) ? 'Ninguna' : `Todas (${mostrar.length})`}</button>
+      <button class="cm-btn marca" id="fb-sel-reasignar" ${selec_.size ? '' : 'disabled style="opacity:.5"'}>Reasignar</button>
+    </div>` : `
+    <button class="cm-btn" id="fb-sel-entrar" style="width:100%;height:40px;margin-bottom:12px">${svg(ICO.usuario, 14)} Seleccionar para reasignar</button>`) : ''}
     ${vis.length ? `<div class="crc-grid">${vis.map(tarjeta).join('')}</div>
       ${mostrar.length > vis.length ? `<button class="cm-btn" id="fb-ver-mas" style="width:100%;height:44px;margin-top:10px">Ver ${Math.min(40, mostrar.length - vis.length)} más (${mostrar.length - vis.length} restantes)</button>` : ''}`
       : `<div class="ds-card" style="text-align:center;padding:24px 16px;color:var(--text-3);font-size:13px">${q ? 'Nada coincide.' : `No hay órdenes en "${filtro.t}".`}</div>`}`;
@@ -389,6 +521,24 @@ function renderOrdenes(cont) {
   let tm = null;
   inp.oninput = () => { clearTimeout(tm); tm = setTimeout(() => { busq_ = inp.value; limite_ = 40; renderOrdenes(cont); }, 250); };
   cont.querySelectorAll('[data-sem]').forEach(c => c.onclick = () => { filtroSem_ = c.dataset.sem; limite_ = 40; renderOrdenes(cont); });
+  cont.querySelectorAll('[data-tecf]').forEach(c => c.onclick = () => { tecF_ = c.dataset.tecf; limite_ = 40; renderOrdenes(cont); });
+  cont.querySelector('#fb-sel-entrar')?.addEventListener('click', () => { modoSel_ = true; selec_.clear(); renderOrdenes(cont); });
+  cont.querySelector('#fb-sel-salir')?.addEventListener('click', () => { modoSel_ = false; selec_.clear(); renderOrdenes(cont); });
+  cont.querySelector('#fb-sel-todas')?.addEventListener('click', () => {
+    if (mostrar.every(o => selec_.has(o.id))) mostrar.forEach(o => selec_.delete(o.id));
+    else mostrar.forEach(o => selec_.add(o.id));
+    renderOrdenes(cont);
+  });
+  cont.querySelector('#fb-sel-reasignar')?.addEventListener('click', () => {
+    if (!selec_.size) return;
+    abrirReasignar(ordenes_.filter(o => selec_.has(o.id)), session_, tecnicos_, () => { modoSel_ = false; selec_.clear(); renderOrdenes(cont); });
+  });
+  cont.querySelectorAll('[data-sel]').forEach(c => c.onclick = () => {
+    const id = c.dataset.sel;
+    if (selec_.has(id)) selec_.delete(id); else selec_.add(id);
+    renderOrdenes(cont);
+  });
+  cont.querySelectorAll('[data-reasignar]').forEach(b => b.onclick = () => abrirReasignar([ordenes_.find(o => o.id === b.dataset.reasignar)], session_, tecnicos_));
   cont.querySelector('#fb-ver-mas')?.addEventListener('click', () => { limite_ += 40; renderOrdenes(cont); });
   cont.querySelectorAll('[data-resultado]').forEach(b => b.onclick = () => abrirResultado(ordenes_.find(o => o.id === b.dataset.resultado), session_));
   cont.querySelectorAll('[data-vermapa]').forEach(b => b.onclick = () => verEnMapa(b.dataset.vermapa));
@@ -410,9 +560,12 @@ async function verEnMapa(id) {
 function tarjeta(o) {
   const { dias, color } = sem(o);
   const s = color ? SEMAFORO[color] : null;
+  const sel = modoSel_ && esAdmin_;
+  const marcada = sel && selec_.has(o.id);
   return `
-    <div class="cm-ord" style="cursor:default${s ? `;box-shadow:inset 3px 0 0 ${s.color}, var(--sh-card)` : ''}">
+    <div class="cm-ord" ${sel ? `data-sel="${o.id}"` : ''} style="cursor:${sel ? 'pointer' : 'default'}${s ? `;box-shadow:inset 3px 0 0 ${s.color}, var(--sh-card)` : ''}${marcada ? ';outline:2px solid var(--fb-light);outline-offset:-2px' : ''}">
       <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+        ${sel ? `<span style="width:20px;height:20px;border-radius:6px;flex-shrink:0;display:flex;align-items:center;justify-content:center;border:1.5px solid ${marcada ? 'var(--fb-light)' : 'var(--border-md)'};background:${marcada ? 'var(--fb-light)' : 'transparent'};color:#fff">${marcada ? svg(ICO.marcar, 13) : ''}</span>` : ''}
         <span class="cm-wo">${esc(o.numeroOrden || '—')}</span>
         <span class="cm-pill ${s ? s.pill : 'muted'}">${textoDias(dias)}</span>
         ${o.estado === 'visita' ? '<span class="cm-pill muted">Sin acceso</span>' : ''}
@@ -420,12 +573,13 @@ function tarjeta(o) {
       ${o.cliente ? `<div class="cm-cli">${esc(o.cliente)}</div>` : ''}
       ${o.direccion ? `<div class="cm-meta">${esc(o.direccion)}</div>` : ''}
       <div class="cm-meta">Liberada ${fmtFecha(o.fechaLiberacion)}</div>
-      ${esAdmin_ ? `<div class="cm-meta">${o.asignadoNombre ? esc(o.asignadoNombre) : '<span style="color:#fbbf24">Sin asignar</span>'}</div>` : ''}
-      <div class="cm-ord-acc">
+      ${esAdmin_ ? `<div class="cm-meta">${o.asignadoNombre ? esc(o.asignadoNombre) : '<span style="color:#fbbf24">Sin asignar</span>'}${o.asignacionManual ? ' · reasignada' : ''}</div>` : ''}
+      ${sel ? '' : `<div class="cm-ord-acc">
         ${puedeActuar(o, session_) ? `<button class="cm-btn marca" data-resultado="${o.id}" style="flex:1">${svg(ICO.check, 14)} Resultado</button>` : ''}
+        ${esAdmin_ ? `<button class="cm-btn marca" data-reasignar="${o.id}" style="flex:1">${svg(ICO.usuario, 14)} Reasignar</button>` : ''}
         ${coordOk(o) ? `<button class="cm-btn" data-vermapa="${o.id}">${svg(ICO.mapa, 14)} Mapa</button>
         <button class="cm-btn" data-navegar="${o.id}">${svg(ICO.nav, 14)} Navegar</button>` : '<span class="cm-meta" style="margin:0">Sin coordenadas</span>'}
-      </div>
+      </div>`}
     </div>`;
 }
 
