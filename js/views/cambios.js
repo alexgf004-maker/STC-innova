@@ -201,10 +201,10 @@ function renderShell() {
     <div class="sheet-backdrop" id="sheet-import">
       <div class="sheet">
         <div class="sheet-handle"></div>
-        <div class="sheet-title">Importar órdenes</div>
+        <div class="sheet-title">Subir mapa de órdenes</div>
         <div class="sheet-body">
           <div style="font-size:12px;color:var(--text-4);margin-bottom:14px;line-height:1.6">
-            Acepta el Excel oficial de DELSUR o el formato simple con <strong>WO</strong> al inicio (WO, NC, nombre, dirección, DS, medidor, latitud, longitud).
+            Excel oficial de DELSUR o formato simple con <strong>WO</strong> al inicio. Antes de aplicar te muestro qué entra, qué se actualiza y qué se quita.
           </div>
           <div class="import-dropzone" id="import-dropzone">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" width="32" height="32" style="color:var(--text-4)">
@@ -220,7 +220,7 @@ function renderShell() {
             <div class="import-info" id="import-info"></div>
             <div id="import-error" class="form-error"></div>
             <button class="btn-primary full" id="btn-confirmar-import">
-              <span id="btn-import-label">Importar órdenes</span>
+              <span id="btn-import-label">Reemplazar mapa</span>
             </button>
           </div>
         </div>
@@ -390,7 +390,7 @@ function renderShell() {
         <div class="sheet-title">Acciones de Cambios</div>
         <div class="sheet-body">
           <div class="flex-col gap-8">
-            ${accionCm('openImport', ICO_CM.subir, 'Importar órdenes', 'Excel de DELSUR o formato simple')}
+            ${accionCm('openImport', ICO_CM.subir, 'Subir mapa nuevo', 'Reemplaza el mapa; lo ya hecho se conserva')}
             ${accionCm('openNuevaUrgente', ICO_CM.alerta, 'Nueva orden urgente', 'Una WO a mano', 'danger')}
             ${accionCm('openUrgentesImport', ICO_CM.subir, 'Órdenes urgentes', 'Varias WO desde Excel', 'danger')}
             <div class="cm-acc-sep">Calendario de lecturas</div>
@@ -1590,6 +1590,7 @@ async function corregirCoordenadas(id) {
   try {
     await db.collection('cambios_ordenes').doc(id).update({
       latitud: lat, longitud: lng,
+      coordCorregida: true,   // al reemplazar el mapa no se pisan con las del Excel
       estadoCampo: null,
       malUbicadoPor: null, malUbicadoEn: null,
     });
@@ -2049,7 +2050,15 @@ function mapearOrdenesExcel(rows) {
   return { error: null, data };
 }
 
-function openImport() { openSheet('sheet-import'); }
+function openImport() {
+  // Empezar limpio: permite volver a elegir el mismo archivo.
+  importData = []; importPlan_ = null;
+  const inp = document.getElementById('import-file');
+  if (inp) inp.value = '';
+  document.getElementById('import-preview').style.display = 'none';
+  document.getElementById('import-error').style.display = 'none';
+  openSheet('sheet-import');
+}
 
 function handleFileSelect(e) {
   const file = e.target.files[0];
@@ -2069,16 +2078,18 @@ function handleFileSelect(e) {
         return;
       }
       importData = data;
-
-      document.getElementById('import-info').innerHTML = `
-        <div class="import-info-box">
-          <div class="import-info-num">${importData.length}</div>
-          <div class="import-info-label">órdenes encontradas en el archivo</div>
-          <div style="font-size:11px;color:var(--text-4);margin-top:4px">${escapeHtml(file.name)}</div>
-        </div>
-      `;
+      importArchivo_ = file.name;
+      importPlan_ = null;
+      document.getElementById('import-info').innerHTML = `<div class="import-info-box"><div class="import-info-label">Comparando ${importData.length} órdenes con el mapa actual…</div></div>`;
       document.getElementById('import-preview').style.display = '';
       document.getElementById('import-error').style.display   = 'none';
+      document.getElementById('btn-confirmar-import').disabled = true;
+      analizarImport(importData)
+        .then(plan => { importPlan_ = plan; pintarPlanImport(); })
+        .catch(err => {
+          document.getElementById('import-error').textContent = 'No se pudo comparar con el mapa actual: ' + err.message;
+          document.getElementById('import-error').style.display = 'block';
+        });
 
     } catch (err) {
       console.error('[cambios] Error leyendo Excel:', err);
@@ -2097,95 +2108,135 @@ function findCol(headers, options) {
   return -1;
 }
 
-async function confirmarImport() {
-  if (!importData.length) return;
-  setLoading('btn-import-label', 'Analizando…', true);
+// ── Subir mapa nuevo ──────────────────────────────
+// DELSUR va cambiando el mapa (otras empresas también trabajan la zona). Al
+// subir uno nuevo, por defecto REEMPLAZA al anterior:
+//   · Lo que hicimos (hecha / aprobada) no se toca nunca, venga o no en el
+//     mapa nuevo. Si una orden del archivo ya la hicimos (misma WO, o mismo
+//     NC con otra WO) no se vuelve a crear.
+//   · Pendientes que siguen en el mapa: se actualizan sus datos (sin tocar
+//     estado ni pareja; las coordenadas corregidas a mano se respetan).
+//   · Pendientes que ya no vienen: se quitan, para que no se acumulen.
+//     Las urgentes y las generadas en campo se conservan.
+//   · Las del archivo que no existían: entran como nuevas.
+// "Solo agregar" hace lo de antes: crea las nuevas y no toca nada más.
+let importPlan_ = null, importArchivo_ = '', importModo_ = 'reemplazar';
+const HECHAS_ = new Set(['hecha', 'aprobada']);
+const CAMPOS_EXCEL_ = ['nc', 'cliente', 'direccion', 'latitud', 'longitud', 'serieActual', 'marca', 'dsct', 'unidadLectura', 'concepto', 'woClass', 'lecturas'];
 
-  try {
-    // Obtener WOs existentes para detectar duplicados
-    const existSnap = await db.collection('cambios_ordenes').get();
-
-    const existentes = {};
-    existSnap.docs.forEach(d => {
-      const data = d.data();
-      // Normalizar WO — puede ser número o string en Firestore
-      const wo = String(data.wo ?? '').trim();
-      if (!wo) return;
-      existentes[wo] = {
-        id:          d.id,
-        estadoCampo: data.estadoCampo,
-        pareja:      data.pareja,
-      };
-    });
-
-    const nuevas   = [];
-    const omitidas = [];
-
-    for (const orden of importData) {
-      const wo = String(orden.wo ?? '').trim();
-      if (!wo) continue;
-      const ex = existentes[wo];
-      if (ex) {
-        // Ya existe y está hecha o aprobada → omitir
-        if (ex.estadoCampo === 'hecha' || ex.estadoCampo === 'aprobada') {
-          omitidas.push(orden.wo);
-          continue;
-        }
-        // Ya existe pero pendiente → omitir (no duplicar)
-        omitidas.push(orden.wo);
-        continue;
-      }
-      // Nueva orden
-      nuevas.push({
-        ...orden,
-        pareja:            null,
-        estadoCampo:       null,
-        actualizadaDelsur: false,
-        generadaEnCampo:   false,
-        importadaEn:       firebase.firestore.Timestamp.now(),
+async function analizarImport(filas) {
+  const existentes = await leer('cambios_ordenes|*', () => db.collection('cambios_ordenes'));
+  const porWo = new Map(), hechasPorNc = new Map();
+  existentes.forEach(o => {
+    const wo = String(o.wo ?? '').trim();
+    if (wo) porWo.set(wo, o);
+    const nc = String(o.nc ?? '').trim();
+    if (nc && HECHAS_.has(o.estadoCampo)) hechasPorNc.set(nc, o);
+  });
+  const plan = { nuevas: [], actualizar: [], sinCambios: 0, yaHechas: 0, yaHechasNc: 0, quitar: [], conservadas: 0, repetidas: 0 };
+  const enArchivo = new Set();
+  for (const f of filas) {
+    const wo = String(f.wo ?? '').trim();
+    if (!wo) continue;
+    if (enArchivo.has(wo)) { plan.repetidas++; continue; }
+    enArchivo.add(wo);
+    const ex = porWo.get(wo);
+    if (ex) {
+      if (HECHAS_.has(ex.estadoCampo)) { plan.yaHechas++; continue; }
+      const cambios = {};
+      CAMPOS_EXCEL_.forEach(k => {
+        if ((k === 'latitud' || k === 'longitud') && ex.coordCorregida) return;
+        const nuevo = f[k];
+        if (nuevo === '' || nuevo == null) return;            // un vacío no borra lo que había
+        if (String(nuevo) !== String(ex[k] ?? '')) cambios[k] = nuevo;
       });
+      if (Object.keys(cambios).length) plan.actualizar.push({ id: ex.id, cambios });
+      else plan.sinCambios++;
+      continue;
     }
+    const nc = String(f.nc ?? '').trim();
+    if (nc && hechasPorNc.has(nc)) { plan.yaHechasNc++; continue; }
+    plan.nuevas.push(f);
+  }
+  existentes.forEach(o => {
+    if (HECHAS_.has(o.estadoCampo) || enArchivo.has(String(o.wo ?? '').trim())) return;
+    if (o.urgente || o.generadaEnCampo) { plan.conservadas++; return; }
+    plan.quitar.push(o);
+  });
+  return plan;
+}
 
-    // Batch insert solo las nuevas
-    if (nuevas.length > 0) {
-      let batch = db.batch();
-      let count = 0;
-      const batches = [];
+function pintarPlanImport() {
+  const p = importPlan_;
+  if (!p) return;
+  const reemplazar = importModo_ === 'reemplazar';
+  const asignadas = p.quitar.filter(o => o.pareja).length;
+  const conVisita = p.quitar.filter(o => o.estadoCampo).length;
+  const fila = (n, txt, sub, color, apagada) => `
+    <div style="display:flex;gap:12px;align-items:flex-start;padding:9px 0;border-bottom:1px solid var(--border);${apagada ? 'opacity:.4' : ''}">
+      <div style="min-width:46px;text-align:right;font-size:18px;font-weight:600;color:${color}">${n.toLocaleString('es-SV')}</div>
+      <div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:600">${txt}</div>${sub ? `<div style="font-size:11.5px;color:var(--text-3);margin-top:2px">${sub}</div>` : ''}</div>
+    </div>`;
+  document.getElementById('import-info').innerHTML = `
+    <div style="font-size:11px;color:var(--text-4);margin-bottom:8px">${escapeHtml(importArchivo_)} · ${importData.length.toLocaleString('es-SV')} filas</div>
+    <div class="cm-seg-modo" style="display:flex;gap:6px;margin-bottom:10px">
+      <button class="cm-est ${reemplazar ? 'active' : ''}" data-modo="reemplazar" style="flex:1">Reemplazar mapa</button>
+      <button class="cm-est ${reemplazar ? '' : 'active'}" data-modo="agregar" style="flex:1">Solo agregar nuevas</button>
+    </div>
+    ${fila(p.nuevas.length, 'Órdenes nuevas', 'Entran al mapa sin asignar', '#2dd4bf')}
+    ${fila(p.actualizar.length, 'Se actualizan', `Siguen en el mapa con datos o ubicación distintos${p.sinCambios ? ` · ${p.sinCambios.toLocaleString('es-SV')} siguen igual` : ''}`, '#60a5fa', !reemplazar)}
+    ${fila(p.yaHechas + p.yaHechasNc, 'Ya las hicimos', `Se quedan como están${p.yaHechasNc ? ` · ${p.yaHechasNc} reconocidas por el NC (vienen con otra WO)` : ''}`, '#22c55e')}
+    ${fila(p.quitar.length, 'Pendientes que ya no vienen', reemplazar ? `Se quitan del mapa${asignadas ? ` · ${asignadas} estaban asignadas a una pareja` : ''}${conVisita ? ` · ${conVisita} con visita o reporte` : ''}` : 'Con "Solo agregar" se quedan', '#f87171', !reemplazar)}
+    ${p.conservadas ? fila(p.conservadas, 'Urgentes o de campo fuera del mapa', 'Se conservan', 'var(--text-3)') : ''}
+    ${p.repetidas ? `<div style="font-size:11px;color:var(--text-4);margin-top:8px">${p.repetidas} WO repetidas en el archivo (se toma la primera).</div>` : ''}`;
+  document.querySelectorAll('#import-info [data-modo]').forEach(b => b.onclick = () => { importModo_ = b.dataset.modo; pintarPlanImport(); });
+  const btn = document.getElementById('btn-confirmar-import');
+  const hayAlgo = reemplazar ? (p.nuevas.length + p.actualizar.length + p.quitar.length) : p.nuevas.length;
+  btn.disabled = !hayAlgo;
+  document.getElementById('btn-import-label').textContent = !hayAlgo ? 'Nada que cambiar'
+    : reemplazar ? 'Reemplazar mapa' : `Agregar ${p.nuevas.length} nueva${p.nuevas.length > 1 ? 's' : ''}`;
+}
 
-      for (const orden of nuevas) {
-        const ref = db.collection('cambios_ordenes').doc();
-        batch.set(ref, orden);
-        count++;
-        if (count === 499) {
-          batches.push(batch.commit());
-          batch = db.batch();
-          count = 0;
-        }
-      }
-      if (count > 0) batches.push(batch.commit());
-      await Promise.all(batches);
+async function confirmarImport() {
+  const p = importPlan_;
+  if (!p) return;
+  const reemplazar = importModo_ === 'reemplazar';
+  if (reemplazar && p.quitar.length) {
+    const asignadas = p.quitar.filter(o => o.pareja).length;
+    if (!confirm(`Se quitarán ${p.quitar.length} órdenes pendientes que ya no vienen en el mapa${asignadas ? ` (${asignadas} asignadas a parejas)` : ''}.\n\nLo que ya hicimos no se toca. ¿Reemplazar el mapa?`)) return;
+  }
+  setLoading('btn-import-label', 'Aplicando…', true);
+  try {
+    const ahora = firebase.firestore.Timestamp.now();
+    const col = db.collection('cambios_ordenes');
+    const ops = p.nuevas.map(o => b => b.set(col.doc(), {
+      ...o, pareja: null, estadoCampo: null, actualizadaDelsur: false, generadaEnCampo: false, importadaEn: ahora,
+    }));
+    if (reemplazar) {
+      p.actualizar.forEach(u => ops.push(b => b.update(col.doc(u.id), { ...u.cambios, actualizadaMapaEn: ahora })));
+      p.quitar.forEach(o => ops.push(b => b.delete(col.doc(o.id))));
+    }
+    for (let i = 0; i < ops.length; i += 400) {
+      const batch = db.batch();
+      ops.slice(i, i + 400).forEach(op => op(batch));
+      await batch.commit();
+      setLoading('btn-import-label', `Aplicando… ${Math.min(i + 400, ops.length)}/${ops.length}`, true);
     }
 
     invalidateOrdenes();
     closeSheet('sheet-import');
     await loadOrdenes();
-
-    const hechas    = omitidas.filter(wo => existentes[wo]?.estadoCampo === 'hecha' || existentes[wo]?.estadoCampo === 'aprobada').length;
-    const pendientes = omitidas.length - hechas;
-
-    const msg = nuevas.length > 0
-      ? `${nuevas.length} órdenes nuevas importadas${hechas ? ` · ${hechas} ya realizadas` : ''}${pendientes ? ` · ${pendientes} ya existían` : ''}`
-      : `Sin órdenes nuevas — ${hechas ? `${hechas} ya realizadas` : ''}${hechas && pendientes ? ' · ' : ''}${pendientes ? `${pendientes} pendientes ya existían` : ''}(${omitidas.length} total)`;
-
-    toast(msg, 'ok');
-    importData = [];
-
+    const partes = [`${p.nuevas.length} nuevas`];
+    if (reemplazar) partes.push(`${p.actualizar.length} actualizadas`, `${p.quitar.length} quitadas`);
+    if (p.yaHechas + p.yaHechasNc) partes.push(`${p.yaHechas + p.yaHechasNc} ya hechas`);
+    toast((reemplazar ? 'Mapa reemplazado: ' : 'Órdenes agregadas: ') + partes.join(' · '), 'ok', 5000);
+    importData = []; importPlan_ = null;
   } catch (err) {
     console.error('[cambios] Error importando:', err);
-    document.getElementById('import-error').textContent = `Error: ${err.message}`;
+    document.getElementById('import-error').textContent = `Error: ${err.message}. Lo que alcanzó a guardarse queda; puedes volver a subir el archivo.`;
     document.getElementById('import-error').style.display = 'block';
   } finally {
-    setLoading('btn-import-label', 'Importar órdenes', false);
+    setLoading('btn-import-label', importModo_ === 'reemplazar' ? 'Reemplazar mapa' : 'Agregar nuevas', false);
   }
 }
 
