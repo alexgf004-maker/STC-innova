@@ -70,3 +70,20 @@ export function suscribirConfig(cb) {
 export function guardarConfig(datos) {
   return db.collection(COL_CONFIG).doc(DOC_CONFIG).set(datos, { merge: true });
 }
+
+// ── Cerradas del período ──────────────────────────
+// Solo las cerradas desde `desde` (hoy para el técnico, el mes para la
+// oficina): nunca el histórico completo. Un solo filtro de rango sobre
+// fechaHecha (no necesita índice compuesto); el técnico filtra las suyas en
+// el teléfono, son pocas (las cerradas de hoy).
+export function suscribirCerradas(session, desde, cb) {
+  const d = new Date(desde.getFullYear(), desde.getMonth(), desde.getDate());
+  const clave = `${COL_ORDENES}|cerradas|${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+  return suscribir(clave,
+    () => db.collection(COL_ORDENES).where('fechaHecha', '>=', firebase.firestore.Timestamp.fromDate(d)),
+    (lista, _c, err) => {
+      if (err) { cb(null, err); return; }
+      const cerradas = lista.filter(o => o.estado === 'cerrada');
+      cb(session.role === 'tecnico' ? cerradas.filter(o => o.asignadoUid === session.uid) : cerradas, null);
+    });
+}
