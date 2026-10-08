@@ -46,3 +46,27 @@ export function suscribirAbiertas(session, cb) {
   }));
   return () => offs.forEach(off => off());
 }
+
+// ── Configuración (festivos y meta diaria) ────────
+// Un solo documento: factibilidades_config/general = { festivos: ['AAAA-MM-DD'], meta }
+export const META_DEFECTO = 13;
+const DOC_CONFIG = 'general';
+
+function leerConfig(lista) {
+  const d = (lista || []).find(x => x.id === DOC_CONFIG) || {};
+  const festivos = [...new Set((Array.isArray(d.festivos) ? d.festivos : []).filter(f => /^\d{4}-\d{2}-\d{2}$/.test(f)))].sort();
+  const meta = Number(d.meta) > 0 ? Number(d.meta) : META_DEFECTO;
+  return { festivos, festivosSet: new Set(festivos), meta };
+}
+
+/** cb(config) con { festivos, festivosSet, meta }; si falla, la config por defecto. */
+export function suscribirConfig(cb) {
+  return suscribir(COL_CONFIG, () => db.collection(COL_CONFIG), (lista, _c, err) => {
+    if (err) console.warn('[factibilidades] config:', err.message);
+    cb(leerConfig(err ? [] : lista));
+  });
+}
+
+export function guardarConfig(datos) {
+  return db.collection(COL_CONFIG).doc(DOC_CONFIG).set(datos, { merge: true });
+}

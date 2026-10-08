@@ -10,21 +10,27 @@
  *   admin/asistente -> todas las órdenes abiertas
  */
 
-import { suscribirAbiertas } from '../factibilidades_comun.js';
+import { suscribirAbiertas, suscribirConfig, META_DEFECTO } from '../factibilidades_comun.js';
+import { semaforoOrden, SEMAFORO, aFecha } from '../dias_habiles.js';
 import { escapeHtml } from '../ui.js';
 import { ponerEtiquetas } from './etiquetas_mapa.js';
 
-const COLOR_PIN = '#f472b6';
+const COLOR_SIN_FECHA = '#94a3b8';
 
 let map_ = null, lienzo_ = null, markers_ = [], yaCentrado_ = false;
 let session_, role_;
 let ordenes_ = [];
-let off_ = null;
+let off_ = null, offCfg_ = null;
+let cfg_ = { festivos: [], festivosSet: new Set(), meta: META_DEFECTO };
 let geoMarker_ = null, geoCircle_ = null, watchId_ = null;
 
 const esc = v => escapeHtml(v == null ? '' : String(v));
 const coordValida = (lat, lng) => isFinite(lat) && isFinite(lng) && lat > 12 && lat < 16 && lng > -92 && lng < -87;
 const latLngDe = o => [parseFloat(o.latitud), parseFloat(o.longitud)];
+// El pin lleva el color del semáforo (no el de un técnico o pareja)
+const sem = o => semaforoOrden(o, cfg_.festivosSet);
+const colorDe = o => { const c = sem(o).color; return c ? SEMAFORO[c].color : COLOR_SIN_FECHA; };
+const textoDias = n => n == null ? 'Sin fecha' : `${n} día${n !== 1 ? 's' : ''} hábil${n !== 1 ? 'es' : ''}`;
 
 export function init(container, session) {
   cleanup();
@@ -34,6 +40,7 @@ export function init(container, session) {
 
   renderShell(container);
   initMap();
+  offCfg_ = suscribirConfig(cfg => { cfg_ = cfg; plotMarkers(); actualizarChip(); });
   off_ = suscribirAbiertas(session, (lista, err) => {
     if (err) { console.warn('[fb-mapa]', err.message); return; }
     ordenes_ = lista;
@@ -46,6 +53,7 @@ export function init(container, session) {
 // Llamado por el router (o por la pestaña Mapa de la oficina) al salir
 export function cleanup() {
   if (off_) { try { off_(); } catch {} off_ = null; }
+  if (offCfg_) { try { offCfg_(); } catch {} offCfg_ = null; }
   if (watchId_ != null && navigator.geolocation) { navigator.geolocation.clearWatch(watchId_); watchId_ = null; }
   if (map_) { try { map_.remove(); } catch {} map_ = null; }
   lienzo_ = null; markers_ = []; geoMarker_ = null; geoCircle_ = null;
@@ -186,12 +194,14 @@ function plotMarkers() {
   const vista = conEtiquetas ? map_.getBounds().pad(0.2) : null;
   const etiquetas = [], puntos = [];
 
-  ordenes_.forEach(o => {
+  // Las rojas se dibujan al final para que queden encima
+  const orden = [...ordenes_].sort((a, b) => (sem(a).dias ?? -1) - (sem(b).dias ?? -1));
+  orden.forEach(o => {
     const ll = latLngDe(o);
     if (!coordValida(ll[0], ll[1])) return;
     const m = L.circleMarker(ll, {
       renderer: lienzo_, bubblingMouseEvents: false, radius: r,
-      fillColor: COLOR_PIN, fillOpacity: 1,
+      fillColor: colorDe(o), fillOpacity: 1,
       color: cerca ? '#ffffff' : 'rgba(5,10,20,.55)', weight: cerca ? 2 : 1,
     });
     m._ordenId = o.id;
@@ -199,7 +209,7 @@ function plotMarkers() {
     m.addTo(map_);
     markers_.push(m);
     if (conEtiquetas && vista.contains(ll)) {
-      if (o.numeroOrden) etiquetas.push({ latlng: ll, texto: String(o.numeroOrden), prioridad: 0 });
+      if (o.numeroOrden) etiquetas.push({ latlng: ll, texto: String(o.numeroOrden), prioridad: -(sem(o).dias || 0) });
       puntos.push({ latlng: ll, radio: r + 2 });
     }
   });
@@ -208,7 +218,9 @@ function plotMarkers() {
 
 function actualizarChip() {
   const el = document.getElementById('fbm-stat-txt');
-  if (el) el.textContent = `${ordenes_.length} abierta${ordenes_.length !== 1 ? 's' : ''}`;
+  if (!el) return;
+  const rojas = ordenes_.filter(o => sem(o).color === 'rojo').length;
+  el.innerHTML = `${ordenes_.length} abierta${ordenes_.length !== 1 ? 's' : ''}${rojas ? ` · <span style="color:${SEMAFORO.rojo.color}">${rojas} en rojo</span>` : ''}`;
 }
 
 // ── Panel ─────────────────────────────────────────
@@ -233,9 +245,9 @@ function tocarPunto(id) {
       <div style="display:flex;flex-direction:column;gap:8px">
         ${cercanas.map(x => `
           <button class="fbm-encimada" data-id="${x.id}" style="display:flex;align-items:center;gap:10px;width:100%;text-align:left;padding:10px 12px;border-radius:10px;border:1px solid var(--border);background:var(--glass);cursor:pointer;font-family:inherit">
-            <span style="width:10px;height:10px;border-radius:50%;background:${COLOR_PIN};flex-shrink:0"></span>
+            <span style="width:10px;height:10px;border-radius:50%;background:${colorDe(x)};flex-shrink:0"></span>
             <div style="flex:1;min-width:0">
-              <div style="font-size:13px;font-weight:700;color:#f1f5f9">${esc(x.numeroOrden || '—')}</div>
+              <div style="font-size:13px;font-weight:700;color:#f1f5f9">${esc(x.numeroOrden || '—')} <span style="font-weight:500;color:${colorDe(x)}">· ${textoDias(sem(x).dias)}</span></div>
               <div style="font-size:11px;color:#94a3b8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(x.direccion || '')}</div>
             </div>
           </button>`).join('')}
@@ -249,10 +261,25 @@ function verOrden(id) {
   const o = ordenes_.find(x => x.id === id);
   if (!o) return;
   const [lat, lng] = latLngDe(o);
+  const { dias, color } = sem(o);
+  const s = color ? SEMAFORO[color] : null;
+  const lib = aFecha(o.fechaLiberacion);
   document.getElementById('mapa-panel-content').innerHTML = `
     <div class="panel-scroll-info">
-      <div style="font-size:17px;font-weight:800;color:#fff;letter-spacing:-.01em;margin-bottom:2px">${esc(o.numeroOrden || '—')}</div>
-      ${o.cliente ? `<div style="font-size:13px;font-weight:500;color:rgba(255,255,255,.85);margin-bottom:11px">${esc(o.cliente)}</div>` : ''}
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:11px">
+        <div style="flex:1;min-width:0">
+          <div style="font-size:17px;font-weight:800;color:#fff;letter-spacing:-.01em">${esc(o.numeroOrden || '—')}</div>
+          ${o.cliente ? `<div style="font-size:13px;font-weight:500;color:rgba(255,255,255,.85);margin-top:2px">${esc(o.cliente)}</div>` : ''}
+        </div>
+        ${o.estado === 'visita' ? '<div class="estado-badge warn" style="flex-shrink:0">Sin acceso</div>' : ''}
+      </div>
+      <div style="display:flex;align-items:center;gap:12px;border-radius:12px;padding:10px 12px;margin-bottom:11px;background:${s ? s.color + '1f' : 'var(--glass)'};border:1px solid ${s ? s.color + '66' : 'var(--border)'}">
+        <div style="font-size:30px;font-weight:600;line-height:1;color:${s ? s.color : '#fff'}">${dias ?? '—'}</div>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:13px;font-weight:700;color:#fff">${dias == null ? 'Sin fecha de liberación' : `día${dias !== 1 ? 's' : ''} hábil${dias !== 1 ? 'es' : ''} · ${s.texto}`}</div>
+          <div style="font-size:12px;color:rgba(255,255,255,.75);margin-top:2px">${lib ? 'Liberada el ' + lib.toLocaleDateString('es-SV', { weekday: 'short', day: 'numeric', month: 'short' }) : ''}</div>
+        </div>
+      </div>
       ${o.direccion ? `
       <div class="ds-hilite" style="display:flex;align-items:flex-start;gap:8px;margin-bottom:11px">
         <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" style="flex-shrink:0;margin-top:1px"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>
