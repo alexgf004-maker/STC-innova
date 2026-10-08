@@ -14,6 +14,7 @@ import { suscribirAbiertas, suscribirConfig, META_DEFECTO } from '../factibilida
 import { semaforoOrden, SEMAFORO, aFecha } from '../dias_habiles.js';
 import { escapeHtml } from '../ui.js';
 import { ponerEtiquetas } from './etiquetas_mapa.js';
+import { abrirResultado, corregirUbicacion, puedeActuar, cerrarHojas } from './factibilidades_acciones.js';
 
 const COLOR_SIN_FECHA = '#94a3b8';
 
@@ -23,6 +24,29 @@ let ordenes_ = [];
 let off_ = null, offCfg_ = null;
 let cfg_ = { festivos: [], festivosSet: new Set(), meta: META_DEFECTO };
 let geoMarker_ = null, geoCircle_ = null, watchId_ = null;
+let pendiente_ = null;   // orden que pidió abrir la lista ("Ver en el mapa")
+// Última lectura del GPS del mapa, para "Corregir ubicación" (así no se abre
+// un segundo GPS en el teléfono y la lectura sale al instante).
+let ultimaPos_ = null, errorGps_ = null;
+const oyentesGps_ = new Set();
+function fuenteGpsMapa(ok, fallo) {
+  if (ultimaPos_) ok(ultimaPos_);
+  else if (errorGps_) fallo(errorGps_);
+  oyentesGps_.add(ok);
+  return () => oyentesGps_.delete(ok);
+}
+
+/** La lista pide abrir una orden: se centra y se abre al tener los datos. */
+export function pedirAbrir(id) { pendiente_ = id; if (map_ && ordenes_.length) abrirPendiente(); }
+
+function abrirPendiente() {
+  const o = pendiente_ && ordenes_.find(x => x.id === pendiente_);
+  if (!o || !map_) return;
+  pendiente_ = null;
+  const ll = latLngDe(o);
+  if (coordValida(ll[0], ll[1])) { yaCentrado_ = true; map_.setView(ll, 17); }
+  verOrden(o.id);
+}
 
 const esc = v => escapeHtml(v == null ? '' : String(v));
 const coordValida = (lat, lng) => isFinite(lat) && isFinite(lng) && lat > 12 && lat < 16 && lng > -92 && lng < -87;
@@ -44,19 +68,32 @@ export function init(container, session) {
   off_ = suscribirAbiertas(session, (lista, err) => {
     if (err) { console.warn('[fb-mapa]', err.message); return; }
     ordenes_ = lista;
+    if (pendiente_) abrirPendiente();
     plotMarkers();
     centrarEnOrdenes();
     actualizarChip();
+    refrescarPanel();
   });
+}
+
+// Si el panel abierto es de una orden que cambió (o se cerró), actualizarlo
+let abierta_ = null;
+function refrescarPanel() {
+  if (!abierta_ || !document.getElementById('mapa-panel')?.classList.contains('open')) return;
+  if (ordenes_.some(x => x.id === abierta_)) verOrden(abierta_);
+  else { abierta_ = null; cerrarPanel(); }
 }
 
 // Llamado por el router (o por la pestaña Mapa de la oficina) al salir
 export function cleanup() {
   if (off_) { try { off_(); } catch {} off_ = null; }
   if (offCfg_) { try { offCfg_(); } catch {} offCfg_ = null; }
+  cerrarHojas();
+  abierta_ = null;
   if (watchId_ != null && navigator.geolocation) { navigator.geolocation.clearWatch(watchId_); watchId_ = null; }
   if (map_) { try { map_.remove(); } catch {} map_ = null; }
   lienzo_ = null; markers_ = []; geoMarker_ = null; geoCircle_ = null;
+  ultimaPos_ = null; errorGps_ = null; oyentesGps_.clear();
 }
 
 // ── Shell ─────────────────────────────────────────
@@ -104,7 +141,11 @@ function renderShell(container) {
   container.querySelector('#fbm-mi-ubicacion').onclick = () => {
     if (geoMarker_ && map_) map_.setView(geoMarker_.getLatLng(), 17);
   };
-  window.__fbMapa = { verOrden, abrirGoogleMaps };
+  window.__fbMapa = {
+    verOrden, abrirGoogleMaps,
+    resultado: id => abrirResultado(ordenes_.find(x => x.id === id), session_, () => cerrarPanel()),
+    gps: id => corregirUbicacion(ordenes_.find(x => x.id === id), session_, null, watchId_ != null ? fuenteGpsMapa : undefined),
+  };
 }
 
 // ── Mapa ──────────────────────────────────────────
@@ -150,6 +191,8 @@ function iniciarGeolocalizacion() {
   if (watchId_ != null) navigator.geolocation.clearWatch(watchId_);
   watchId_ = navigator.geolocation.watchPosition(pos => {
     const { latitude: lat, longitude: lng, accuracy } = pos.coords;
+    ultimaPos_ = { lat, lng, precision: accuracy }; errorGps_ = null;
+    oyentesGps_.forEach(fn => { try { fn(ultimaPos_); } catch {} });
     if (!map_) return;
     if (geoMarker_) {
       geoMarker_.setLatLng([lat, lng]);
@@ -162,7 +205,7 @@ function iniciarGeolocalizacion() {
       }).addTo(map_);
       geoCircle_ = L.circle([lat, lng], { interactive: false, radius: accuracy, color: '#3b82f6', fillColor: '#3b82f6', fillOpacity: 0.08, weight: 1 }).addTo(map_);
     }
-  }, err => console.warn('[fb-mapa] Geolocalización:', err.message),
+  }, err => { errorGps_ = err; console.warn('[fb-mapa] Geolocalización:', err.message); },
   { enableHighAccuracy: true, maximumAge: 5000, timeout: 10000 });
 }
 
@@ -260,7 +303,12 @@ function tocarPunto(id) {
 function verOrden(id) {
   const o = ordenes_.find(x => x.id === id);
   if (!o) return;
+  abierta_ = id;
   const [lat, lng] = latLngDe(o);
+  const actua = puedeActuar(o, session_);
+  const fmt = v => { const d = aFecha(v); return d ? d.toLocaleString('es-SV', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : ''; };
+  const visitas = (Array.isArray(o.visitas) ? o.visitas : []).slice().sort((a, b) => (aFecha(b.fecha) || 0) - (aFecha(a.fecha) || 0));
+  const fila = (k, v) => `<div style="display:flex;justify-content:space-between;gap:10px;font-size:12px;margin-bottom:3px"><span style="color:#94a3b8">${k}</span><span style="color:#e2e8f0;text-align:right">${v}</span></div>`;
   const { dias, color } = sem(o);
   const s = color ? SEMAFORO[color] : null;
   const lib = aFecha(o.fechaLiberacion);
@@ -285,17 +333,40 @@ function verOrden(id) {
         <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" style="flex-shrink:0;margin-top:1px"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>
         <div style="font-size:13px;font-weight:500;color:rgba(255,255,255,.95);line-height:1.4">${esc(o.direccion)}</div>
       </div>` : ''}
+      ${role_ !== 'tecnico' ? `<div style="font-size:12px;color:var(--text-3);margin-bottom:11px">Asignada a <b style="color:${o.asignadoNombre ? '#e2e8f0' : '#fbbf24'}">${esc(o.asignadoNombre || 'nadie')}</b>${o.asignacionManual ? ' · reasignada en la app' : ''}</div>` : ''}
+      ${visitas.length ? `
+      <div style="padding:10px 12px;background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.3);border-radius:10px;margin-bottom:11px">
+        <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:#fbbf24;margin-bottom:6px">Visitas sin acceso (${visitas.length})</div>
+        ${visitas.map(v => `<div style="font-size:12px;color:#e2e8f0;margin-bottom:4px"><span style="color:#94a3b8">${fmt(v.fecha)} · ${esc(v.tecnico || '')}</span><br>${esc(v.observacion || '')}</div>`).join('')}
+      </div>` : ''}
+      ${o.coordCorregida ? `
+      <div style="padding:10px 12px;background:var(--glass);border:1px solid var(--border);border-radius:10px;margin-bottom:11px">
+        <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:var(--fb-light);margin-bottom:6px">Ubicación corregida</div>
+        ${fila('Por', esc(o.corregidaPor || ''))}
+        ${o.fechaCorreccion ? fila('Cuándo', fmt(o.fechaCorreccion)) : ''}
+      </div>` : ''}
     </div>
     <div class="panel-orden-actions panel-actions-fixed">
+      ${actua ? `
+      <button class="btn-action fb" onclick="window.__fbMapa.resultado('${o.id}')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+        Resultado
+      </button>` : ''}
       <button class="btn-action outline" onclick="window.__fbMapa.abrirGoogleMaps(${lat},${lng})">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg>
         Navegar
       </button>
+      ${actua ? `
+      <button class="btn-action outline" style="flex-basis:100%" onclick="window.__fbMapa.gps('${o.id}')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>
+        Corregir ubicación con mi GPS
+      </button>` : ''}
     </div>`;
   document.getElementById('mapa-panel').classList.add('open');
 }
 
 function cerrarPanel() {
+  abierta_ = null;
   document.getElementById('mapa-panel')?.classList.remove('open');
 }
 

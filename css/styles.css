@@ -2436,6 +2436,10 @@ body {
 /* ── AMI ── */
 .ami-scope .cm-est.active { color: #fff; background: #8b5cf6; border-color: #8b5cf6; box-shadow: 0 6px 16px -6px rgba(139,92,246,.75); }
 .ami-scope .cm-est.active span { background: rgba(255,255,255,.2); color: #fff; }
+/* ── Factibilidades ── */
+.fb-scope .cm-est.active { color: #fff; background: #db2777; border-color: #db2777; box-shadow: 0 6px 16px -6px rgba(236,72,153,.75); }
+.fb-scope .cm-est.active span { background: rgba(255,255,255,.2); color: #fff; }
+body[data-area="fb"] .select-chip.active { background: var(--fb-glass); border-color: var(--fb-border); color: var(--fb-light); }
 /* El círculo decorativo de las tarjetas de color no debe tapar los toques */
 .ds-pcard::after { pointer-events: none; }
 /* ── Bodega: pestañas de estado en violeta (color de bodega) ── */

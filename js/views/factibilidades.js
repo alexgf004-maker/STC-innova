@@ -16,6 +16,7 @@
 import { suscribirAbiertas, suscribirConfig, guardarConfig, META_DEFECTO } from '../factibilidades_comun.js';
 import { semaforoOrden, SEMAFORO, aFecha, claveDia } from '../dias_habiles.js';
 import { toast, escapeHtml } from '../ui.js';
+import { abrirResultado, puedeActuar, cerrarHojas } from './factibilidades_acciones.js';
 
 const ICO = {
   lista:  '<line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>',
@@ -23,6 +24,8 @@ const ICO = {
   buscar: '<circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>',
   cal:    '<rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>',
   chev:   '<polyline points="9 18 15 12 9 6"/>',
+  check:  '<path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>',
+  nav:    '<polygon points="3 11 22 2 13 21 11 13 3 11"/>',
   basura: '<polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/>',
 };
 const svg = (d, n = 16, extra = '') => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="${n}" height="${n}" ${extra}>${d}</svg>`;
@@ -32,6 +35,7 @@ let container_, session_, esAdmin_, activeTab_;
 let ordenes_ = [], cargado_ = false, error_ = null;
 let off_ = null, offCfg_ = null, mapaMod_ = null;   // mapaMod_: mapa abierto como pestaña (oficina)
 let cfg_ = { festivos: [], festivosSet: new Set(), meta: META_DEFECTO };
+let filtroSem_ = 'todas', busq_ = '', limite_ = 40;
 
 // Días hábiles y color de cada orden (una sola función compartida)
 const sem = o => semaforoOrden(o, cfg_.festivosSet);
@@ -48,6 +52,7 @@ export function init(container, session) {
   esAdmin_   = session.role === 'admin' || session.role === 'asistente';
   activeTab_ = esAdmin_ ? 'panel' : 'ordenes';
   ordenes_ = []; cargado_ = false; error_ = null;
+  filtroSem_ = 'todas'; busq_ = ''; limite_ = 40;
 
   renderShell();
   setTab(activeTab_);
@@ -67,6 +72,7 @@ export function init(container, session) {
 export function cleanup() {
   if (off_) { try { off_(); } catch {} off_ = null; }
   if (offCfg_) { try { offCfg_(); } catch {} offCfg_ = null; }
+  cerrarHojas();
   cerrarMapa();
 }
 
@@ -81,7 +87,7 @@ function renderShell() {
     : [{ id: 'ordenes', label: 'Órdenes' }];
 
   container_.innerHTML = `
-    <div style="max-width:1100px;margin:0 auto">
+    <div class="fb-scope" style="max-width:1100px;margin:0 auto">
       <div style="margin-bottom:16px">
         <div style="font-size:24px;font-weight:600;letter-spacing:-.02em;line-height:1.15">Factibilidades</div>
         <div style="font-size:12px;color:var(--text-3);margin-top:4px">Verificación de conexión${esAdmin_ ? '' : ' · ' + esc(session_.displayName)}</div>
@@ -220,11 +226,62 @@ async function guardarFestivos(lista) {
 }
 
 // ── Órdenes ───────────────────────────────────────
+const FILTROS = [
+  { id: 'todas',    t: 'Todas',      f: () => true },
+  { id: 'rojo',     t: 'Atrasadas',  f: o => sem(o).color === 'rojo' },
+  { id: 'amarillo', t: 'Por vencer', f: o => sem(o).color === 'amarillo' },
+  { id: 'verde',    t: 'A tiempo',   f: o => sem(o).color === 'verde' },
+  { id: 'visita',   t: 'Sin acceso', f: o => o.estado === 'visita' },
+];
+
 function renderOrdenes(cont) {
-  const lista = [...ordenes_].sort(porDias);
-  cont.innerHTML = lista.length
-    ? `<div class="crc-grid">${lista.map(tarjeta).join('')}</div>`
-    : `<div class="dev-module"><div class="dev-title">${esAdmin_ ? 'Aún no hay órdenes' : 'No tienes órdenes abiertas'}</div><p>${esAdmin_ ? 'Las órdenes llegan con el Excel de DELSUR.' : 'Cuando te asignen órdenes aparecerán aquí.'}</p></div>`;
+  if (!ordenes_.length) {
+    cont.innerHTML = `<div class="dev-module"><div class="dev-title">${esAdmin_ ? 'Aún no hay órdenes' : 'No tienes órdenes abiertas'}</div><p>${esAdmin_ ? 'Las órdenes llegan con el Excel de DELSUR.' : 'Cuando te asignen órdenes aparecerán aquí.'}</p></div>`;
+    return;
+  }
+  // Si el buscador tenía el foco, se devuelve después de repintar
+  const enfocado = document.activeElement?.id === 'fb-buscar' ? document.activeElement.selectionStart : null;
+  const q = busq_.trim().toLowerCase();
+  const filtro = FILTROS.find(x => x.id === filtroSem_) || FILTROS[0];
+  const mostrar = ordenes_
+    .filter(o => q ? [o.numeroOrden, o.cliente, o.direccion, o.asignadoNombre].some(v => v && String(v).toLowerCase().includes(q)) : filtro.f(o))
+    .sort(porDias);
+  const vis = mostrar.slice(0, limite_);
+
+  cont.innerHTML = `
+    <div class="buscar-wrap" style="margin-bottom:12px">
+      ${svg(ICO.buscar, 14, 'style="color:var(--text-4);flex-shrink:0"')}
+      <input class="buscar-input" id="fb-buscar" placeholder="Buscar orden, cliente o dirección…" autocomplete="off" spellcheck="false" value="${esc(busq_)}"/>
+    </div>
+    ${q ? `<div style="font-size:12px;color:var(--text-3);margin:2px 2px 10px">${mostrar.length} resultado${mostrar.length !== 1 ? 's' : ''}</div>` : `
+    <div class="cm-tabs-est">
+      ${FILTROS.map(x => { const n = ordenes_.filter(x.f).length; return `<div class="cm-est ${x.id === filtroSem_ ? 'active' : ''} ${n ? '' : 'vacio'}" data-sem="${x.id}">${x.t}<span>${n}</span></div>`; }).join('')}
+    </div>`}
+    ${vis.length ? `<div class="crc-grid">${vis.map(tarjeta).join('')}</div>
+      ${mostrar.length > vis.length ? `<button class="cm-btn" id="fb-ver-mas" style="width:100%;height:44px;margin-top:10px">Ver ${Math.min(40, mostrar.length - vis.length)} más (${mostrar.length - vis.length} restantes)</button>` : ''}`
+      : `<div class="ds-card" style="text-align:center;padding:24px 16px;color:var(--text-3);font-size:13px">${q ? 'Nada coincide.' : `No hay órdenes en "${filtro.t}".`}</div>`}`;
+
+  const inp = cont.querySelector('#fb-buscar');
+  if (enfocado != null) { inp.focus(); try { inp.setSelectionRange(enfocado, enfocado); } catch {} }
+  let tm = null;
+  inp.oninput = () => { clearTimeout(tm); tm = setTimeout(() => { busq_ = inp.value; limite_ = 40; renderOrdenes(cont); }, 250); };
+  cont.querySelectorAll('[data-sem]').forEach(c => c.onclick = () => { filtroSem_ = c.dataset.sem; limite_ = 40; renderOrdenes(cont); });
+  cont.querySelector('#fb-ver-mas')?.addEventListener('click', () => { limite_ += 40; renderOrdenes(cont); });
+  cont.querySelectorAll('[data-resultado]').forEach(b => b.onclick = () => abrirResultado(ordenes_.find(o => o.id === b.dataset.resultado), session_));
+  cont.querySelectorAll('[data-vermapa]').forEach(b => b.onclick = () => verEnMapa(b.dataset.vermapa));
+  cont.querySelectorAll('[data-navegar]').forEach(b => b.onclick = () => {
+    const o = ordenes_.find(x => x.id === b.dataset.navegar);
+    if (o) window.open(`https://www.google.com/maps/dir/?api=1&destination=${o.latitud},${o.longitud}`, '_blank');
+  });
+}
+
+// Abre la orden en el mapa (el técnico tiene su pestaña Mapa; la oficina, la del área)
+async function verEnMapa(id) {
+  try {
+    const m = await import('./factibilidades_mapa.js');
+    m.pedirAbrir(id);
+    if (esAdmin_) setTab('mapa'); else window.__router.navigateTo('factibilidades_mapa');
+  } catch (err) { console.warn('[factibilidades] mapa:', err.message); }
 }
 
 function tarjeta(o) {
@@ -241,8 +298,15 @@ function tarjeta(o) {
       ${o.direccion ? `<div class="cm-meta">${esc(o.direccion)}</div>` : ''}
       <div class="cm-meta">Liberada ${fmtFecha(o.fechaLiberacion)}</div>
       ${esAdmin_ ? `<div class="cm-meta">${o.asignadoNombre ? esc(o.asignadoNombre) : '<span style="color:#fbbf24">Sin asignar</span>'}</div>` : ''}
+      <div class="cm-ord-acc">
+        ${puedeActuar(o, session_) ? `<button class="cm-btn marca" data-resultado="${o.id}" style="flex:1">${svg(ICO.check, 14)} Resultado</button>` : ''}
+        ${coordOk(o) ? `<button class="cm-btn" data-vermapa="${o.id}">${svg(ICO.mapa, 14)} Mapa</button>
+        <button class="cm-btn" data-navegar="${o.id}">${svg(ICO.nav, 14)} Navegar</button>` : '<span class="cm-meta" style="margin:0">Sin coordenadas</span>'}
+      </div>
     </div>`;
 }
+
+const coordOk = o => isFinite(parseFloat(o.latitud)) && isFinite(parseFloat(o.longitud));
 
 // ── Inicio del técnico (lo abre home.js) ──────────
 // Devuelve la función de limpieza para cuando el técnico sale del inicio.
