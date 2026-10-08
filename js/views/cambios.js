@@ -1998,34 +1998,39 @@ let importData = [];
 //    ADDRESS, CONCEPT, WO CLASS, LECTURAS Y OBSERVACIONES, LATITUD, LONGITUD.
 //  · Formato simple tipo AMI con WO al inicio: WO, NC, NOMBRE, DIRECCION, DS,
 //    MEDIDOR, LATITUD, LONGITUD.
+//  · Export SAP IW72 (hoja "Export"): Orden, Un.lect., Texto breve, Den-AMa,
+//    Contrato, Tp.tarifa, Nombre de cliente, Ubic.técn., DireccionCompleta,
+//    Fabricante, NºSerie, Máx. de Latitud/Longitud. Sus columnas de estado
+//    y bloqueo (StatUsu, Fecha, Estado OT, lecturas y bloqueos) no se usan.
 // Devuelve { error, data }.
 function mapearOrdenesExcel(rows) {
   const norm = s => String(s ?? '').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
 
-  // Buscar la fila de encabezados (la que contiene WO); en el export DELSUR
-  // hay filas de metadata antes.
+  // Buscar la fila de encabezados (la que contiene WO u Orden); en el export
+  // DELSUR hay filas de metadata antes.
   let headerRowIdx = -1;
   for (let i = 0; i < Math.min(rows.length, 6); i++) {
-    if ((rows[i] || []).some(h => norm(h) === 'WO')) { headerRowIdx = i; break; }
+    if ((rows[i] || []).some(h => norm(h) === 'WO' || norm(h) === 'ORDEN')) { headerRowIdx = i; break; }
   }
-  if (headerRowIdx === -1) return { error: 'No se encontró la columna WO. Verifica el archivo.', data: [] };
+  if (headerRowIdx === -1) return { error: 'No se encontró la columna WO u Orden. Verifica el archivo.', data: [] };
 
   const headers = (rows[headerRowIdx] || []).map(norm);
   const col = (...alias) => headers.findIndex(h => alias.includes(h));
   const idx = {
-    wo:            col('WO'),
-    nc:            col('NC'),
-    cliente:       col('CLIENT', 'CLIENTE', 'NOMBRE'),
-    serieActual:   col('# SERIES', 'SERIES', 'MEDIDOR', 'SERIE'),
-    marca:         col('TRADEMARK', 'MARCA'),
-    dsct:          col('DS/CT', 'DSCT', 'DS'),
-    direccion:     col('ADDRESS', 'DIRECCION'),
-    concepto:      col('CONCEPT', 'CONCEPTO'),
-    woClass:       col('WO CLASS', 'WOCLASS'),
-    unidadLectura: col('MRU'),
+    wo:            col('WO', 'ORDEN'),
+    nc:            col('NC', 'CONTRATO'),
+    cliente:       col('CLIENT', 'CLIENTE', 'NOMBRE', 'NOMBRE DE CLIENTE'),
+    serieActual:   col('# SERIES', 'SERIES', 'MEDIDOR', 'SERIE', 'NºSERIE', 'NOSERIE', 'N SERIE'),
+    marca:         col('TRADEMARK', 'MARCA', 'FABRICANTE'),
+    dsct:          col('DS/CT', 'DSCT', 'DS', 'PRIMERA FECHA: UBIC.TECN.', 'UBIC.TECN.'),
+    direccion:     col('ADDRESS', 'DIRECCION', 'DIRECCIONCOMPLETA'),
+    concepto:      col('CONCEPT', 'CONCEPTO', 'TEXTO BREVE'),
+    woClass:       col('WO CLASS', 'WOCLASS', 'DEN-AMA'),
+    tarifa:        col('TP.TARIFA', 'TARIFA'),
+    unidadLectura: col('MRU', 'UN.LECT.'),
     lecturas:      col('LECTURAS Y OBSERVACIONES', 'LECTURAS', 'OBSERVACIONES'),
-    latitud:       col('LATITUD', 'LAT'),
-    longitud:      col('LONGITUD', 'LONG', 'LNG'),
+    latitud:       col('LATITUD', 'LAT', 'MAX. DE LATITUD'),
+    longitud:      col('LONGITUD', 'LONG', 'LNG', 'MAX. DE LONGITUD'),
   };
   if (idx.wo === -1) return { error: 'No se encontró la columna WO.', data: [] };
 
@@ -2045,6 +2050,7 @@ function mapearOrdenesExcel(rows) {
       unidadLectura: val(r, idx.unidadLectura),
       concepto:      val(r, idx.concepto),
       woClass:       val(r, idx.woClass),
+      tarifa:        val(r, idx.tarifa),
       lecturas:      val(r, idx.lecturas),
     }));
   return { error: null, data };
@@ -2122,7 +2128,7 @@ function findCol(headers, options) {
 // "Solo agregar" hace lo de antes: crea las nuevas y no toca nada más.
 let importPlan_ = null, importArchivo_ = '', importModo_ = 'reemplazar';
 const HECHAS_ = new Set(['hecha', 'aprobada']);
-const CAMPOS_EXCEL_ = ['nc', 'cliente', 'direccion', 'latitud', 'longitud', 'serieActual', 'marca', 'dsct', 'unidadLectura', 'concepto', 'woClass', 'lecturas'];
+const CAMPOS_EXCEL_ = ['nc', 'cliente', 'direccion', 'latitud', 'longitud', 'serieActual', 'marca', 'dsct', 'unidadLectura', 'concepto', 'woClass', 'tarifa', 'lecturas'];
 
 async function analizarImport(filas) {
   const existentes = await leer('cambios_ordenes|*', () => db.collection('cambios_ordenes'));

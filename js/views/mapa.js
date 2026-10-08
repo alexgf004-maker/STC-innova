@@ -739,7 +739,7 @@ function verOrden(id) {
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:14px">
       ${(o.serieActual || o.serie) ? `<div style="background:var(--glass);border:1px solid var(--border);border-radius:10px;padding:9px 11px;grid-column:1 / -1">
         <div style="font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:rgba(255,255,255,.45);margin-bottom:3px">Serie medidor</div>
-        <div style="font-size:15px;font-weight:700;color:var(--cm-light);font-family:monospace">${o.serieActual || o.serie}</div>
+        <div style="font-size:15px;font-weight:700;color:var(--cm-light);font-family:monospace">${escapeHtml(o.serieActual || o.serie)}</div>
       </div>` : ''}
       ${o.nc ? `<div style="background:var(--glass);border:1px solid var(--border);border-radius:10px;padding:9px 11px">
         <div style="font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:rgba(255,255,255,.45);margin-bottom:3px">NC</div>
@@ -747,15 +747,23 @@ function verOrden(id) {
       </div>` : ''}
       ${o.marca ? `<div style="background:var(--glass);border:1px solid var(--border);border-radius:10px;padding:9px 11px">
         <div style="font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:rgba(255,255,255,.45);margin-bottom:3px">Marca</div>
-        <div style="font-size:14px;font-weight:700;color:#fff">${o.marca}</div>
+        <div style="font-size:14px;font-weight:700;color:#fff">${escapeHtml(o.marca)}</div>
       </div>` : ''}
       ${o.dsct ? `<div style="background:var(--glass);border:1px solid var(--border);border-radius:10px;padding:9px 11px">
         <div style="font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:rgba(255,255,255,.45);margin-bottom:3px">DSCT</div>
-        <div style="font-size:14px;font-weight:700;color:#fff">${o.dsct}</div>
+        <div style="font-size:14px;font-weight:700;color:#fff">${escapeHtml(o.dsct)}</div>
       </div>` : ''}
       ${o.unidadLectura ? `<div style="background:var(--glass);border:1px solid var(--border);border-radius:10px;padding:9px 11px">
         <div style="font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:rgba(255,255,255,.45);margin-bottom:3px">MRU</div>
-        <div style="font-size:14px;font-weight:700;color:#fff">${o.unidadLectura}</div>
+        <div style="font-size:14px;font-weight:700;color:#fff">${escapeHtml(o.unidadLectura)}</div>
+      </div>` : ''}
+      ${o.tarifa ? `<div style="background:var(--glass);border:1px solid var(--border);border-radius:10px;padding:9px 11px">
+        <div style="font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:rgba(255,255,255,.45);margin-bottom:3px">Tarifa</div>
+        <div style="font-size:14px;font-weight:700;color:#fff">${escapeHtml(o.tarifa)}</div>
+      </div>` : ''}
+      ${o.woClass ? `<div style="background:var(--glass);border:1px solid var(--border);border-radius:10px;padding:9px 11px">
+        <div style="font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:rgba(255,255,255,.45);margin-bottom:3px">Tipo</div>
+        <div style="font-size:14px;font-weight:700;color:#fff">${escapeHtml(o.woClass)}</div>
       </div>` : ''}
       ${o.concepto ? `<div style="background:var(--glass);border:1px solid var(--border);border-radius:10px;padding:9px 11px;grid-column:1 / -1">
         <div style="font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:rgba(255,255,255,.45);margin-bottom:3px">Concepto</div>
