@@ -36,6 +36,16 @@ let pendiente_ = null;   // orden que pidió abrir la lista ("Ver en el mapa")
 // un segundo GPS en el teléfono y la lectura sale al instante).
 let ultimaPos_ = null, errorGps_ = null;
 const oyentesGps_ = new Set();
+// Referencia del Excel (vecino o transformador cercano), en palabras.
+function textoReferencia(ref) {
+  const r = String(ref || '').toUpperCase();
+  if (r.startsWith('MD')) return `Medidor vecino ${r.slice(2)}`;
+  if (r.startsWith('DS') || r.startsWith('CT')) return `Transformador ${r}`;
+  if (r.startsWith('NC')) return `NC vecino ${r.slice(2)}`;
+  if (/^\d{9}$/.test(r)) return `NC vecino ${r}`;
+  return r;
+}
+
 function fuenteGpsMapa(ok, fallo) {
   if (ultimaPos_) ok(ultimaPos_);
   else if (errorGps_) fallo(errorGps_);
@@ -265,7 +275,9 @@ function plotMarkers() {
     const m = L.circleMarker(ll, {
       renderer: lienzo_, bubblingMouseEvents: false, radius: r,
       fillColor: colorDe(o), fillOpacity: 1,
-      color: cerca ? '#ffffff' : 'rgba(5,10,20,.55)', weight: cerca ? 2 : 1,
+      // Ubicación aproximada (por dirección, sin corregir): borde amarillo punteado
+      color: o.ubicacionAprox && !o.coordCorregida ? '#fbbf24' : cerca ? '#ffffff' : 'rgba(5,10,20,.55)', weight: cerca ? 2 : 1,
+      dashArray: o.ubicacionAprox && !o.coordCorregida && cerca ? '3 3' : null,
     });
     m._ordenId = o.id;
     m.on('click', e => tocarPunto(ordenMasCercana(e, o.id)));
@@ -355,6 +367,16 @@ function verOrden(id) {
       <div class="ds-hilite" style="display:flex;align-items:flex-start;gap:8px;margin-bottom:11px">
         <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" style="flex-shrink:0;margin-top:1px"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>
         <div style="font-size:13px;font-weight:500;color:rgba(255,255,255,.95);line-height:1.4">${esc(o.direccion)}</div>
+      </div>` : ''}
+      ${o.ubicacionAprox && !o.coordCorregida ? `
+      <div style="display:flex;align-items:flex-start;gap:8px;background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.35);border-radius:11px;padding:9px 12px;margin-bottom:11px;font-size:12px;color:#fde68a;line-height:1.4">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15" style="flex-shrink:0;margin-top:1px"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        <span><b>Ubicación aproximada</b>: sacada de la dirección. Guíate por la dirección y la referencia; estando en el sitio, corrige la ubicación.</span>
+      </div>` : ''}
+      ${o.referencia || o.telefono ? `
+      <div style="padding:10px 12px;background:var(--glass);border:1px solid var(--border);border-radius:10px;margin-bottom:11px">
+        ${o.referencia ? fila('Referencia', esc(textoReferencia(o.referencia))) : ''}
+        ${o.telefono ? fila('Teléfono', `<a href="tel:${esc(o.telefono)}" style="color:#60a5fa">${esc(o.telefono)}</a>`) : ''}
       </div>` : ''}
       ${role_ !== 'tecnico' ? `<div style="font-size:12px;color:var(--text-3);margin-bottom:11px">Asignada a <b style="color:${o.asignadoNombre ? '#e2e8f0' : '#fbbf24'}">${esc(o.asignadoNombre || 'nadie')}</b>${o.asignacionManual ? ' · reasignada en la app' : ''}</div>` : ''}
       ${visitas.length ? `

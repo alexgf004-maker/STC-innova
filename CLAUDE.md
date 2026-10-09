@@ -70,6 +70,10 @@ js/
     reclamos.js             bitácora Reclamos SIGET
     factibilidades.js + factibilidades_mapa.js   área Factibilidades (técnico individual, semáforo de días)
   factibilidades_comun.js  listeners compartidos de órdenes abiertas de Factibilidades
+  views/factibilidades_importar.js  importador del Excel (Orden, Aviso, Calle/Distrito/Población…);
+                           cruce Pto.tbjo.resp. (usuario DELSUR) -> técnico en factibilidades_config/general.codigosDelsur
+  geocodificar.js          coordenadas aproximadas por dirección (Google Maps JS Geocoder);
+                           clave en config_privada/google (solo admin/asistente); marca ubicacionAprox
     bodega.js, usuarios.js, areas.js
 ```
 

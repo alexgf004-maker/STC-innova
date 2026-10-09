@@ -19,8 +19,10 @@ import { suscribirAbiertas, suscribirConfig, suscribirCerradas, guardarConfig, M
 import { semaforoOrden, SEMAFORO, aFecha, claveDia } from '../dias_habiles.js';
 import { toast, escapeHtml } from '../ui.js';
 import { abrirResultado, abrirReasignar, puedeActuar, cerrarHojas } from './factibilidades_acciones.js';
+import { abrirImportar } from './factibilidades_importar.js';
 
 const ICO = {
+  subir:  '<path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>',
   lista:  '<line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>',
   mapa:   '<polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/>',
   buscar: '<circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>',
@@ -130,6 +132,7 @@ function renderShell() {
       <div id="fb-content"></div>
       ${esAdmin_ ? hoja('fb-sheet-festivos', 'Días festivos', '') + hoja('fb-sheet-meta', 'Meta diaria', '')
         + hoja('fb-sheet-acciones', 'Acciones de Factibilidades', `<div class="flex-col gap-8">
+            ${accion('fb-a-importar', ICO.subir, 'Importar Excel', 'Órdenes nuevas; asigna por usuario DELSUR')}
             ${accion('fb-a-excel', ICO.bajar, 'Exportar a Excel', 'Días hábiles, resultado y coordenada corregida')}
             ${accion('fb-a-meta', ICO.meta, 'Meta diaria', 'Órdenes cerradas por técnico al día')}
             ${accion('fb-a-festivos', ICO.cal, 'Días festivos', 'No cuentan como días hábiles')}
@@ -142,6 +145,7 @@ function renderShell() {
   const abrirH = id => container_.querySelector('#' + id).classList.add('open');
   const cerrarH = id => container_.querySelector('#' + id).classList.remove('open');
   container_.querySelector('#fb-menu').onclick = () => abrirH('fb-sheet-acciones');
+  container_.querySelector('#fb-a-importar').onclick = () => { cerrarH('fb-sheet-acciones'); abrirImportar(session_, tecnicos_); };
   container_.querySelector('#fb-a-excel').onclick = () => { cerrarH('fb-sheet-acciones'); abrirExportar(); };
   container_.querySelector('#fb-a-meta').onclick = () => { cerrarH('fb-sheet-acciones'); abrirMeta(); };
   container_.querySelector('#fb-a-festivos').onclick = () => { cerrarH('fb-sheet-acciones'); abrirFestivos(); };
