@@ -42,6 +42,17 @@ campaña). Ya pasó en `mapa.js` (parejaDelDia) y se replicó al clonar a
 `ami_mapa.js`. Revisar este patrón en cualquier archivo nuevo que consulte
 `users`.
 
+## Login y PIN (seguridad)
+
+El PIN lo revisa el SERVIDOR (Cloud Functions en `functions/`, ver `functions/LEEME.md`):
+`login` entrega un token y la app entra con `auth.signInWithCustomToken`. Cambiar PIN
+(`cambiarPin`), restablecer PIN del admin (`adminPin`) y crear usuarios (`crearUsuario`)
+también pasan por el servidor con `llamar()` de `js/firebase.js`. Los PIN cifrados viven en
+la colección `pins` (cerrada a la app por reglas); NUNCA volver a guardarlos en `users`.
+Antes la contraseña de Firebase salía del uid + una clave fija y el PIN se revisaba en el
+teléfono: con la consola se entraba como otro usuario. El proveedor "Correo/contraseña" de
+Firebase Auth debe quedar DESACTIVADO (solo se entra con el token del servidor).
+
 ## Arquitectura
 
 ```

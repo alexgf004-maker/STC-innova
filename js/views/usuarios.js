@@ -4,8 +4,7 @@
  * Exporta: init(container, session)
  */
 
-import { db, auth, SEED } from '../firebase.js';
-import { hashPin, derivePassword, generateSalt } from '../crypto.js';
+import { db, llamar, mensajeServidor } from '../firebase.js';
 import { toast, escapeHtml } from '../ui.js';
 
 const AREAS    = ['CAMBIOS', 'Caracterizacion', 'Reclamos', 'AMI', 'Factibilidades'];
@@ -390,49 +389,9 @@ async function crearUsuario() {
   setLoading('btn-crear-label', 'Creando…', true);
 
   try {
-    const email    = `${user}@innova-stc.internal`;
-    const salt     = generateSalt();
-    const pinHash  = await hashPin(salt, pin);
-
-    // Crear en Firebase Auth con app secundaria para no perder sesión
-    // Reusar la app 'secondary' si ya existe (crear un 2do usuario sin
-    // recargar fallaba con "app/duplicate-app").
-    const secondaryApp = firebase.apps.find(a => a.name === 'secondary')
-      || firebase.initializeApp(firebase.app().options, 'secondary');
-
-    const secondaryAuth = secondaryApp.auth();
-    const tempPass = Math.random().toString(36).slice(2) + 'Aa1!'; // temp
-    const cred = await secondaryAuth.createUserWithEmailAndPassword(email, tempPass);
-    const uid  = cred.user.uid;
-
-    // Derivar contraseña real y actualizar
-    const realPass = await derivePassword(uid, SEED);
-    await cred.user.updatePassword(realPass);
-    await secondaryAuth.signOut();
-
-    // Crear documento en Firestore
-    await db.collection('users').doc(uid).set({
-      uid,
-      username:      user,
-      displayName:   name,
-      internalEmail: email,
-      role,
-      active:        true,
-      pinHash,
-      pinSalt:       salt,
-      asignacionActual: null,
-      usuarioOperativoAsignado: null,
-      createdAt:     firebase.firestore.FieldValue.serverTimestamp(),
-      createdBy:     session_.uid,
-    });
-
-    // Registro en `usernames` — lo usa el login para resolver
-    // username -> uid + correo interno (sin secretos). Sin esto,
-    // el usuario nuevo no puede iniciar sesión.
-    await db.collection('usernames').doc(user).set({
-      uid,
-      email,
-    });
+    // Lo crea el servidor: la cuenta de Firebase (con contraseña al azar que
+    // nadie conoce), la ficha, el registro en `usernames` y el PIN protegido.
+    const { uid } = await llamar('crearUsuario', { username: user, displayName: name, role, pin });
 
     // Actualizar lista local
     usuarios.push({
@@ -450,11 +409,7 @@ async function crearUsuario() {
 
   } catch (err) {
     console.error('[usuarios] Error creando:', err);
-    if (err.code === 'auth/email-already-in-use') {
-      showFormError('nu-error', 'Ese username ya existe en el sistema.');
-    } else {
-      showFormError('nu-error', 'Error al crear. Intenta de nuevo.');
-    }
+    showFormError('nu-error', mensajeServidor(err, 'Error al crear. Intenta de nuevo.'));
   } finally {
     setLoading('btn-crear-label', 'Crear usuario', false);
   }
@@ -654,12 +609,8 @@ async function guardarCredenciales() {
   try {
     const update = { username };
 
-    if (pin) {
-      const salt    = generateSalt();
-      const pinHash = await hashPin(salt, pin);
-      update.pinHash = pinHash;
-      update.pinSalt = salt;
-    }
+    // El PIN lo guarda el servidor (protegido, fuera de la ficha del usuario)
+    if (pin) await llamar('adminPin', { uid: credUid_, pin });
 
     // El login resuelve username -> uid + correo con la colección `usernames`.
     // Si cambia el username hay que registrar el nuevo (con el MISMO correo
@@ -687,7 +638,7 @@ async function guardarCredenciales() {
     renderLista();
     toast('Credenciales actualizadas', 'ok');
   } catch(err) {
-    errEl.textContent = `Error: ${err.message}`;
+    errEl.textContent = mensajeServidor(err, `Error: ${err.message}`);
     errEl.style.display = 'block';
   } finally {
     setLoading('btn-cred-label', 'Guardar cambios', false);

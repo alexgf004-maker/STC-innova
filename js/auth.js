@@ -4,8 +4,7 @@
  * Cargado en login.html como módulo principal.
  */
 
-import { db, auth } from './firebase.js';
-import { hashPin, derivePassword, SEED } from './crypto.js';
+import { db, auth, llamar, mensajeServidor } from './firebase.js';
 
 const SESSION_KEY  = 'innova_session';
 const REMEMBER_KEY = 'innova_remember_user';
@@ -84,43 +83,13 @@ async function doLogin() {
   clearError();
 
   try {
-    // PASO 1 — Resolver username -> uid usando la colección `usernames`
-    // (solo contiene uid y correo interno, ningún secreto)
-    let uid = null, email = null;
+    // PASO 1 — El servidor revisa usuario y PIN (con límite de intentos) y
+    // entrega un token de acceso. El PIN ya no se revisa en el teléfono.
+    const { token } = await llamar('login', { username, pin });
+    await auth.signInWithCustomToken(token);
+    const uid = auth.currentUser.uid;
 
-    try {
-      const uDoc = await db.collection('usernames').doc(username).get();
-      if (uDoc.exists) {
-        const d = uDoc.data();
-        uid   = d.uid || null;
-        email = d.email || `${username}@innova-stc.internal`;
-      }
-    } catch (e) {
-      console.warn('[auth] No se pudo leer usernames, usando método anterior:', e);
-    }
-
-    // RESPALDO — si no está en `usernames`, usar el método anterior
-    if (!uid) {
-      const snap = await db.collection('users')
-        .where('username', '==', username)
-        .where('active', '==', true)
-        .limit(1)
-        .get();
-
-      if (snap.empty) {
-        showError('Usuario no encontrado o desactivado');
-        setLoading(false);
-        return;
-      }
-      uid   = snap.docs[0].id;
-      email = snap.docs[0].data().internalEmail || `${username}@innova-stc.internal`;
-    }
-
-    // PASO 2 — Firebase Auth con contraseña derivada
-    const password = await derivePassword(uid, SEED);
-    await auth.signInWithEmailAndPassword(email, password);
-
-    // PASO 3 — Ya autenticado: leer el perfil completo
+    // PASO 2 — Ya autenticado: leer el perfil completo
     const doc = await db.collection('users').doc(uid).get();
     if (!doc.exists) {
       await auth.signOut();
@@ -129,22 +98,6 @@ async function doLogin() {
       return;
     }
     const data = doc.data();
-
-    if (data.active === false) {
-      await auth.signOut();
-      showError('Usuario desactivado');
-      setLoading(false);
-      return;
-    }
-
-    // PASO 4 — Verificar PIN: hashPin(salt, pin)
-    const hash = await hashPin(data.pinSalt || '', pin);
-    if (hash !== data.pinHash) {
-      await auth.signOut();
-      showError('PIN incorrecto');
-      setLoading(false);
-      return;
-    }
 
     // Acceso concedido
     const session = {
@@ -169,10 +122,8 @@ async function doLogin() {
     console.error('[auth] Login error:', err);
     if (err.code === 'auth/network-request-failed') {
       showError('Sin conexión. Verifica tu internet.');
-    } else if (err.code === 'auth/too-many-requests') {
-      showError('Demasiados intentos. Espera un momento.');
-    } else if (err.code === 'auth/wrong-password' || err.code === 'auth/user-not-found' || err.code === 'auth/invalid-credential') {
-      showError('Usuario o PIN incorrecto');
+    } else if (String(err.code || '').startsWith('functions/')) {
+      showError(mensajeServidor(err, 'Error al iniciar sesión. Intenta de nuevo.'));
     } else {
       showError('Error al iniciar sesión. Intenta de nuevo.');
     }
