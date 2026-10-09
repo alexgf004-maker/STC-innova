@@ -52,6 +52,8 @@ la colección `pins` (cerrada a la app por reglas); NUNCA volver a guardarlos en
 Antes la contraseña de Firebase salía del uid + una clave fija y el PIN se revisaba en el
 teléfono: con la consola se entraba como otro usuario. El proveedor "Correo/contraseña" de
 Firebase Auth debe quedar DESACTIVADO (solo se entra con el token del servidor).
+Las reglas de Firestore viven en la consola; `firestore.rules` es la copia de referencia
+(mantenerla igual a la consola cuando se cambien).
 
 ## Arquitectura
 

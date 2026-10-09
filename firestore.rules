@@ -1,0 +1,321 @@
+// Reglas de Firestore de STC-innova: COPIA DE REFERENCIA.
+// Las que mandan son las de la consola de Firebase (Firestore → Reglas): este
+// archivo no se publica solo. Si cambias las de la consola, actualiza esta copia.
+//
+// Login y PIN pasan por el servidor (functions/): `usernames` ya no se lee sin
+// sesión, nadie escribe su propio PIN, y `pins` / `seguridad_intentos` están
+// cerradas a la app (solo el servidor las usa).
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isAuth() { return request.auth != null; }
+    function myProfile() { return get(/databases/$(database)/documents/users/$(request.auth.uid)).data; }
+    function isActive() { return isAuth() && myProfile().active == true; }
+    function hasRole(r) { return isActive() && myProfile().role == r; }
+    function hasAnyRole(roles) { return isActive() && myProfile().role in roles; }
+    function onlyFields(fields) { return request.resource.data.diff(resource.data).affectedKeys().hasOnly(fields); }
+    function isAdminOrAsistente() { return hasAnyRole(["admin","asistente"]); }
+
+    // [FASE 1] El técnico solo toca órdenes de SU pareja y SU área (la app
+    // nunca le muestra otras). Antes podía modificar cualquier orden.
+    function miAsignacion() { return myProfile().get("asignacionActual", {}); }
+    function esMiOrden(area) {
+      return miAsignacion().get("area", "") == area
+        && resource.data.get("pareja", null) == miAsignacion().get("destino", "");
+    }
+    // [FASE 1] Orden generada en campo: solo como "hecha", para su propia
+    // pareja y con los campos que pone la app. Antes podía crearse con
+    // cualquier estado (incluso ya aprobada) y cualquier dato.
+    function ordenDeCampoValida(area, campos) {
+      return miAsignacion().get("area", "") == area
+        && request.resource.data.generadaEnCampo == true
+        && request.resource.data.estadoCampo == "hecha"
+        && request.resource.data.get("pareja", null) == miAsignacion().get("destino", "")
+        && request.resource.data.keys().hasOnly(campos);
+    }
+
+    // [CAMBIO 1] La asistente gestiona usuarios, pero no puede crear ni editar
+    // administradores, ni convertir a nadie (ni a sí misma) en admin.
+    function gestionaUsuario() {
+      return hasRole("admin")
+        || (hasRole("asistente")
+            && request.resource.data.role != "admin"
+            && (resource == null || resource.data.role != "admin"));
+    }
+
+    // [CAMBIO 2] El técnico puede marcar hecha / visita / ya cambiado / mal
+    // ubicado, pero no puede pasar una orden a "aprobada" (eso es del admin).
+    function noSeAutoAprueba() {
+      return request.resource.data.get("estadoCampo", null) != "aprobada"
+        || resource.data.get("estadoCampo", null) == "aprobada";
+    }
+
+    // [SEGURIDAD] El login lo resuelve el servidor: `usernames` ya no se lee sin
+    // iniciar sesión (antes daba el uid de cualquiera, con el que se podía
+    // entrar sin PIN). Solo la oficina lo usa, al cambiar un nombre de usuario.
+    match /usernames/{username} {
+      allow read: if isAdminOrAsistente();
+      allow write: if isAdminOrAsistente();
+    }
+
+    // [SEGURIDAD] PIN cifrados e intentos fallidos: solo el servidor (Admin SDK).
+    match /pins/{uid} {
+      allow read, write: if false;
+    }
+    match /seguridad_intentos/{id} {
+      allow read, write: if false;
+    }
+
+    match /devoluciones_pendientes/{docId} {
+      allow read: if isActive();
+      allow create: if isActive()
+        && request.resource.data.tecnicoUid == request.auth.uid
+        && request.resource.data.estado == "pendiente";
+      allow update: if isAdminOrAsistente();
+      allow delete: if isAdminOrAsistente()
+        || (isActive() && resource.data.tecnicoUid == request.auth.uid);
+    }
+    match /factibilidades_ordenes/{id} {
+      allow read: if isActive();
+      allow create, delete: if isAdminOrAsistente();
+      allow update: if isAdminOrAsistente()
+        || (isActive()
+            && resource.data.asignadoUid == request.auth.uid
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+                 'estado','resultado','observacion','visitas','fechaHecha','hechaPor',
+                 'latitud','longitud','coordCorregida','corregidaPor','fechaCorreccion']));
+    }
+    match /factibilidades_config/{id} {
+      allow read: if isActive();
+      allow write: if isAdminOrAsistente();
+    }
+
+    match /reclamos_siget/{docId} {
+      allow read: if isActive();
+      allow create: if isAdminOrAsistente()
+        || (isActive() && request.resource.data.tecnicoUid == request.auth.uid);
+      allow update, delete: if isAdminOrAsistente();
+    }
+
+    match /devoluciones/{docId} {
+      allow read: if isActive();
+      allow create: if isAdminOrAsistente();
+      allow update, delete: if false;
+    }
+
+    match /caracterizacion_retiros/{docId} {
+      allow read: if isActive();
+      allow create, delete: if isAdminOrAsistente();
+      allow update: if isAdminOrAsistente()
+        || (isActive() && esMiOrden("Caracterizacion")
+            && onlyFields(["estado","motivo","hechoPor","fechaHecho","pareja"]));
+    }
+
+    match /config/{docId} {
+      allow read: if true;
+      allow write: if hasRole("admin");
+    }
+
+    // [CAMBIO 3] Antes cualquier sesión (aunque el usuario estuviera
+    // desactivado) podía leer TODOS los usuarios, con su pinHash y pinSalt.
+    // Ahora: cada quien lee su propio perfil; ver a los demás exige estar activo.
+    // [SEGURIDAD] El PIN y la marca de "ya cambió su PIN" los escribe solo el
+    // servidor: nadie edita su propia ficha desde la app.
+    match /users/{uid} {
+      allow get:  if isAuth() && (request.auth.uid == uid || isActive());
+      allow list: if isActive();
+      allow create: if gestionaUsuario();
+      allow update: if gestionaUsuario();
+      allow delete: if false;
+    }
+
+    match /cambios_ordenes/{docId} {
+      allow read: if isActive();
+      allow delete: if isAdminOrAsistente();
+      allow create: if isAdminOrAsistente()
+        || (isActive() && ordenDeCampoValida("CAMBIOS", [
+          "wo","nc","observacion","pareja","estadoCampo","actualizadaDelsur",
+          "generadaEnCampo","generadaPor","fechaHecha","hechaPor"
+        ]));
+      allow update: if isAdminOrAsistente()
+        || (isActive() && esMiOrden("CAMBIOS") && noSeAutoAprueba() && onlyFields([
+          "estadoCampo","actualizadaDelsur","fechaHecha","hechaPor",
+          "observacion","fechaVisita","visitadoPor","motivoVisita",
+          "observacionVisita","parejaDelDia","aprobadoPor","fechaAprobacion",
+          "yaCambiadoPor","yaCambiadoEn","yaCambiadoComentario",
+          "urgente","malUbicadoPor","malUbicadoEn"
+        ]));
+    }
+
+    // [CAMBIO 9] Igual que en AMI: el técnico deja la orden "por confirmar",
+    // pero no puede marcarla como "confirmada" (eso es de admin/asistente).
+    function noSeAutoConfirma() {
+      return request.resource.data.get("estado", null) != "confirmada"
+        || resource.data.get("estado", null) == "confirmada";
+    }
+
+    match /caracterizacion_ordenes/{docId} {
+      allow read: if isActive();
+      allow create: if isAdminOrAsistente();
+      allow update: if isAdminOrAsistente()
+        || (isActive() && esMiOrden("Caracterizacion") && noSeAutoConfirma() && onlyFields([
+          "estado","logranoEn","visitas","_nivelVisible","pareja","hechaPor","fechaHecha"
+        ]));
+      allow delete: if isAdminOrAsistente();
+    }
+
+    // Condominios: tipoSitio, condominio, edificio, nivel, etiqueta y forma
+    // solo los escribe admin/asistente al importar. Asignar, confirmar,
+    // devolver a pendiente y borrar un edificio también son de admin/asistente.
+    // El técnico (orden normal o de condominio) sigue limitado a la lista de abajo.
+    match /ami_ordenes/{docId} {
+      allow read: if isActive();
+      allow delete: if isAdminOrAsistente();
+      allow create: if isAdminOrAsistente()
+        || (isActive() && ordenDeCampoValida("AMI", [
+          "nc","observacion","pareja","estadoCampo",
+          "generadaEnCampo","generadaPor","fechaHecha","hechaPor"
+        ]));
+      allow update: if isAdminOrAsistente()
+        || (isActive() && esMiOrden("AMI") && noSeAutoAprueba() && onlyFields([
+          "estadoCampo","actualizadaDelsur","fechaHecha","hechaPor",
+          "observacion","fechaVisita","visitadoPor","motivoVisita",
+          "observacionVisita","parejaDelDia","aprobadoPor","fechaAprobacion",
+          "yaCambiadoPor","yaCambiadoEn","yaCambiadoComentario",
+          "malUbicadoPor","malUbicadoEn","pareja"
+        ]));
+    }
+
+    match /ami_cambiados/{nc} {
+      allow read: if isActive();
+      allow create, update, delete: if isAdminOrAsistente();
+    }
+
+    match /ami_historial/{docId} {
+      allow read: if isActive();
+      allow create, update, delete: if isAdminOrAsistente();
+    }
+
+    match /ami_config/{docId} {
+      allow read: if isActive();
+      allow write: if isAdminOrAsistente();
+    }
+
+    // [FASE 1] Crear órdenes OTC es de oficina (antes cualquiera podía).
+    match /otc_ordenes/{docId} {
+      allow read: if isActive();
+      allow delete: if isAdminOrAsistente();
+      allow create: if isAdminOrAsistente();
+      allow update: if isAdminOrAsistente()
+        || (isActive() && onlyFields([
+          "estadoCampo","actualizadaDelsur","fechaHecha","hechaPor",
+          "aprobadoPor","fechaAprobacion",
+          "yaCambiadoPor","yaCambiadoEn","yaCambiadoComentario"
+        ]));
+    }
+
+    match /cambios_calendario/{docId} {
+      allow read: if isActive();
+      allow write: if isAdminOrAsistente();
+    }
+
+    // [CAMBIO 4] El técnico solo puede BAJAR stock (al aceptar un despacho).
+    // Antes podía poner cualquier número.
+    match /kardex/inventario/items/{itemId} {
+      allow read: if isActive();
+      allow create, delete: if isAdminOrAsistente();
+      allow update: if isAdminOrAsistente()
+        || (isActive() && onlyFields(["stock"])
+            && request.resource.data.stock <= resource.data.stock);
+    }
+
+    // [CAMBIO 5] Movimientos del kardex: cualquiera activo los registra, pero
+    // solo admin/asistente los corrige y solo el admin los borra. Antes
+    // cualquier usuario activo podía editar o borrar el historial.
+    // [FASE 1] El técnico solo registra salidas (al aceptar un despacho, a
+    // su nombre) y consumos. Ajustes y demás movimientos son de oficina.
+    match /kardex/movimientos/{tipo}/{docId} {
+      allow read: if isActive();
+      allow create: if isAdminOrAsistente()
+        || (isActive() && tipo == "consumos")
+        || (isActive() && tipo == "salidas" && request.resource.data.aceptadoPorUid == request.auth.uid);
+      allow update: if isAdminOrAsistente();
+      allow delete: if hasRole("admin");
+    }
+
+    // [CAMBIO 6] Series: el técnico las marca como despachadas al aceptar,
+    // pero no puede borrarlas.
+    // [FASE 1] El técnico solo cambia el estado de una serie al consumirla o
+    // al aceptar el despacho; crear o borrar series es de oficina.
+    match /kardex/seriales/items/{docId} {
+      allow read: if isActive();
+      allow create, delete: if isAdminOrAsistente();
+      allow update: if isAdminOrAsistente()
+        || (isActive() && onlyFields([
+          "estado","ordenId","wo","fechaConsumo",
+          "salidaId","fechaSalida","usuarioDespacho"
+        ]));
+    }
+
+    // [CAMBIO 7] El técnico solo puede pasar una solicitud PENDIENTE a
+    // "aprobado" (lo hace la app al aceptar el despacho). Antes podía cambiar
+    // cualquier solicitud a cualquier estado.
+    match /solicitudes_material/{docId} {
+      allow read: if isActive();
+      allow create: if isActive()
+        && request.resource.data.usuarioUid == request.auth.uid
+        && request.resource.data.estado == "pendiente"
+        && request.resource.data.keys().hasAll(["usuarioUid","usuarioNombre","materiales","estado","fecha"]);
+      allow update: if isAdminOrAsistente()
+        || (isActive() && onlyFields(["estado","salidaId"])
+            && resource.data.estado == "pendiente"
+            && request.resource.data.estado == "aprobado");
+      allow delete: if hasRole("admin");
+    }
+
+    match /despachos/{docId} {
+      allow read: if isActive();
+      allow create: if isAdminOrAsistente();
+      allow update: if isAdminOrAsistente();
+      allow delete: if false;
+    }
+
+    match /audit_log/{docId} {
+      allow read: if hasRole("admin");
+      allow create: if isActive();
+      allow update, delete: if false;
+    }
+
+    match /stats/{docId} {
+      allow read: if isActive();
+      allow write: if isAdminOrAsistente();
+    }
+
+    // [CAMBIO 8] Nadie de campo edita un despacho pendiente (la app nunca lo
+    // hace; el técnico solo lo acepta o rechaza, que lo borra).
+    match /despachos_pendientes/{docId} {
+      allow read: if isActive();
+      allow create: if isAdminOrAsistente();
+      allow update: if isAdminOrAsistente();
+      allow delete: if isAdminOrAsistente()
+        || (isActive() && resource.data.tecnicoRecibeUid == request.auth.uid);
+    }
+
+    // [FASE 3] Padrones de clientes (antes archivos públicos del sitio).
+    // Solo los leen usuarios activos; solo el admin los sube.
+    match /padrones/{nombre} {
+      allow read: if isActive();
+      allow write: if hasRole("admin");
+    }
+    match /padrones/{nombre}/partes/{parte} {
+      allow read: if isActive();
+      allow write: if hasRole("admin");
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
