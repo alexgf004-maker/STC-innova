@@ -197,11 +197,12 @@ const esHoy = v => { const d = aFecha(v); return !!d && claveDia(d) === claveDia
 const iniciales = n => String(n || '').trim().split(/\s+/).slice(0, 2).map(p => p[0] || '').join('').toUpperCase() || '?';
 const barra = (n, meta, color) => `<div class="ds-bar" style="height:5px;margin-top:6px"><i style="width:${meta ? Math.min(100, Math.round(n / meta * 100)) : 0}%;background:${color}"></i></div>`;
 
-// Resumen por técnico: pendientes, rojas, cerradas hoy y promedio de atención
+// Resumen por técnico: pendientes por semáforo (a tiempo / por vencer /
+// atrasadas), cerradas hoy y promedio de atención
 function resumenTecnicos() {
   const filas = new Map();
   const fila = (uid, nombre) => {
-    if (!filas.has(uid)) filas.set(uid, { uid, nombre, pend: 0, rojas: 0, hoy: 0, dias: [] });
+    if (!filas.has(uid)) filas.set(uid, { uid, nombre, pend: 0, rojas: 0, verde: 0, amarillo: 0, rojo: 0, hoy: 0, dias: [] });
     return filas.get(uid);
   };
   tecnicos_.forEach(u => fila(u.id, u.displayName));
@@ -209,7 +210,9 @@ function resumenTecnicos() {
     if (!o.asignadoUid) return;
     const f = fila(o.asignadoUid, o.asignadoNombre || 'Sin nombre');
     f.pend++;
-    if (sem(o).color === 'rojo') f.rojas++;
+    const c = sem(o).color;
+    if (c) f[c]++;
+    if (c === 'rojo') f.rojas++;
   });
   cerradas_.forEach(o => {
     if (!o.asignadoUid) return;
@@ -260,16 +263,27 @@ function renderPanel(cont) {
     ${filas.length ? `
     <div class="cm-lista" style="margin-bottom:22px">
       ${filas.map(f => `
-        <div class="cm-fila" data-tec="${esc(f.uid)}">
+        <div class="cm-fila" data-tec="${esc(f.uid)}" style="flex-wrap:wrap;row-gap:0">
           <div class="user-avatar fb" style="width:36px;height:36px;font-size:12px;flex-shrink:0">${esc(iniciales(f.nombre))}</div>
           <div style="flex:1;min-width:0">
             <div class="cm-fila-t">${esc(f.nombre)}</div>
-            <div class="cm-fila-s">${f.pend} pendiente${f.pend !== 1 ? 's' : ''}${f.rojas ? ` · <span style="color:${SEMAFORO.rojo.color};font-weight:600">${f.rojas} en rojo</span>` : ''} · prom. ${prom(f.dias)} días</div>
+            <div class="cm-fila-s">${f.pend} pendiente${f.pend !== 1 ? 's' : ''} · prom. ${prom(f.dias)} días</div>
           </div>
           <div style="width:74px;flex-shrink:0;text-align:right">
             <div style="font-size:15px;font-weight:700;color:${f.hoy >= meta ? '#22c55e' : 'var(--text)'}">${f.hoy}<span style="font-size:11px;font-weight:500;color:var(--text-3)"> / ${meta}</span></div>
             ${barra(f.hoy, meta, f.hoy >= meta ? '#22c55e' : 'var(--fb-light)')}
           </div>
+          ${f.pend ? `
+          <div style="flex-basis:100%;padding-left:48px">
+            <div class="ds-bar" style="height:5px;margin-top:9px;display:flex;overflow:hidden">${['verde', 'amarillo', 'rojo'].map(c => f[c] ? `<i style="width:${(f[c] / f.pend * 100).toFixed(1)}%;background:${SEMAFORO[c].color}"></i>` : '').join('')}</div>
+            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:8px">
+              ${['verde', 'amarillo', 'rojo'].map(c => `
+                <div class="fb-sem" data-tec="${esc(f.uid)}" data-color="${c}" style="cursor:pointer;text-align:center;padding:6px 4px;border-radius:10px;border:1px solid ${SEMAFORO[c].color}${f[c] ? '55' : '22'};background:${SEMAFORO[c].color}${f[c] ? '1a' : '06'}">
+                  <div style="font-size:17px;font-weight:700;line-height:1.1;color:${f[c] ? SEMAFORO[c].color : 'var(--text-4)'}">${f[c]}</div>
+                  <div style="font-size:10.5px;font-weight:600;color:${f[c] ? 'var(--text-2)' : 'var(--text-4)'};margin-top:2px">${SEMAFORO[c].texto}</div>
+                </div>`).join('')}
+            </div>
+          </div>` : ''}
         </div>`).join('')}
     </div>` : `<div class="ds-card" style="text-align:center;padding:18px;color:var(--text-3);font-size:13px;margin-bottom:22px">No hay técnicos asignados a Factibilidades hoy.</div>`}
     ${ordenes_.length ? '' : `<div class="dev-module" style="margin-bottom:22px"><div class="dev-title">Aún no hay órdenes</div><p>El importador del Excel de DELSUR se habilita cuando llegue el archivo real.</p></div>`}
@@ -290,7 +304,9 @@ function renderPanel(cont) {
   cont.querySelector('#fb-abrir-festivos').onclick = abrirFestivos;
   cont.querySelector('#fb-abrir-meta').onclick = abrirMeta;
   cont.querySelectorAll('[data-ir]').forEach(el => el.onclick = () => el.dataset.ir === 'sin' ? irALista('todas', 'sin') : irALista(el.dataset.ir));
-  cont.querySelectorAll('[data-tec]').forEach(el => el.onclick = () => irALista('todas', el.dataset.tec));
+  cont.querySelectorAll('.cm-fila[data-tec]').forEach(el => el.onclick = () => irALista('todas', el.dataset.tec));
+  // Tocar "3 atrasadas" de un técnico abre su lista ya filtrada por ese color
+  cont.querySelectorAll('.fb-sem').forEach(el => el.onclick = e => { e.stopPropagation(); irALista(el.dataset.color, el.dataset.tec); });
 }
 
 function irALista(filtro, tec = 'todos') {
