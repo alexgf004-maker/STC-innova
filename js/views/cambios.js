@@ -2083,7 +2083,9 @@ function mapearOrdenesExcel(rows) {
       telefono:      cod?.telefono || '',
       referencia:    cod?.referencia || '',
     }; });
-  return { error: null, data, sinCoordenadas: idx.latitud === -1 };
+  return { error: null, data, sinCoordenadas: idx.latitud === -1,
+    // Excel de clientes nuevos (Aviso + Población): es de Factibilidades, no de Cambios.
+    esFactibilidades: idx.aviso >= 0 && idx.poblacion >= 0 };
 }
 
 function openImport() {
@@ -2107,7 +2109,10 @@ function handleFileSelect(e) {
       const ws   = wb.Sheets[wb.SheetNames[0]];
       const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
 
-      const { error, data, sinCoordenadas } = mapearOrdenesExcel(rows);
+      const { error: err0, data, sinCoordenadas, esFactibilidades } = mapearOrdenesExcel(rows);
+      const error = err0 || (esFactibilidades
+        ? 'Este Excel es de Factibilidades (clientes nuevos con Aviso y Población). No se sube en Cambios: va en el área Factibilidades.'
+        : null);
       if (error) {
         document.getElementById('import-error').textContent = error;
         document.getElementById('import-error').style.display = 'block';
