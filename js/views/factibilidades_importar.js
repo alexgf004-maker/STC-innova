@@ -14,7 +14,10 @@
  * (asignacionManual) no se pisa al volver a importar.
  *
  * El Excel no trae coordenadas: las órdenes se ubican por dirección con
- * Google (geocodificar.js) y quedan marcadas como aproximadas.
+ * Google (geocodificar.js) y quedan marcadas como aproximadas. Tampoco trae
+ * departamento, y "Población" a veces es solo un cantón con nombre repetido
+ * en otros municipios: el "Centro planif." dice la zona de DELSUR y con eso se
+ * limita la búsqueda (ver CENTROS).
  */
 import { db } from '../firebase.js';
 import { toast, escapeHtml as esc } from '../ui.js';
@@ -23,6 +26,9 @@ import { geocodificar, leerClave, guardarClave } from '../geocodificar.js';
 
 const ID = 'fb-sheet-importar';
 const norm = s => String(s ?? '').toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
+
+// Centro de planificación DELSUR -> departamento (zona de búsqueda en Google).
+const CENTROS = { '1110': 'San Salvador', '2110': 'La Libertad', '3110': 'La Libertad', '3510': 'La Paz' };
 
 let filas_ = [], plan_ = null, tecnicos_ = [], session_ = null, mapeo_ = {}, archivo_ = '';
 
@@ -54,7 +60,7 @@ export function leerExcel(rows) {
   const c = (...a) => H.findIndex(x => a.includes(x));
   const ix = {
     orden: c('ORDEN'), nc: c('CONTRATO'), aviso: c('AVISO'), fAviso: c('FECHA DE AVISO'), fLib: c('LIBERACION REAL'),
-    texto: c('TEXTO BREVE'), poblacion: c('POBLACION'), distrito: c('DISTRITO'), calle: c('CALLE'),
+    texto: c('TEXTO BREVE'), centro: c('CENTRO PLANIF.', 'CENTRO PLANIF'), poblacion: c('POBLACION'), distrito: c('DISTRITO'), calle: c('CALLE'),
     cliente: c('DESCRIPCION'), serie: c('NUMERO DE SERIE'), marca: c('FABRICANTE'), dsct: c('UBIC.TECN.'),
     codigo: c('PTO.TBJO.RESP.'),
   };
@@ -69,12 +75,25 @@ export function leerExcel(rows) {
     if (vistos.has(numeroOrden)) { repetidas++; return; }
     vistos.add(numeroOrden);
     const cod = leerCodigo(v(r, ix.texto));
+    const calle = v(r, ix.calle), distrito = v(r, ix.distrito), poblacion = v(r, ix.poblacion);
+    const departamento = CENTROS[v(r, ix.centro)] || '';
     filas.push({
       numeroOrden,
       nc: v(r, ix.nc),
       aviso: v(r, ix.aviso),
       cliente: v(r, ix.cliente),
-      direccion: [v(r, ix.calle), v(r, ix.distrito), v(r, ix.poblacion)].filter(Boolean).join(', '),
+      direccion: [calle, distrito, poblacion].filter(Boolean).join(', '),
+      departamento,
+      // Consultas para Google, de la más detallada a la más general (sin nombre del cliente).
+      _geo: {
+        zona: departamento,
+        consultas: [
+          [calle, distrito, poblacion, departamento],
+          [distrito, poblacion, departamento],
+          [poblacion, departamento],
+        ].map(p => p.filter(Boolean)).filter(p => p.length > 1 || !departamento)
+          .map(p => p.join(', ') + ', El Salvador'),
+      },
       telefono: cod.telefono,
       referencia: cod.referencia,
       serieActual: v(r, ix.serie),
@@ -98,6 +117,10 @@ async function existentesPorOrden(nums) {
   return mapa;
 }
 
+// Se ubica si no tiene punto o si el punto es aproximado y nadie lo corrigió
+// en el sitio (al volver a subir el Excel se recalcula con la búsqueda mejor).
+const hayQueUbicar = o => !o.coordCorregida && (!o.latitud || !o.longitud || o.ubicacionAprox);
+
 async function armarPlan(filas) {
   const [ex, cfg, clave] = await Promise.all([
     existentesPorOrden(filas.map(f => f.numeroOrden)),
@@ -118,7 +141,7 @@ async function armarPlan(filas) {
     nuevas, existentes, codigos, hayClave: !!clave,
     porCodigo: Object.fromEntries(codigos.map(c => [c, filas.filter(f => f.codigoTecnico === c).length])),
     sinCodigo: filas.filter(f => !f.codigoTecnico).length,
-    sinCoord: nuevas.length + existentes.filter(({ o }) => !o.latitud || !o.longitud).length,
+    sinCoord: nuevas.length + existentes.filter(({ o }) => hayQueUbicar(o)).length,
   };
 }
 
@@ -201,7 +224,7 @@ function pintarPlan() {
     <div style="font-size:11px;color:var(--text-4);margin:10px 0 6px">${esc(archivo_)} · ${filas_.length} órdenes</div>
     ${fila(p.nuevas.length, 'Órdenes nuevas', 'Entran abiertas, con la fecha de liberación del Excel', 'var(--fb-light, #f472b6)')}
     ${fila(p.existentes.length, 'Ya estaban en la app', 'Se actualizan sus datos; estado, resultado y reasignaciones manuales se respetan', '#60a5fa')}
-    ${p.sinCoord ? fila(p.sinCoord, 'Sin coordenadas', p.hayClave ? 'Se ubican por dirección con Google (aproximado)' : 'Sin clave de Google entran sin punto en el mapa. <a href="#" id="fbi-clave" style="color:#60a5fa">Poner clave</a>', '#fbbf24') : ''}
+    ${p.sinCoord ? fila(p.sinCoord, 'Sin coordenadas', p.hayClave ? 'Se ubican por dirección con Google, dentro de su zona (aproximado). Incluye las ya ubicadas aproximadas que nadie corrigió' : 'Sin clave de Google entran sin punto en el mapa. <a href="#" id="fbi-clave" style="color:#60a5fa">Poner clave</a>', '#fbbf24') : ''}
     ${p.repetidas ? `<div style="font-size:11px;color:var(--text-4);margin-top:6px">${p.repetidas} órdenes repetidas en el archivo (se toma la primera).</div>` : ''}
     <div style="font-size:12px;font-weight:700;color:var(--text-2);margin:16px 0 4px">Asignar por usuario DELSUR</div>
     <div style="font-size:11.5px;color:var(--text-3);margin-bottom:8px">Se recuerda para la próxima. Después puedes reasignar orden por orden.</div>
@@ -243,20 +266,20 @@ async function importar() {
     // 1. Ubicar por dirección lo que no tiene coordenadas
     const aUbicar = [
       ...p.nuevas.map(f => ({ f })),
-      ...p.existentes.filter(({ o }) => !o.latitud || !o.longitud).map(({ f, o }) => ({ f, o })),
+      ...p.existentes.filter(({ o }) => hayQueUbicar(o)).map(({ f, o }) => ({ f, o })),
     ];
     const geo = new Map();
     if (aUbicar.length && p.hayClave) {
-      const res = await geocodificar(aUbicar.map(x => x.f.direccion ? `${x.f.direccion}, El Salvador` : ''),
+      const res = await geocodificar(aUbicar.map(x => x.f._geo),
         (i, t) => { lbl.textContent = `Ubicando ${i}/${t}…`; });
       res.forEach((r, i) => { if (r) geo.set(aUbicar[i].f.numeroOrden, r); });
     }
     const coord = f => {
       const r = geo.get(f.numeroOrden);
-      return r ? { latitud: r.lat, longitud: r.lng, ubicacionAprox: true, ubicacionTipo: r.tipo } : {};
+      return r ? { latitud: r.lat, longitud: r.lng, ubicacionAprox: true, ubicacionTipo: r.tipo, ubicacionNivel: r.nivel || '' } : {};
     };
     const datos = f => ({
-      numeroOrden: f.numeroOrden, nc: f.nc, aviso: f.aviso, cliente: f.cliente, direccion: f.direccion,
+      numeroOrden: f.numeroOrden, nc: f.nc, aviso: f.aviso, cliente: f.cliente, direccion: f.direccion, departamento: f.departamento,
       telefono: f.telefono, referencia: f.referencia, serieActual: f.serieActual, marca: f.marca, dsct: f.dsct,
       codigoTecnico: f.codigoTecnico, fechaAviso: ts(f.fechaAviso), fechaLiberacion: ts(f.fechaLiberacion),
     });
@@ -274,7 +297,7 @@ async function importar() {
     });
     p.existentes.forEach(({ f, o }) => {
       const upd = { ...datos(f), actualizadaEn: ahora };
-      if (!o.coordCorregida && (!o.latitud || !o.longitud)) Object.assign(upd, coord(f));
+      if (hayQueUbicar(o)) Object.assign(upd, coord(f));
       if (!o.asignacionManual && o.estado !== 'cerrada') {
         const t = tec(f.codigoTecnico);
         upd.asignadoUid = t ? t.id : null;
