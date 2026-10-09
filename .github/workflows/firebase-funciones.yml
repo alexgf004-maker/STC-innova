@@ -1,0 +1,80 @@
+# Publica las Cloud Functions de STC-innova (carpeta functions/) en Firebase
+# cada vez que cambian en main. También se puede correr a mano desde la
+# pestaña Actions ("Run workflow").
+#
+# Necesita el secreto FIREBASE_SERVICE_ACCOUNT (JSON de una cuenta de servicio
+# del proyecto innova-950ff con rol Propietario). Ver functions/LEEME.md.
+name: Publicar funciones de Firebase
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'functions/**'
+      - 'firebase.json'
+      - '.firebaserc'
+      - '.github/workflows/firebase-funciones.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: firebase-funciones
+  cancel-in-progress: false
+
+jobs:
+  publicar:
+    runs-on: ubuntu-latest
+    env:
+      PROYECTO: innova-950ff
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Revisar que exista el secreto
+        env:
+          SA: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          if [ -z "$SA" ]; then
+            echo "::error::Falta el secreto FIREBASE_SERVICE_ACCOUNT (ver functions/LEEME.md)"
+            exit 1
+          fi
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Instalar dependencias de las funciones
+        run: npm ci --prefix functions
+
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Activar servicios necesarios
+        run: |
+          gcloud services enable cloudfunctions.googleapis.com cloudbuild.googleapis.com \
+            artifactregistry.googleapis.com run.googleapis.com eventarc.googleapis.com \
+            iamcredentials.googleapis.com --project "$PROYECTO"
+
+      - name: Publicar funciones
+        run: npx --yes firebase-tools@13 deploy --only functions --project "$PROYECTO" --force --non-interactive
+
+      # El login firma tokens de acceso: la cuenta con la que corren las
+      # funciones necesita permiso para firmar (Creador de tokens).
+      - name: Permitir que las funciones firmen tokens
+        run: |
+          NUM=$(gcloud projects describe "$PROYECTO" --format='value(projectNumber)')
+          SA="$NUM-compute@developer.gserviceaccount.com"
+          gcloud iam service-accounts add-iam-policy-binding "$SA" \
+            --member="serviceAccount:$SA" --role="roles/iam.serviceAccountTokenCreator" \
+            --project "$PROYECTO" >/dev/null
+          echo "Permiso de firma listo para $SA"
+
+      - name: Probar que el login responde
+        run: |
+          sleep 20
+          R=$(curl -s -X POST "https://us-central1-$PROYECTO.cloudfunctions.net/login" \
+            -H 'Content-Type: application/json' -d '{"data":{"username":"__prueba_despliegue__","pin":"0000"}}')
+          echo "$R"
+          echo "$R" | grep -q 'PERMISSION_DENIED' || { echo "::error::El login no respondió como se esperaba"; exit 1; }
+          echo "El login responde bien (rechaza un usuario inventado)."

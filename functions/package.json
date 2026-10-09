@@ -1,0 +1,11 @@
+{
+  "name": "innova-stc-functions",
+  "private": true,
+  "description": "Servidor de STC-innova: login con PIN y gestión de PIN (ver functions/index.js)",
+  "main": "index.js",
+  "engines": { "node": "20" },
+  "dependencies": {
+    "firebase-admin": "^12.7.0",
+    "firebase-functions": "^6.1.0"
+  }
+}
