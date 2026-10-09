@@ -39,7 +39,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
 
       - name: Instalar dependencias de las funciones
         run: npm ci --prefix functions
@@ -54,10 +54,10 @@ jobs:
         run: |
           gcloud services enable cloudfunctions.googleapis.com cloudbuild.googleapis.com \
             artifactregistry.googleapis.com run.googleapis.com eventarc.googleapis.com \
-            iamcredentials.googleapis.com --project "$PROYECTO"
+            iamcredentials.googleapis.com cloudbilling.googleapis.com --project "$PROYECTO"
 
       - name: Publicar funciones
-        run: npx --yes firebase-tools@13 deploy --only functions --project "$PROYECTO" --force --non-interactive
+        run: npx --yes firebase-tools@14 deploy --only functions --project "$PROYECTO" --force --non-interactive
 
       # El login firma tokens de acceso: la cuenta con la que corren las
       # funciones necesita permiso para firmar (Creador de tokens).
