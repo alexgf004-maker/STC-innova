@@ -46,6 +46,8 @@ const sha256 = t => crypto.createHash('sha256').update(String(t), 'utf8').digest
 const hashPin = (salt, pin) => sha256((salt || '') + pin);
 const nuevaSal = () => crypto.randomBytes(32).toString('hex');
 const normUsuario = u => String(u || '').trim().toLowerCase();
+// Un nombre que no puede ser id de documento ('/', '__algo__', muy largo) no es un usuario
+const usuarioPosible = u => !!u && u.length <= 100 && !u.includes('/') && !/^__.*__$/.test(u) && u !== '.' && u !== '..';
 const pinValido = p => /^\d{4,8}$/.test(String(p || ''));
 
 // Comparación en tiempo constante (no da pistas por cuánto tarda)
@@ -132,7 +134,7 @@ exports.login = onCall(async req => {
     throw new HttpsError('permission-denied', 'Usuario o PIN incorrecto');
   };
 
-  const uid = await uidDeUsuario(username);
+  const uid = usuarioPosible(username) ? await uidDeUsuario(username) : null;
   if (!uid) return incorrecto();
   const userDoc = await db().collection('users').doc(uid).get();
   if (!userDoc.exists) return incorrecto();

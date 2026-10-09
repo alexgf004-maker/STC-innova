@@ -78,7 +78,7 @@ jobs:
         run: |
           sleep 45
           R=$(curl -s -X POST "https://us-central1-$PROYECTO.cloudfunctions.net/login" \
-            -H 'Content-Type: application/json' -d '{"data":{"username":"__prueba_despliegue__","pin":"0000"}}')
+            -H 'Content-Type: application/json' -d '{"data":{"username":"prueba-despliegue-github","pin":"0000"}}')
           echo "$R"
           echo "$R" | grep -q 'PERMISSION_DENIED' || { echo "::error::El login no respondió como se esperaba"; exit 1; }
           echo "El login responde bien (rechaza un usuario inventado)."
