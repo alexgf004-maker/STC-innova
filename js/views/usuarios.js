@@ -212,8 +212,13 @@ function renderShell() {
 // ── Cargar usuarios ───────────────────────────────
 async function loadUsuarios() {
   try {
-    const snap = await db.collection('users').orderBy('displayName').get();
-    usuarios = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    // Sin orderBy: Firestore deja fuera a quien no tenga el campo de orden, y
+    // un usuario sin nombre guardado desaparecía de la lista (y no se podía
+    // asignar). Se ordena aquí, con el usuario como respaldo del nombre.
+    const snap = await db.collection('users').get();
+    const nombre = u => String(u.displayName || u.username || '');
+    usuarios = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }))
+      .sort((a, b) => nombre(a).localeCompare(nombre(b), 'es'));
     renderLista();
   } catch (err) {
     console.error('[usuarios] Error cargando:', err);
@@ -572,7 +577,10 @@ function getInitials(name) {
 }
 
 function getRoleLabel(role) {
-  return role === 'admin' ? 'Admin' : role === 'asistente' ? 'Asistente' : 'Técnico';
+  // Un rol mal escrito o vacío antes salía como "Técnico" pero sin poder
+  // asignarse; ahora se ve el problema.
+  return role === 'admin' ? 'Admin' : role === 'asistente' ? 'Asistente' : role === 'tecnico' ? 'Técnico'
+    : `Rol no válido (${role ? escapeHtml(String(role)) : 'vacío'})`;
 }
 
 // Exponer funciones para los onclick del HTML

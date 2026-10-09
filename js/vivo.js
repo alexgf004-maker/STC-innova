@@ -103,5 +103,9 @@ export function actual(clave) {
  * área). Lo comparten el inicio, los paneles y los mapas de oficina.
  */
 export function tecnicosActivos(db) {
-  return leer('users|tecnicos-activos', () => db.collection('users').where('role', '==', 'tecnico').where('active', '==', true));
+  // Activo = cualquiera que no esté desactivado (igual que en Usuarios). Antes
+  // la consulta pedía active == true y los usuarios viejos sin ese campo no
+  // aparecían para asignar aunque en Usuarios salieran activos.
+  return leer('users|tecnicos', () => db.collection('users').where('role', '==', 'tecnico'))
+    .then(lista => lista.filter(u => u.active !== false));
 }

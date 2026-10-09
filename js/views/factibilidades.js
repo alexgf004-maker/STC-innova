@@ -91,10 +91,7 @@ export function init(container, session) {
       cerradas_ = lista;
       if (activeTab_ === 'panel') repintar();
     });
-    tecnicosActivos(db).then(lista => {
-      tecnicos_ = lista.filter(u => u.asignacionActual?.area === AREA);
-      if (activeTab_ === 'panel') repintar();
-    }).catch(err => console.warn('[factibilidades] técnicos:', err.message));
+    refrescarTecnicos().then(() => { if (activeTab_ === 'panel') repintar(); });
   }
 }
 
@@ -111,6 +108,17 @@ function cerrarMapa() {
 }
 
 // ── Shell ─────────────────────────────────────────
+// Técnicos del área. Se vuelve a pedir al abrir cada hoja de asignación (el
+// listener compartido ya está abierto: no cuesta lecturas) para que aparezca
+// quien se haya asignado al área con esta pantalla abierta.
+async function refrescarTecnicos() {
+  try {
+    const lista = await tecnicosActivos(db);
+    tecnicos_ = lista.filter(u => u.asignacionActual?.area === AREA);
+  } catch (err) { console.warn('[factibilidades] técnicos:', err.message); }
+  return tecnicos_;
+}
+
 function renderShell() {
   const tabs = esAdmin_
     ? [{ id: 'panel', label: 'Panel' }, { id: 'ordenes', label: 'Órdenes' }, { id: 'mapa', label: 'Mapa' }]
@@ -146,8 +154,8 @@ function renderShell() {
   const abrirH = id => container_.querySelector('#' + id).classList.add('open');
   const cerrarH = id => container_.querySelector('#' + id).classList.remove('open');
   container_.querySelector('#fb-menu').onclick = () => abrirH('fb-sheet-acciones');
-  container_.querySelector('#fb-a-importar').onclick = () => { cerrarH('fb-sheet-acciones'); abrirImportar(session_, tecnicos_); };
-  container_.querySelector('#fb-a-codigos').onclick = () => { cerrarH('fb-sheet-acciones'); abrirAsignarCodigos(session_, tecnicos_, ordenes_); };
+  container_.querySelector('#fb-a-importar').onclick = async () => { cerrarH('fb-sheet-acciones'); abrirImportar(session_, await refrescarTecnicos()); };
+  container_.querySelector('#fb-a-codigos').onclick = async () => { cerrarH('fb-sheet-acciones'); abrirAsignarCodigos(session_, await refrescarTecnicos(), ordenes_); };
   container_.querySelector('#fb-a-excel').onclick = () => { cerrarH('fb-sheet-acciones'); abrirExportar(); };
   container_.querySelector('#fb-a-meta').onclick = () => { cerrarH('fb-sheet-acciones'); abrirMeta(); };
   container_.querySelector('#fb-a-festivos').onclick = () => { cerrarH('fb-sheet-acciones'); abrirFestivos(); };
@@ -310,7 +318,7 @@ function renderPanel(cont) {
     </div>`;
   cont.querySelector('#fb-abrir-festivos').onclick = abrirFestivos;
   const porCod = cont.querySelector('#fb-por-codigo');
-  if (porCod) porCod.onclick = () => abrirAsignarCodigos(session_, tecnicos_, ordenes_);
+  if (porCod) porCod.onclick = async () => abrirAsignarCodigos(session_, await refrescarTecnicos(), ordenes_);
   cont.querySelector('#fb-abrir-meta').onclick = abrirMeta;
   cont.querySelectorAll('[data-ir]').forEach(el => el.onclick = () => el.dataset.ir === 'sin' ? irALista('todas', 'sin') : irALista(el.dataset.ir));
   cont.querySelectorAll('.cm-fila[data-tec]').forEach(el => el.onclick = () => irALista('todas', el.dataset.tec));
@@ -560,14 +568,14 @@ function renderOrdenes(cont) {
   });
   cont.querySelector('#fb-sel-reasignar')?.addEventListener('click', () => {
     if (!selec_.size) return;
-    abrirReasignar(ordenes_.filter(o => selec_.has(o.id)), session_, tecnicos_, () => { modoSel_ = false; selec_.clear(); renderOrdenes(cont); });
+    refrescarTecnicos().then(tecs => abrirReasignar(ordenes_.filter(o => selec_.has(o.id)), session_, tecs, () => { modoSel_ = false; selec_.clear(); renderOrdenes(cont); }));
   });
   cont.querySelectorAll('[data-sel]').forEach(c => c.onclick = () => {
     const id = c.dataset.sel;
     if (selec_.has(id)) selec_.delete(id); else selec_.add(id);
     renderOrdenes(cont);
   });
-  cont.querySelectorAll('[data-reasignar]').forEach(b => b.onclick = () => abrirReasignar([ordenes_.find(o => o.id === b.dataset.reasignar)], session_, tecnicos_));
+  cont.querySelectorAll('[data-reasignar]').forEach(b => b.onclick = () => refrescarTecnicos().then(tecs => abrirReasignar([ordenes_.find(o => o.id === b.dataset.reasignar)], session_, tecs)));
   cont.querySelector('#fb-ver-mas')?.addEventListener('click', () => { limite_ += 40; renderOrdenes(cont); });
   cont.querySelectorAll('[data-resultado]').forEach(b => b.onclick = () => abrirResultado(ordenes_.find(o => o.id === b.dataset.resultado), session_));
   cont.querySelectorAll('[data-vermapa]').forEach(b => b.onclick = () => verEnMapa(b.dataset.vermapa));

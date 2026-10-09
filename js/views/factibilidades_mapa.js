@@ -174,7 +174,8 @@ function renderShell(container) {
     verOrden, abrirGoogleMaps,
     resultado: id => abrirResultado(ordenes_.find(x => x.id === id), session_, () => cerrarPanel()),
     gps: id => corregirUbicacion(ordenes_.find(x => x.id === id), session_, null, watchId_ != null ? fuenteGpsMapa : undefined),
-    reasignar: id => abrirReasignar([ordenes_.find(x => x.id === id)], session_, tecnicos_),
+    reasignar: id => tecnicosActivos(db).then(l => { tecnicos_ = l.filter(u => u.asignacionActual?.area === AREA); })
+      .catch(() => {}).then(() => abrirReasignar([ordenes_.find(x => x.id === id)], session_, tecnicos_)),
   };
 }
 
