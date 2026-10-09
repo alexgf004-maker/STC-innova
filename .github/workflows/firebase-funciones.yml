@@ -59,22 +59,31 @@ jobs:
       - name: Publicar funciones
         run: npx --yes firebase-tools@14 deploy --only functions --project "$PROYECTO" --force --non-interactive
 
-      # El login firma tokens de acceso: la cuenta con la que corren las
-      # funciones necesita permiso para firmar (Creador de tokens).
-      - name: Permitir que las funciones firmen tokens
+      # Permisos de la cuenta con la que corren las funciones: firmar tokens de
+      # acceso (login), leer y escribir Firestore y administrar cuentas de Auth.
+      - name: Permisos de las funciones
         run: |
           NUM=$(gcloud projects describe "$PROYECTO" --format='value(projectNumber)')
           SA="$NUM-compute@developer.gserviceaccount.com"
           gcloud iam service-accounts add-iam-policy-binding "$SA" \
             --member="serviceAccount:$SA" --role="roles/iam.serviceAccountTokenCreator" \
             --project "$PROYECTO" >/dev/null
-          echo "Permiso de firma listo para $SA"
+          for ROL in roles/datastore.user roles/firebaseauth.admin; do
+            gcloud projects add-iam-policy-binding "$PROYECTO" --member="serviceAccount:$SA" \
+              --role="$ROL" --condition=None >/dev/null
+          done
+          echo "Permisos listos para $SA"
 
       - name: Probar que el login responde
         run: |
-          sleep 20
+          sleep 45
           R=$(curl -s -X POST "https://us-central1-$PROYECTO.cloudfunctions.net/login" \
             -H 'Content-Type: application/json' -d '{"data":{"username":"__prueba_despliegue__","pin":"0000"}}')
           echo "$R"
           echo "$R" | grep -q 'PERMISSION_DENIED' || { echo "::error::El login no respondió como se esperaba"; exit 1; }
           echo "El login responde bien (rechaza un usuario inventado)."
+
+      - name: Registro de errores del login (si algo falló)
+        if: failure()
+        run: |
+          gcloud functions logs read login --region us-central1 --gen2 --limit 40 --project "$PROYECTO" || true
