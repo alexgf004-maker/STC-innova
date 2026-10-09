@@ -83,6 +83,26 @@ jobs:
           echo "$R" | grep -q 'PERMISSION_DENIED' || { echo "::error::El login no respondió como se esperaba"; exit 1; }
           echo "El login responde bien (rechaza un usuario inventado)."
 
+      # Login correcto de punta a punta con un usuario temporal (se borra al
+      # terminar): comprueba que el servidor lee Firestore y firma el token.
+      - name: Probar un login correcto
+        run: |
+          TK=$(gcloud auth print-access-token)
+          FS="https://firestore.googleapis.com/v1/projects/$PROYECTO/databases/(default)/documents"
+          U=prueba-despliegue-github; UID=prueba-despliegue-uid; PIN=$(shuf -i 1000-9999 -n 1); SAL=$(openssl rand -hex 16)
+          HASH=$(printf '%s' "$SAL$PIN" | sha256sum | cut -d' ' -f1)
+          poner() { curl -s -o /dev/null -w '%{http_code} ' -X PATCH "$FS/$1" -H "Authorization: Bearer $TK" -H 'Content-Type: application/json' -d "$2"; }
+          borrar() { curl -s -o /dev/null -X DELETE "$FS/$1" -H "Authorization: Bearer $TK"; }
+          trap 'borrar usernames/$U; borrar users/$UID; borrar pins/$UID' EXIT
+          poner "usernames/$U" '{"fields":{"uid":{"stringValue":"'$UID'"}}}'
+          poner "users/$UID" '{"fields":{"role":{"stringValue":"tecnico"},"active":{"booleanValue":true},"displayName":{"stringValue":"Prueba automatica (se borra sola)"},"username":{"stringValue":"'$U'"}}}'
+          poner "pins/$UID" '{"fields":{"pinHash":{"stringValue":"'$HASH'"},"pinSalt":{"stringValue":"'$SAL'"}}}'
+          echo
+          R=$(curl -s -X POST "https://us-central1-$PROYECTO.cloudfunctions.net/login" \
+            -H 'Content-Type: application/json' -d '{"data":{"username":"'$U'","pin":"'$PIN'"}}')
+          echo "$R" | grep -q '"token"' || { echo "$R"; echo "::error::El login correcto no entregó el token"; exit 1; }
+          echo "Login correcto: el servidor entregó el token de acceso."
+
       - name: Registro de errores del login (si algo falló)
         if: failure()
         run: |
