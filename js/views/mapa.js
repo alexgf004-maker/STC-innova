@@ -637,10 +637,11 @@ function plotMarkers() {
         radius:      hecha || bloqueada ? Math.max(2, r - 1) : r,
         fillColor:   color,
         fillOpacity: hecha ? 0.6 : bloqueada ? 0.55 : 1,
-        color:       visita ? '#cbd5e1' : cerca ? '#ffffff' : 'rgba(5,10,20,.55)',
+        // Ubicación aproximada (por dirección): borde amarillo punteado.
+        color:       orden.ubicacionAprox ? '#fbbf24' : visita ? '#cbd5e1' : cerca ? '#ffffff' : 'rgba(5,10,20,.55)',
         weight:      cerca ? 2 : 1,
         opacity:     bloqueada ? 0.6 : 1,
-        dashArray:   bloqueada && cerca ? '3 3' : null,
+        dashArray:   (bloqueada || orden.ubicacionAprox) && cerca ? '3 3' : null,
       });
     }
     marker._ordenId = orden.id;
@@ -686,6 +687,16 @@ function updateStatChip() {
 }
 
 // ── Panel inferior de detalle ─────────────────────
+// Referencia del Excel de clientes nuevos (vecino o transformador cercano).
+function textoReferencia(ref) {
+  const r = String(ref || '').toUpperCase();
+  if (r.startsWith('MD')) return `Medidor vecino ${r.slice(2)}`;
+  if (r.startsWith('DS') || r.startsWith('CT')) return `Transformador ${r}`;
+  if (r.startsWith('NC')) return `NC vecino ${r.slice(2)}`;
+  if (/^\d{9}$/.test(r)) return `NC vecino ${r}`;
+  return r;
+}
+
 function verOrden(id) {
   const o = ordenes_.find(x => x.id === id);
   if (!o) return;
@@ -734,6 +745,11 @@ function verOrden(id) {
       <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" style="flex-shrink:0;margin-top:1px"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>
       <div style="font-size:13px;font-weight:500;color:rgba(255,255,255,.95);line-height:1.4">${escapeHtml(o.direccion)}</div>
     </div>` : ''}
+    ${o.ubicacionAprox ? `
+    <div style="display:flex;align-items:flex-start;gap:8px;background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.35);border-radius:11px;padding:9px 12px;margin-bottom:11px;font-size:12px;color:#fde68a;line-height:1.4">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15" style="flex-shrink:0;margin-top:1px"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+      <span><b>Ubicación aproximada</b>: sacada de la dirección. Puede estar lejos de la casa; guíate por la dirección${o.referencia ? ' y la referencia' : ''}.</span>
+    </div>` : ''}
 
     <!-- Info técnica -->
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:14px">
@@ -764,6 +780,10 @@ function verOrden(id) {
       ${o.woClass ? `<div style="background:var(--glass);border:1px solid var(--border);border-radius:10px;padding:9px 11px">
         <div style="font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:rgba(255,255,255,.45);margin-bottom:3px">Tipo</div>
         <div style="font-size:14px;font-weight:700;color:#fff">${escapeHtml(o.woClass)}</div>
+      </div>` : ''}
+      ${o.referencia ? `<div style="background:var(--glass);border:1px solid var(--border);border-radius:10px;padding:9px 11px;grid-column:1 / -1">
+        <div style="font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:rgba(255,255,255,.45);margin-bottom:3px">Referencia</div>
+        <div style="font-size:14px;font-weight:700;color:#fff">${escapeHtml(textoReferencia(o.referencia))}</div>
       </div>` : ''}
       ${o.concepto ? `<div style="background:var(--glass);border:1px solid var(--border);border-radius:10px;padding:9px 11px;grid-column:1 / -1">
         <div style="font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:rgba(255,255,255,.45);margin-bottom:3px">Concepto</div>

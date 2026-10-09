@@ -12,6 +12,7 @@ import { db } from '../firebase.js';
 import { leer, tecnicosActivos } from '../vivo.js';
 import { toast, escapeHtml } from '../ui.js';
 import { avisoOrdenDuplicada } from './orden_duplicada.js';
+import { geocodificar, leerClave, guardarClave } from '../geocodificar.js';
 
 // ── Caché ─────────────────────────────────────────
 const cache = {
@@ -391,6 +392,7 @@ function renderShell() {
         <div class="sheet-body">
           <div class="flex-col gap-8">
             ${accionCm('openImport', ICO_CM.subir, 'Subir mapa nuevo', 'Reemplaza el mapa; lo ya hecho se conserva')}
+            ${accionCm('ubicarSinCoordenadas', ICO_CM.pin, 'Ubicar órdenes sin coordenadas', 'Por dirección, con Google (aproximado)')}
             ${accionCm('openNuevaUrgente', ICO_CM.alerta, 'Nueva orden urgente', 'Una WO a mano', 'danger')}
             ${accionCm('openUrgentesImport', ICO_CM.subir, 'Órdenes urgentes', 'Varias WO desde Excel', 'danger')}
             <div class="cm-acc-sep">Calendario de lecturas</div>
@@ -498,7 +500,7 @@ function renderShell() {
   });
   document.getElementById('btn-confirmar-urgente')?.addEventListener('click', confirmarNuevaUrgente);
 
-  window.__cambios = { verOrden, verOrdenDesdeBuscar, marcarHecha, marcarVisita, actualizadaDelsur, aprobar, aprobarYaCambiado, rechazar, revertirYaCambiado, openCampo, openImport, openImportLecturas, openGestionarLecturas, openBuscar, openYaCambiadas, openMalUbicadas, corregirCoordenadas, revertirMalUbicado, openNuevaUrgente, openUrgentesImport, marcarUrgente, eliminarOrden, filtrarSinActualizar, buscarSinActualizar, toggleAcordeon, descargarHoy, descargarMensual, toggleMenuAcciones, irAOrdenes, setFiltroOrd, setParejaOrd, verMasOrd, abrirConfirmar, confirmarLote, verDesdeConfirmar };
+  window.__cambios = { verOrden, verOrdenDesdeBuscar, marcarHecha, marcarVisita, actualizadaDelsur, aprobar, aprobarYaCambiado, rechazar, revertirYaCambiado, openCampo, openImport, ubicarSinCoordenadas, openImportLecturas, openGestionarLecturas, openBuscar, openYaCambiadas, openMalUbicadas, corregirCoordenadas, revertirMalUbicado, openNuevaUrgente, openUrgentesImport, marcarUrgente, eliminarOrden, filtrarSinActualizar, buscarSinActualizar, toggleAcordeon, descargarHoy, descargarMensual, toggleMenuAcciones, irAOrdenes, setFiltroOrd, setParejaOrd, verMasOrd, abrirConfirmar, confirmarLote, verDesdeConfirmar };
 }
 
 // ── Cargar datos ──────────────────────────────────
@@ -1591,6 +1593,7 @@ async function corregirCoordenadas(id) {
     await db.collection('cambios_ordenes').doc(id).update({
       latitud: lat, longitud: lng,
       coordCorregida: true,   // al reemplazar el mapa no se pisan con las del Excel
+      ubicacionAprox: false,
       estadoCampo: null,
       malUbicadoPor: null, malUbicadoEn: null,
     });
@@ -2002,6 +2005,11 @@ let importData = [];
 //    Contrato, Tp.tarifa, Nombre de cliente, Ubic.técn., DireccionCompleta,
 //    Fabricante, NºSerie, Máx. de Latitud/Longitud. Sus columnas de estado
 //    y bloqueo (StatUsu, Fecha, Estado OT, lecturas y bloqueos) no se usan.
+//  · Excel de clientes nuevos (hoja "Hoja1"): Orden, Contrato, Aviso,
+//    Texto breve (código con teléfono y referencia: NC/medidor/transformador
+//    vecino), Población, Distrito, Calle, Descripción (= nombre del cliente),
+//    Número de serie, Fabricante, Ubic.técn. Sin coordenadas: se ubican por
+//    dirección (ver geocodificar.js). Centro, fechas, autor y status no se usan.
 // Devuelve { error, data }.
 function mapearOrdenesExcel(rows) {
   const norm = s => String(s ?? '').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
@@ -2019,8 +2027,12 @@ function mapearOrdenesExcel(rows) {
   const idx = {
     wo:            col('WO', 'ORDEN'),
     nc:            col('NC', 'CONTRATO'),
-    cliente:       col('CLIENT', 'CLIENTE', 'NOMBRE', 'NOMBRE DE CLIENTE'),
-    serieActual:   col('# SERIES', 'SERIES', 'MEDIDOR', 'SERIE', 'NºSERIE', 'NOSERIE', 'N SERIE'),
+    cliente:       col('CLIENT', 'CLIENTE', 'NOMBRE', 'NOMBRE DE CLIENTE', 'DESCRIPCION'),
+    serieActual:   col('# SERIES', 'SERIES', 'MEDIDOR', 'SERIE', 'NºSERIE', 'NOSERIE', 'N SERIE', 'NUMERO DE SERIE'),
+    aviso:         col('AVISO'),
+    calle:         col('CALLE'),
+    distrito:      col('DISTRITO'),
+    poblacion:     col('POBLACION'),
     marca:         col('TRADEMARK', 'MARCA', 'FABRICANTE'),
     dsct:          col('DS/CT', 'DSCT', 'DS', 'PRIMERA FECHA: UBIC.TECN.', 'UBIC.TECN.'),
     direccion:     col('ADDRESS', 'DIRECCION', 'DIRECCIONCOMPLETA'),
@@ -2035,25 +2047,43 @@ function mapearOrdenesExcel(rows) {
   if (idx.wo === -1) return { error: 'No se encontró la columna WO.', data: [] };
 
   const val = (r, i) => (i >= 0 ? String(r[i] ?? '').trim() : '');
+  // Sin columna de dirección completa: se arma con calle, distrito y población.
+  const direccionDe = r => idx.direccion >= 0 ? val(r, idx.direccion)
+    : [val(r, idx.calle), val(r, idx.distrito), val(r, idx.poblacion)].filter(Boolean).join(', ');
+  // "Texto breve" del Excel de clientes nuevos es un código, no un concepto:
+  // 1.2.1.1.[NC].1.[teléfono].1.[referencia]  (referencia: MD..., DS..., NC...)
+  const leerCodigo = t => {
+    if (!/^\d+(\.\d*){3,}\./.test(t)) return null;
+    const partes = t.split('.').map(x => x.trim());
+    const telefono = partes.find(x => /^[267]\d{7}$/.test(x)) || '';
+    const ult = partes[partes.length - 1] || '';
+    const referencia = ult && ult !== telefono && !/^\d{1,2}$/.test(ult) ? ult.replace(/\s+/g, '').toUpperCase() : '';
+    return { telefono, referencia };
+  };
   const data = rows.slice(headerRowIdx + 1)
     .filter(r => val(r, idx.wo))
-    .map(r => ({
+    .map(r => {
+      const cod = leerCodigo(val(r, idx.concepto));
+      return {
       wo:            val(r, idx.wo),
       nc:            val(r, idx.nc),
       cliente:       val(r, idx.cliente),
-      direccion:     val(r, idx.direccion),
+      direccion:     direccionDe(r),
       latitud:       parseFloat(r[idx.latitud])  || null,
       longitud:      parseFloat(r[idx.longitud]) || null,
       serieActual:   val(r, idx.serieActual),
       marca:         val(r, idx.marca),
       dsct:          val(r, idx.dsct),
       unidadLectura: val(r, idx.unidadLectura),
-      concepto:      val(r, idx.concepto),
+      concepto:      cod ? '' : val(r, idx.concepto),
       woClass:       val(r, idx.woClass),
       tarifa:        val(r, idx.tarifa),
       lecturas:      val(r, idx.lecturas),
-    }));
-  return { error: null, data };
+      aviso:         val(r, idx.aviso),
+      telefono:      cod?.telefono || '',
+      referencia:    cod?.referencia || '',
+    }; });
+  return { error: null, data, sinCoordenadas: idx.latitud === -1 };
 }
 
 function openImport() {
@@ -2077,7 +2107,7 @@ function handleFileSelect(e) {
       const ws   = wb.Sheets[wb.SheetNames[0]];
       const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
 
-      const { error, data } = mapearOrdenesExcel(rows);
+      const { error, data, sinCoordenadas } = mapearOrdenesExcel(rows);
       if (error) {
         document.getElementById('import-error').textContent = error;
         document.getElementById('import-error').style.display = 'block';
@@ -2085,6 +2115,10 @@ function handleFileSelect(e) {
       }
       importData = data;
       importArchivo_ = file.name;
+      // Un archivo sin columna de coordenadas (p. ej. el de clientes nuevos)
+      // es un listado aparte, no el mapa completo: por defecto solo se agrega,
+      // para no quitar las pendientes del mapa actual.
+      importModo_ = sinCoordenadas ? 'agregar' : 'reemplazar';
       importPlan_ = null;
       document.getElementById('import-info').innerHTML = `<div class="import-info-box"><div class="import-info-label">Comparando ${importData.length} órdenes con el mapa actual…</div></div>`;
       document.getElementById('import-preview').style.display = '';
@@ -2128,7 +2162,7 @@ function findCol(headers, options) {
 // "Solo agregar" hace lo de antes: crea las nuevas y no toca nada más.
 let importPlan_ = null, importArchivo_ = '', importModo_ = 'reemplazar';
 const HECHAS_ = new Set(['hecha', 'aprobada']);
-const CAMPOS_EXCEL_ = ['nc', 'cliente', 'direccion', 'latitud', 'longitud', 'serieActual', 'marca', 'dsct', 'unidadLectura', 'concepto', 'woClass', 'tarifa', 'lecturas'];
+const CAMPOS_EXCEL_ = ['nc', 'cliente', 'direccion', 'latitud', 'longitud', 'serieActual', 'marca', 'dsct', 'unidadLectura', 'concepto', 'woClass', 'tarifa', 'lecturas', 'aviso', 'telefono', 'referencia'];
 
 async function analizarImport(filas) {
   const existentes = await leer('cambios_ordenes|*', () => db.collection('cambios_ordenes'));
@@ -2164,6 +2198,8 @@ async function analizarImport(filas) {
     if (nc && hechasPorNc.has(nc)) { plan.yaHechasNc++; continue; }
     plan.nuevas.push(f);
   }
+  plan.sinCoord = plan.nuevas.filter(o => !o.latitud || !o.longitud).length;
+  try { plan.hayClave = !!(await leerClave()); } catch { plan.hayClave = false; }
   existentes.forEach(o => {
     if (HECHAS_.has(o.estadoCampo) || enArchivo.has(String(o.wo ?? '').trim())) return;
     if (o.urgente || o.generadaEnCampo) { plan.conservadas++; return; }
@@ -2194,13 +2230,62 @@ function pintarPlanImport() {
     ${fila(p.yaHechas + p.yaHechasNc, 'Ya las hicimos', `Se quedan como están${p.yaHechasNc ? ` · ${p.yaHechasNc} reconocidas por el NC (vienen con otra WO)` : ''}`, '#22c55e')}
     ${fila(p.quitar.length, 'Pendientes que ya no vienen', reemplazar ? `Se quitan del mapa${asignadas ? ` · ${asignadas} estaban asignadas a una pareja` : ''}${conVisita ? ` · ${conVisita} con visita o reporte` : ''}` : 'Con "Solo agregar" se quedan', '#f87171', !reemplazar)}
     ${p.conservadas ? fila(p.conservadas, 'Urgentes o de campo fuera del mapa', 'Se conservan', 'var(--text-3)') : ''}
+    ${p.sinCoord ? fila(p.sinCoord, 'Nuevas sin coordenadas', p.hayClave
+      ? 'Se ubican por dirección con Google (aproximado)'
+      : 'Sin clave de Google no se pueden ubicar: entran sin punto en el mapa. <a href="#" id="imp-clave" style="color:#60a5fa">Poner clave</a>', '#fbbf24') : ''}
     ${p.repetidas ? `<div style="font-size:11px;color:var(--text-4);margin-top:8px">${p.repetidas} WO repetidas en el archivo (se toma la primera).</div>` : ''}`;
   document.querySelectorAll('#import-info [data-modo]').forEach(b => b.onclick = () => { importModo_ = b.dataset.modo; pintarPlanImport(); });
+  const lnk = document.getElementById('imp-clave');
+  if (lnk) lnk.onclick = async e => {
+    e.preventDefault();
+    if (await pedirClaveGoogle()) { importPlan_.hayClave = true; pintarPlanImport(); }
+  };
   const btn = document.getElementById('btn-confirmar-import');
   const hayAlgo = reemplazar ? (p.nuevas.length + p.actualizar.length + p.quitar.length) : p.nuevas.length;
   btn.disabled = !hayAlgo;
   document.getElementById('btn-import-label').textContent = !hayAlgo ? 'Nada que cambiar'
     : reemplazar ? 'Reemplazar mapa' : `Agregar ${p.nuevas.length} nueva${p.nuevas.length > 1 ? 's' : ''}`;
+}
+
+// Dirección para Google: solo calle/colonia/población, nunca el nombre.
+function direccionGeo(o) {
+  const d = String(o.direccion || '').trim();
+  return d ? `${d}, El Salvador` : '';
+}
+
+async function pedirClaveGoogle() {
+  const clave = window.prompt('Pega la clave de Google Maps (API key).\n\nSe guarda en Firebase y solo la ven admin y asistente.');
+  if (!clave || !clave.trim()) return false;
+  try { await guardarClave(clave); toast('Clave guardada', 'ok'); return true; }
+  catch (e) { toast('No se pudo guardar la clave: ' + e.message, 'error'); return false; }
+}
+
+// Órdenes pendientes que quedaron sin punto en el mapa: ubicarlas por dirección.
+async function ubicarSinCoordenadas() {
+  closeSheet('sheet-cm-acciones');
+  const todas = await leer('cambios_ordenes|*', () => db.collection('cambios_ordenes'));
+  const lista = todas.filter(o => !HECHAS_.has(o.estadoCampo) && (!o.latitud || !o.longitud) && String(o.direccion || '').trim());
+  if (!lista.length) { toast('No hay órdenes pendientes sin coordenadas', 'ok'); return; }
+  let clave = '';
+  try { clave = await leerClave(); } catch {}
+  if (!clave && !(await pedirClaveGoogle())) return;
+  if (!confirm(`${lista.length} órdenes pendientes no tienen coordenadas.\n\nSe ubicarán por dirección con Google. Es aproximado: en cantones o caseríos puede caer en el centro del lugar. ¿Continuar?`)) return;
+  try {
+    toast(`Ubicando ${lista.length} órdenes…`, 'ok', 4000);
+    const res = await geocodificar(lista.map(direccionGeo));
+    const ops = [];
+    res.forEach((r, i) => { if (r) ops.push([lista[i].id, { latitud: r.lat, longitud: r.lng, ubicacionAprox: true, ubicacionTipo: r.tipo }]); });
+    for (let k = 0; k < ops.length; k += 400) {
+      const batch = db.batch();
+      ops.slice(k, k + 400).forEach(([id, d]) => batch.update(db.collection('cambios_ordenes').doc(id), d));
+      await batch.commit();
+    }
+    invalidateOrdenes();
+    await loadOrdenes();
+    toast(`${ops.length} de ${lista.length} ubicadas por dirección`, ops.length ? 'ok' : 'warn', 5000);
+  } catch (e) {
+    toast('No se pudieron ubicar: ' + e.message, 'error', 6000);
+  }
 }
 
 async function confirmarImport() {
@@ -2213,6 +2298,18 @@ async function confirmarImport() {
   }
   setLoading('btn-import-label', 'Aplicando…', true);
   try {
+    // Nuevas sin coordenadas: ubicarlas por dirección (aproximado).
+    const sinCoord = p.nuevas.filter(o => !o.latitud || !o.longitud);
+    let ubicadas = 0;
+    if (sinCoord.length && p.hayClave) {
+      const lbl = document.getElementById('btn-import-label');
+      const res = await geocodificar(sinCoord.map(direccionGeo), (i, t) => { if (lbl) lbl.textContent = `Ubicando ${i}/${t}…`; });
+      res.forEach((r, i) => {
+        if (!r) return;
+        Object.assign(sinCoord[i], { latitud: r.lat, longitud: r.lng, ubicacionAprox: true, ubicacionTipo: r.tipo });
+        ubicadas++;
+      });
+    }
     const ahora = firebase.firestore.Timestamp.now();
     const col = db.collection('cambios_ordenes');
     const ops = p.nuevas.map(o => b => b.set(col.doc(), {
@@ -2235,6 +2332,7 @@ async function confirmarImport() {
     const partes = [`${p.nuevas.length} nuevas`];
     if (reemplazar) partes.push(`${p.actualizar.length} actualizadas`, `${p.quitar.length} quitadas`);
     if (p.yaHechas + p.yaHechasNc) partes.push(`${p.yaHechas + p.yaHechasNc} ya hechas`);
+    if (p.sinCoord) partes.push(`${ubicadas} de ${p.sinCoord} ubicadas por dirección`);
     toast((reemplazar ? 'Mapa reemplazado: ' : 'Órdenes agregadas: ') + partes.join(' · '), 'ok', 5000);
     importData = []; importPlan_ = null;
   } catch (err) {
