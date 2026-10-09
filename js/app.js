@@ -4,9 +4,8 @@
  * Verifica sesión, configura topbar, inicia router.
  */
 
-import { auth, db } from './firebase.js';
+import { auth, db, llamar, mensajeServidor } from './firebase.js';
 import { initRouter, navigateTo, goBack, canGoBack } from './router.js';
-import { hashPin, generateSalt } from './crypto.js';
 import { toast as __appToast } from './ui.js';
 import { PADRONES, infoPadron, subirPadron } from './padrones.js';
 
@@ -117,25 +116,8 @@ function abrirCambioPin(obligatorio) {
       lbl.innerHTML = '<div class="spinner"></div>';
 
       try {
-        // Verificar el PIN actual contra Firestore
-        const doc = await db.collection('users').doc(session.uid).get();
-        if (!doc.exists) throw new Error('No se encontró tu usuario.');
-        const u = doc.data();
-        const hashActual = await hashPin(u.pinSalt || '', actual);
-        if (hashActual !== u.pinHash) {
-          btn.disabled = false;
-          lbl.textContent = 'Guardar PIN';
-          return mostrarError('El PIN actual no es correcto.');
-        }
-
-        // Guardar el PIN nuevo con salt nuevo
-        const saltNuevo = generateSalt();
-        const hashNuevo = await hashPin(saltNuevo, nuevo);
-        await db.collection('users').doc(session.uid).update({
-          pinHash: hashNuevo,
-          pinSalt: saltNuevo,
-          pinChanged: true,
-        });
+        // El servidor revisa el PIN actual y guarda el nuevo (ver functions/index.js)
+        await llamar('cambiarPin', { actual, nuevo });
 
         session.pinChanged = true;
         localStorage.setItem(SESSION_KEY, JSON.stringify(session));
@@ -145,7 +127,7 @@ function abrirCambioPin(obligatorio) {
         console.error('[app] Error cambiando PIN:', e);
         btn.disabled = false;
         lbl.textContent = 'Guardar PIN';
-        mostrarError('No se pudo guardar: ' + e.message);
+        mostrarError(mensajeServidor(e, 'No se pudo guardar. Intenta de nuevo.'));
       }
     });
 
@@ -483,6 +465,15 @@ window.addEventListener('DOMContentLoaded', async () => {
 
       // Nunca ha personalizado su PIN -> obligarlo
       debeCambiarPin = fresh.pinChanged !== true;
+
+      // Admin: sacar de una vez los PIN que aún estén en las fichas de usuario
+      // (que leen todos) y pasarlos a la colección protegida. Una vez por equipo.
+      if (fresh.role === 'admin' && !localStorage.getItem('innova_pines_migrados_v1')) {
+        llamar('migrarPines').then(r => {
+          localStorage.setItem('innova_pines_migrados_v1', '1');
+          if (r?.movidos) console.info('[app] PIN protegidos:', r.movidos);
+        }).catch(e => console.warn('[app] migrarPines:', e.message));
+      }
     }
   } catch (err) {
     // Sin conexión o cuota agotada — usar sesión cacheada, no bloquear el acceso

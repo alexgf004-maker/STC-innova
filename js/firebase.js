@@ -1,10 +1,9 @@
 /**
  * js/firebase.js
- * Inicializa Firebase y exporta las instancias db y auth.
+ * Inicializa Firebase y exporta las instancias db y auth, y `llamar` para
+ * las funciones del servidor (login y PIN, ver functions/index.js).
  * Importar desde cualquier módulo que necesite Firebase.
  */
-
-import { SEED } from './crypto.js';
 
 const FIREBASE_CONFIG = {
   apiKey:            "AIzaSyBAtWI9xoww3hgUAfUtiYtWcUoiqaw3wsg",
@@ -33,4 +32,18 @@ db.enablePersistence({ synchronizeTabs: true })
     }
   });
 
-export { SEED };
+// Funciones del servidor. Devuelve lo que responde la función; si falla,
+// el error trae `code` ('functions/permission-denied', ...) y un mensaje
+// pensado para mostrarse tal cual.
+const funciones = firebase.app().functions('us-central1');
+export function llamar(nombre, datos) {
+  return funciones.httpsCallable(nombre)(datos || {}).then(r => r.data);
+}
+
+// Mensaje para la persona a partir de un error de `llamar`
+export function mensajeServidor(err, porDefecto = 'No se pudo completar. Intenta de nuevo.') {
+  const code = String(err?.code || '');
+  if (code === 'functions/unavailable' || code === 'functions/deadline-exceeded' || !navigator.onLine) return 'Sin conexión. Verifica tu internet.';
+  if (code === 'functions/internal' || !err?.message || /^internal$/i.test(err.message)) return porDefecto;
+  return err.message;
+}
