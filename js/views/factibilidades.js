@@ -19,7 +19,7 @@ import { suscribirAbiertas, suscribirConfig, suscribirCerradas, guardarConfig, M
 import { semaforoOrden, SEMAFORO, aFecha, claveDia } from '../dias_habiles.js';
 import { toast, escapeHtml } from '../ui.js';
 import { abrirResultado, abrirReasignar, puedeActuar, cerrarHojas } from './factibilidades_acciones.js';
-import { abrirImportar } from './factibilidades_importar.js';
+import { abrirImportar, abrirAsignarCodigos } from './factibilidades_importar.js';
 
 const ICO = {
   subir:  '<path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>',
@@ -133,6 +133,7 @@ function renderShell() {
       ${esAdmin_ ? hoja('fb-sheet-festivos', 'Días festivos', '') + hoja('fb-sheet-meta', 'Meta diaria', '')
         + hoja('fb-sheet-acciones', 'Acciones de Factibilidades', `<div class="flex-col gap-8">
             ${accion('fb-a-importar', ICO.subir, 'Importar Excel', 'Órdenes nuevas; asigna por usuario DELSUR')}
+            ${accion('fb-a-codigos', ICO.lista, 'Asignar por usuario DELSUR', 'Todas las de DGUERR, AAPERE… a un técnico')}
             ${accion('fb-a-excel', ICO.bajar, 'Exportar a Excel', 'Días hábiles, resultado y coordenada corregida')}
             ${accion('fb-a-meta', ICO.meta, 'Meta diaria', 'Órdenes cerradas por técnico al día')}
             ${accion('fb-a-festivos', ICO.cal, 'Días festivos', 'No cuentan como días hábiles')}
@@ -146,6 +147,7 @@ function renderShell() {
   const cerrarH = id => container_.querySelector('#' + id).classList.remove('open');
   container_.querySelector('#fb-menu').onclick = () => abrirH('fb-sheet-acciones');
   container_.querySelector('#fb-a-importar').onclick = () => { cerrarH('fb-sheet-acciones'); abrirImportar(session_, tecnicos_); };
+  container_.querySelector('#fb-a-codigos').onclick = () => { cerrarH('fb-sheet-acciones'); abrirAsignarCodigos(session_, tecnicos_, ordenes_); };
   container_.querySelector('#fb-a-excel').onclick = () => { cerrarH('fb-sheet-acciones'); abrirExportar(); };
   container_.querySelector('#fb-a-meta').onclick = () => { cerrarH('fb-sheet-acciones'); abrirMeta(); };
   container_.querySelector('#fb-a-festivos').onclick = () => { cerrarH('fb-sheet-acciones'); abrirFestivos(); };
@@ -248,11 +250,16 @@ function renderPanel(cont) {
         <div class="ds-m" data-ir="${c}" style="cursor:pointer"><div class="ds-num-md" style="color:${SEMAFORO[c].color}">${n[c]}</div><div class="ds-lbl-sm" style="margin-top:6px">${SEMAFORO[c].texto}</div></div>`).join('')}
     </div>
 
-    ${sinAsignar.length ? `
+    ${ordenes_.length ? `
     <div class="cm-lista" style="margin-bottom:22px">
-      <div class="cm-fila" data-ir="sin">
+      ${sinAsignar.length ? `<div class="cm-fila" data-ir="sin">
         <div class="cm-fila-ic warn">${svg(ICO.alerta, 17)}</div>
         <div style="flex:1;min-width:0"><div class="cm-fila-t">${sinAsignar.length} sin asignar</div><div class="cm-fila-s">No cruzaron con ningún técnico al importar</div></div>
+        ${svg(ICO.chev, 16, 'style="color:var(--text-3);flex-shrink:0"')}
+      </div>` : ''}
+      <div class="cm-fila" id="fb-por-codigo">
+        <div class="cm-fila-ic muted">${svg(ICO.lista, 17)}</div>
+        <div style="flex:1;min-width:0"><div class="cm-fila-t">Asignar por usuario DELSUR</div><div class="cm-fila-s">Todas las de un usuario (DGUERR…) a un técnico</div></div>
         ${svg(ICO.chev, 16, 'style="color:var(--text-3);flex-shrink:0"')}
       </div>
     </div>` : ''}
@@ -302,6 +309,8 @@ function renderPanel(cont) {
       </div>
     </div>`;
   cont.querySelector('#fb-abrir-festivos').onclick = abrirFestivos;
+  const porCod = cont.querySelector('#fb-por-codigo');
+  if (porCod) porCod.onclick = () => abrirAsignarCodigos(session_, tecnicos_, ordenes_);
   cont.querySelector('#fb-abrir-meta').onclick = abrirMeta;
   cont.querySelectorAll('[data-ir]').forEach(el => el.onclick = () => el.dataset.ir === 'sin' ? irALista('todas', 'sin') : irALista(el.dataset.ir));
   cont.querySelectorAll('.cm-fila[data-tec]').forEach(el => el.onclick = () => irALista('todas', el.dataset.tec));

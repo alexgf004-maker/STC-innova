@@ -234,7 +234,8 @@ function pintarPlan() {
         <select class="form-input" data-cod="${esc(cod)}" style="max-width:56%;padding:8px 10px">${tecOpc(mapeo_[cod])}</select>
       </div>`).join('') : '<div style="font-size:12px;color:var(--text-3)">El archivo no trae usuario responsable.</div>'}
     ${p.sinCodigo ? `<div style="font-size:11.5px;color:#fbbf24;margin-top:6px">${p.sinCodigo} órdenes sin usuario responsable: quedan sin asignar.</div>` : ''}
-    ${!tecnicos_.length ? '<div style="font-size:11.5px;color:#fbbf24;margin-top:6px">No hay técnicos activos en Factibilidades: asígnalos en Usuarios para poder cruzarlos.</div>' : ''}`;
+    ${!tecnicos_.length ? '<div style="font-size:11.5px;color:#fbbf24;margin-top:6px">No hay técnicos activos en Factibilidades: asígnalos en Usuarios para poder cruzarlos.</div>'
+      : '<div style="font-size:11.5px;color:var(--text-3);margin-top:6px">¿No aparece un técnico? Asígnale el área Factibilidades en Usuarios.</div>'}`;
   document.querySelectorAll('#fbi-plan select[data-cod]').forEach(s => s.onchange = () => { mapeo_[s.dataset.cod] = s.value; });
   const lnk = document.getElementById('fbi-clave');
   if (lnk) lnk.onclick = async e => {
@@ -325,4 +326,91 @@ async function importar() {
     btn.disabled = false;
     if (plan_) lbl.textContent = 'Importar';
   }
+}
+
+// ── Asignar por usuario DELSUR (en cualquier momento) ─────
+// Pasa TODAS las órdenes abiertas de un usuario DELSUR (DGUERR, AAPERE…) a
+// un técnico, y deja guardado el cruce para las próximas importaciones.
+const ID_COD = 'fb-sheet-codigos';
+
+export async function abrirAsignarCodigos(session, tecnicos, abiertas) {
+  const tecs = [...(tecnicos || [])].sort((a, b) => String(a.displayName).localeCompare(String(b.displayName), 'es'));
+  const porCod = new Map();
+  (abiertas || []).forEach(o => {
+    const c = String(o.codigoTecnico || '').toUpperCase();
+    if (!c) return;
+    if (!porCod.has(c)) porCod.set(c, []);
+    porCod.get(c).push(o);
+  });
+  let mapeo = {};
+  try {
+    const d = await db.collection(COL_CONFIG).doc('general').get();
+    mapeo = { ...(d.exists ? (d.data().codigosDelsur || {}) : {}) };
+  } catch {}
+
+  let sh = document.getElementById(ID_COD);
+  if (!sh) {
+    sh = document.createElement('div');
+    sh.className = 'sheet-backdrop';
+    sh.id = ID_COD;
+    sh.addEventListener('click', e => { if (e.target === sh) sh.classList.remove('open'); });
+    document.body.appendChild(sh);
+  }
+  const codigos = [...porCod.keys()].sort();
+  const nombre = uid => tecs.find(t => t.id === uid)?.displayName || '';
+  sh.innerHTML = `<div class="sheet" style="max-height:92vh"><div class="sheet-handle"></div>
+    <div class="sheet-title">Asignar por usuario DELSUR</div>
+    <div class="sheet-body">
+      <div style="font-size:12px;color:var(--text-4);margin-bottom:12px;line-height:1.6">
+        Elige a qué técnico van <b>todas</b> las órdenes abiertas de cada usuario. Queda guardado para las próximas importaciones.
+      </div>
+      ${codigos.length ? codigos.map(cod => {
+        const lista = porCod.get(cod);
+        const actuales = [...new Set(lista.map(o => o.asignadoNombre || 'Sin asignar'))];
+        return `
+        <div style="padding:10px 0;border-bottom:1px solid var(--border)">
+          <div style="display:flex;align-items:center;gap:10px">
+            <div style="flex:1;min-width:0">
+              <div style="font-size:13px;font-weight:700;font-family:monospace">${esc(cod)}</div>
+              <div style="font-size:11px;color:var(--text-3)">${lista.length} abierta${lista.length !== 1 ? 's' : ''} · hoy: ${esc(actuales.slice(0, 2).join(', '))}${actuales.length > 2 ? '…' : ''}</div>
+            </div>
+            <select class="form-input" data-cod="${esc(cod)}" style="max-width:52%;padding:8px 10px">
+              <option value="">Elegir técnico…</option>
+              ${tecs.map(t => `<option value="${esc(t.id)}" ${t.id === mapeo[cod] ? 'selected' : ''}>${esc(t.displayName)}</option>`).join('')}
+            </select>
+          </div>
+          <button class="cm-btn marca" data-aplicar="${esc(cod)}" style="width:100%;margin-top:8px">Pasar las ${lista.length} a este técnico</button>
+        </div>`;
+      }).join('') : '<div style="font-size:13px;color:var(--text-3)">No hay órdenes abiertas con usuario DELSUR.</div>'}
+      <div style="font-size:11.5px;color:var(--text-3);margin-top:12px;line-height:1.5">¿No aparece el técnico? Asígnale el área <b>Factibilidades</b> en Usuarios y vuelve a abrir esta pantalla.</div>
+    </div></div>`;
+  sh.querySelectorAll('[data-aplicar]').forEach(btn => btn.onclick = async () => {
+    const cod = btn.dataset.aplicar;
+    const uid = sh.querySelector(`select[data-cod="${CSS.escape(cod)}"]`).value;
+    if (!uid) { toast('Elige el técnico primero', 'warn'); return; }
+    const lista = porCod.get(cod);
+    if (!confirm(`¿Pasar las ${lista.length} órdenes abiertas de ${cod} a ${nombre(uid)}?\n\nIncluye las que se hayan reasignado a mano.`)) return;
+    btn.disabled = true;
+    btn.textContent = 'Guardando…';
+    try {
+      const datos = {
+        asignadoUid: uid, asignadoNombre: nombre(uid), asignacionManual: false,
+        reasignadoPor: session.displayName, reasignadoEn: firebase.firestore.Timestamp.now(),
+      };
+      for (let i = 0; i < lista.length; i += 400) {
+        const lote = db.batch();
+        lista.slice(i, i + 400).forEach(o => lote.update(db.collection(COL_ORDENES).doc(o.id), datos));
+        await lote.commit();
+      }
+      mapeo[cod] = uid;
+      await db.collection(COL_CONFIG).doc('general').set({ codigosDelsur: mapeo }, { merge: true });
+      toast(`${lista.length} órdenes de ${cod} pasadas a ${nombre(uid)}`, 'ok');
+      btn.textContent = 'Listo';
+    } catch (e) {
+      toast('No se pudo guardar: ' + e.message, 'error');
+      btn.disabled = false;
+      btn.textContent = `Pasar las ${lista.length} a este técnico`;
+    }
+  });
+  sh.classList.add('open');
 }
