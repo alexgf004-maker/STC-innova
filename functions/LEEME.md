@@ -41,3 +41,8 @@ Las colecciones `pins` y `seguridad_intentos` deben quedar cerradas a la app:
 match /pins/{id} { allow read, write: if false; }
 match /seguridad_intentos/{id} { allow read, write: if false; }
 ```
+
+## ¿Se publicó?
+
+En GitHub → pestaña **Actions** → "Publicar funciones de Firebase": verde = publicado
+y el login responde; rojo = abrir el intento para ver el paso que falló.
