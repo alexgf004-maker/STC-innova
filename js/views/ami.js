@@ -407,13 +407,17 @@ function pintarRevision() {
 function abrirMetas() {
   const body = container_.querySelector('#ami-sheet-metas-body');
   if (!body) return;
-  body.innerHTML = parejasActivas_.length ? `
+  // Todas las parejas de AMI, no solo las que tienen técnicos asignados hoy:
+  // si hoy nadie estaba asignado, la hoja salía vacía y no se podía editar.
+  const parejas = [...new Set([...parejasActivas_, ...Object.keys(metas_), ...ordenes_.map(o => o.pareja)].filter(Boolean))]
+    .sort((a, b) => (parseInt(String(a).replace(/\D/g, ''), 10) || 0) - (parseInt(String(b).replace(/\D/g, ''), 10) || 0));
+  body.innerHTML = parejas.length ? `
     <div style="font-size:12.5px;color:var(--text-3);margin-bottom:12px">Cuántos cambios debe hacer cada pareja al día. Se guarda solo y se mantiene hasta que lo cambies.</div>
     <div class="flex-col gap-8">
-      ${parejasActivas_.map(p => `
+      ${parejas.map(p => `
         <div class="cm-verif">
           <span class="cm-par-dot" style="background:${colorPareja(p)}"></span>
-          <div style="flex:1;font-size:14px;font-weight:600">${escA(p)}</div>
+          <div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:600">${escA(p)}</div>${parejasActivas_.includes(p) ? '' : '<div style="font-size:11px;color:var(--text-4)">Sin técnicos asignados hoy</div>'}</div>
           <input type="number" min="0" inputmode="numeric" class="form-input ami-meta-input" data-pareja="${escA(p)}" value="${Number(metas_[p] || 0) || ''}" placeholder="0" style="width:76px;text-align:center;font-size:15px;padding:9px"/>
         </div>`).join('')}
     </div>` : `<div style="text-align:center;padding:24px;color:var(--text-3);font-size:13px">No hay parejas asignadas a AMI. Asígnalas en Usuarios.</div>`;
