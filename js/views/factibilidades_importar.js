@@ -25,7 +25,7 @@ import { db } from '../firebase.js';
 import { toast, escapeHtml as esc } from '../ui.js';
 import { COL_ORDENES, COL_CONFIG } from '../factibilidades_comun.js';
 import { geocodificar, leerClave, guardarClave } from '../geocodificar.js';
-import { cargarIndiceUbicaciones, ubicarPorCodigos } from '../ubicaciones.js';
+import { cargarIndiceUbicaciones, ubicarPorCodigos, motivoSinUbicar } from '../ubicaciones.js';
 
 const ID = 'fb-sheet-importar';
 const norm = s => String(s ?? '').toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
@@ -145,20 +145,38 @@ async function armarPlan(filas) {
   const aUbicar = [...nuevas, ...existentes.filter(({ o }) => hayQueUbicar(o)).map(({ f }) => f)];
   const codigosDe = f => ({ nc: f.nc, medidor: f.serieActual, referencia: f.referencia, ds: f.dsct });
   const porPadron = new Map();
-  let fuentes = [];
+  let fuentes = [], resumenPadron = null;
+  const porMotivo = {};
   if (aUbicar.length) {
     const r = await cargarIndiceUbicaciones(idx => aUbicar.some(f => !ubicarPorCodigos(idx, codigosDe(f))));
     fuentes = r.fuentes;
-    aUbicar.forEach(f => { const u = ubicarPorCodigos(r.indice, codigosDe(f)); if (u) porPadron.set(f.numeroOrden, u); });
+    resumenPadron = r.resumen;
+    aUbicar.forEach(f => {
+      const u = ubicarPorCodigos(r.indice, codigosDe(f));
+      if (u) porPadron.set(f.numeroOrden, u);
+      else { const m = motivoSinUbicar(codigosDe(f)); porMotivo[m] = (porMotivo[m] || 0) + 1; }
+    });
   }
   const porFuente = {};
   porPadron.forEach(u => { porFuente[u.fuente] = (porFuente[u.fuente] || 0) + 1; });
   return {
     nuevas, existentes, codigos, hayClave: !!clave,
-    aUbicar: aUbicar.length, porPadron, porFuente, fuentes, sinPadronUbic: !fuentes.includes('ubicaciones'),
+    aUbicar: aUbicar.length, porPadron, porFuente, porMotivo, resumenPadron, fuentes, sinPadronUbic: !fuentes.includes('ubicaciones'),
     porCodigo: Object.fromEntries(codigos.map(c => [c, filas.filter(f => f.codigoTecnico === c).length])),
     sinCodigo: filas.filter(f => !f.codigoTecnico).length,
   };
+}
+
+const n = x => Number(x || 0).toLocaleString('es-SV');
+
+// "12 sin ninguna referencia · 30 solo con poste (DS) · 8 con medidor o contrato que no está en el padrón. "
+function textoMotivos(m) {
+  const partes = [
+    m.ninguna && `${m.ninguna} sin ninguna referencia`,
+    m.poste && `${m.poste} solo con poste o transformador (DS)`,
+    m['medidor o contrato'] && `${m['medidor o contrato']} con medidor o contrato que no está en el padrón`,
+  ].filter(Boolean);
+  return partes.length ? partes.join(' · ') + '. ' : '';
 }
 
 // ── Hoja ──────────────────────────────────────────
@@ -241,9 +259,10 @@ function pintarPlan() {
     ${fila(p.nuevas.length, 'Órdenes nuevas', 'Entran abiertas, con la fecha de liberación del Excel', 'var(--fb-light, #f472b6)')}
     ${fila(p.existentes.length, 'Ya estaban en la app', 'Se actualizan sus datos; estado, resultado y reasignaciones manuales se respetan', '#60a5fa')}
     ${p.aUbicar ? fila(p.porPadron.size, 'Ubicadas con el padrón', Object.entries(p.porFuente).map(([f, n]) => `${n} por ${esc(f)}`).join(' · ') || 'Ninguna referencia se encontró en los padrones', '#22c55e') : ''}
-    ${p.aUbicar - p.porPadron.size ? fila(p.aUbicar - p.porPadron.size, 'Sin encontrar en el padrón', (usarGoogle_ ? 'Se ubican por dirección con Google (muy aproximado).' : 'Entran sin punto nuevo en el mapa; el técnico fija la ubicación en el sitio.')
+    ${p.aUbicar - p.porPadron.size ? fila(p.aUbicar - p.porPadron.size, 'Sin encontrar en el padrón', textoMotivos(p.porMotivo) + (usarGoogle_ ? 'Se ubican por dirección con Google (muy aproximado).' : 'Entran sin punto nuevo en el mapa; el técnico fija la ubicación en el sitio.')
       + (p.hayClave ? `<label style="display:flex;align-items:center;gap:8px;margin-top:6px;color:var(--text-2)"><input type="checkbox" id="fbi-google" ${usarGoogle_ ? 'checked' : ''}/> Ubicarlas por dirección con Google</label>`
         : ' <a href="#" id="fbi-clave" style="color:#60a5fa">Poner clave de Google</a>'), '#fbbf24') : ''}
+    ${p.resumenPadron ? `<div style="font-size:11px;color:var(--text-4);margin-top:6px">Padrón de ubicaciones: ${n(p.resumenPadron.filas)} registros · con NC ${n(p.resumenPadron.nc)} · con medidor ${n(p.resumenPadron.md)} · con DS ${n(p.resumenPadron.ds)}</div>` : ''}
     ${p.aUbicar && p.sinPadronUbic ? `<div style="font-size:11.5px;color:#fbbf24;margin-top:6px">Todavía no está el padrón de ubicaciones: súbelo en el menú, Padrones de clientes. Por ahora solo se busca en Caracterización y Contiguos.</div>` : ''}
     ${p.repetidas ? `<div style="font-size:11px;color:var(--text-4);margin-top:6px">${p.repetidas} órdenes repetidas en el archivo (se toma la primera).</div>` : ''}
     <div style="font-size:12px;font-weight:700;color:var(--text-2);margin:16px 0 4px">Asignar por usuario DELSUR</div>

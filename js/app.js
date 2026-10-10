@@ -223,7 +223,8 @@ function abrirPadrones() {
         return {
           filas: r.filas,
           _resumen: `${r.filas.length.toLocaleString('es-SV')} con coordenadas`
-            + (r.descartadas ? ` · ${r.descartadas.toLocaleString('es-SV')} descartadas (sin coordenadas válidas)` : ''),
+            + (r.descartadas ? ` · ${r.descartadas.toLocaleString('es-SV')} descartadas (sin coordenadas válidas)` : '')
+            + ` · Columnas usadas: NC = ${r.columnas.nc || '(ninguna)'}, Medidor = ${r.columnas.md || '(ninguna)'}, DS = ${r.columnas.ds || '(ninguna)'}`,
         };
       });
     };

@@ -20,7 +20,7 @@ const normCab = s => String(s ?? '').toUpperCase().normalize('NFD').replace(/[̀
 // Clave para comparar códigos: sin espacios ni guiones, y si es solo número,
 // sin ceros a la izquierda (en un archivo "0012345" y en otro "12345").
 function clave(s) {
-  const k = String(s ?? '').toUpperCase().replace(/[\s\-_.]/g, '');
+  const k = String(s ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '');
   return /^\d+$/.test(k) ? k.replace(/^0+(?=\d)/, '') : k;
 }
 
@@ -49,7 +49,7 @@ function buscarCabecera(rows) {
     const c = k => H.findIndex(x => CABECERAS[k].includes(x));
     const ix = { nc: c('nc'), md: c('md'), ds: c('ds'), lat: c('lat'), lng: c('lng'), par: c('par') };
     const conCoord = (ix.lat >= 0 && ix.lng >= 0) || ix.par >= 0;
-    if (conCoord && (ix.nc >= 0 || ix.md >= 0 || ix.ds >= 0)) return { fila: i, ix };
+    if (conCoord && (ix.nc >= 0 || ix.md >= 0 || ix.ds >= 0)) return { fila: i, ix, H: rows[i] };
   }
   return null;
 }
@@ -61,11 +61,13 @@ function buscarCabecera(rows) {
  */
 export function leerPadronUbicaciones(hojas) {
   const filas = [];
-  let leidas = 0, descartadas = 0, usadas = 0;
+  let leidas = 0, descartadas = 0, usadas = 0, columnas = null;
   for (const rows of hojas) {
     const cab = buscarCabecera(rows);
     if (!cab) continue;
     usadas++;
+    // Qué columna se tomó para cada dato (para mostrarlo al subir)
+    if (!columnas) columnas = Object.fromEntries(['nc', 'md', 'ds'].map(k => [k, cab.ix[k] >= 0 ? String(cab.H[cab.ix[k]]).trim() : '']));
     const { ix } = cab;
     const v = (r, i) => (i >= 0 ? String(r[i] ?? '').trim() : '');
     for (const r of rows.slice(cab.fila + 1)) {
@@ -89,7 +91,7 @@ export function leerPadronUbicaciones(hojas) {
   }
   if (!usadas) return { error: 'No se encontraron columnas de NC o medidor junto con Latitud y Longitud (o Coordenadas).' };
   if (!filas.length) return { error: `Se leyeron ${leidas} filas pero ninguna con coordenadas dentro de El Salvador. Si las coordenadas vienen en otro sistema (no grados decimales), avísame.` };
-  return { filas, leidas, descartadas, hojas: usadas };
+  return { filas, leidas, descartadas, hojas: usadas, columnas };
 }
 
 // ── Índice para buscar ────────────────────────────
@@ -125,9 +127,15 @@ export async function cargarIndiceUbicaciones(faltan) {
       leerPadron('ubicaciones').catch(() => null),
       leerPadron('caracterizacion').catch(() => null),
     ]);
-    if (Array.isArray(ubic)) { ubic.forEach(r => idx.agregar(r[0], r[1], r[2], r[3], r[4])); fuentes.push('ubicaciones'); }
+    let resumen = null;
+    if (Array.isArray(ubic)) {
+      ubic.forEach(r => idx.agregar(r[0], r[1], r[2], r[3], r[4]));
+      fuentes.push('ubicaciones');
+      resumen = { filas: ubic.length, nc: 0, md: 0, ds: 0 };
+      ubic.forEach(r => { if (r[0]) resumen.nc++; if (r[1]) resumen.md++; if (r[2]) resumen.ds++; });
+    }
     if (crc) { (Array.isArray(crc) ? crc : Object.values(crc)).forEach(r => idx.agregar(r.nc, r.medidor, r.ds, r.lat, r.lng)); fuentes.push('caracterizacion'); }
-    indice_ = { indice: idx, fuentes };
+    indice_ = { indice: idx, fuentes, resumen };
   }
   if (!conContiguos_ && (!faltan || faltan(indice_.indice))) {
     const cont = await leerPadron('contiguos').catch(() => null);
@@ -174,4 +182,18 @@ export function ubicarPorCodigos(idx, { nc, medidor, referencia, ds }) {
     || r(buscarEn(idx.md, medidor), true, 'medidor del cliente')
     || deRef()
     || r(buscarEn(idx.ds, ds), false, 'transformador de la orden');
+}
+
+/**
+ * Por qué una orden no se pudo ubicar: no trae ninguna referencia, solo trae
+ * un poste o transformador (DS), o trae medidor / contrato que no está en el
+ * padrón.
+ */
+export function motivoSinUbicar({ nc, medidor, referencia, ds }) {
+  const ref = clave(referencia);
+  const pref = (ref.match(/^[A-Z]+/) || [''])[0];
+  const refEsDS = /^(DS|CT)/.test(pref);
+  if (clave(nc) || clave(medidor) || (ref && /\d/.test(ref) && !refEsDS)) return 'medidor o contrato';
+  if ((ref && refEsDS) || clave(ds)) return 'poste';
+  return 'ninguna';
 }
