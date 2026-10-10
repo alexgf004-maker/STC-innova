@@ -24,6 +24,7 @@ import { leer, tecnicosActivos } from '../vivo.js';
 import { padronAmi } from './ami_padron.js';
 import { toast, escapeHtml } from '../ui.js';
 import { devolverAPendiente, puedeDevolverse } from './ami_devolver.js';
+import { fechaLecturaDe, enLectura, liberaEl, textoFecha } from '../lectura.js';
 
 // ── Identidad del área ────────────────────────────
 const AREA = 'AMI';
@@ -99,6 +100,7 @@ const ICO_A = {
   edif:   '<rect x="4" y="2" width="16" height="20" rx="2"/><path d="M9 22v-4h6v4"/><path d="M8 6h.01M12 6h.01M16 6h.01M8 10h.01M12 10h.01M16 10h.01M8 14h.01M12 14h.01M16 14h.01"/>',
   mapa:   '<polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/>',
   chev:   '<polyline points="9 18 15 12 9 6"/>',
+  candado: '<rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/>',
 };
 const svgA = (d, n = 16, extra = '') => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="${n}" height="${n}" ${extra}>${d}</svg>`;
 const escA = v => escapeHtml(v == null ? '' : String(v));
@@ -114,6 +116,8 @@ function filaA(cls, ico, titulo, sub, accion) {
     </div>`;
 }
 const realizada = o => o.estadoCampo === 'hecha' || o.estadoCampo === 'aprobada';
+// Bloqueada por lectura: pendiente (o visita) y hoy cae en los días de su lectura
+const bloqueadaLect = o => (!o.estadoCampo || o.estadoCampo === 'visita') && enLectura(o.fechaLectura);
 const fmtFA = (ts, conHora = true) => {
   const d = ts?.toDate ? ts.toDate() : (ts ? new Date(ts) : null);
   return d ? d.toLocaleString('es-SV', conHora ? { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' } : { day: 'numeric', month: 'short' }) : '';
@@ -432,7 +436,8 @@ function renderPanel(cont) {
   const porConfirmar = ordenes_.filter(o => o.estadoCampo === 'hecha');
   const visitas = ordenes_.filter(o => o.estadoCampo === 'visita').length;
   const pendientes = ordenes_.filter(o => !o.estadoCampo && !o._yaCambiada).length;
-  const arrastradas = ordenes_.filter(o => esResiduo(o) && !o.estadoCampo && !o._yaCambiada).length;
+  const arrastradas = ordenes_.filter(o => esResiduo(o) && !o.estadoCampo && !o._yaCambiada && !bloqueadaLect(o)).length;
+  const bloqueadas = ordenes_.filter(o => !o.estadoCampo && !o._yaCambiada && bloqueadaLect(o)).length;
   const padron = ordenes_.filter(o => o._yaCambiada).length;
   const yc = ordenes_.filter(o => o.estadoCampo === 'ya_cambiado').length;
   const mu = ordenes_.filter(o => o.estadoCampo === 'mal_ubicado').length;
@@ -446,6 +451,7 @@ function renderPanel(cont) {
     yc ? filaA('orange', ICO_A.alerta, `${yc} reportada${yc > 1 ? 's' : ''} como ya cambiada${yc > 1 ? 's' : ''}`, '¿Las hicimos nosotros o se revierten?', 'yc') : '',
     mu ? filaA('violet', ICO_A.pin, `${mu} mal ubicada${mu > 1 ? 's' : ''}`, 'Corregir coordenadas', 'mu') : '',
     arrastradas ? filaA('muted', ICO_A.reloj, `${arrastradas} arrastrada${arrastradas > 1 ? 's' : ''}`, 'Pendientes de rutas anteriores', 'arrastradas') : '',
+    bloqueadas ? filaA('muted', ICO_A.candado, `${bloqueadas} bloqueada${bloqueadas > 1 ? 's' : ''} por lectura`, 'No se pueden trabajar estos días', 'bloqueadas') : '',
   ].join('');
 
   cont.innerHTML = `
@@ -507,6 +513,7 @@ function renderPanel(cont) {
     if (a === 'confirmar') abrirConfirmar();
     else if (a === 'yc' || a === 'mu') abrirRevision(a);
     else if (a === 'arrastradas') irAOrdenes('pendientes');
+    else if (a === 'bloqueadas') irAOrdenes('bloqueadas');
   });
   cont.querySelectorAll('.ami-condo-abrir').forEach(el => el.onclick = async () => {
     const mod = await import('./ami_condominio.js');
@@ -530,8 +537,9 @@ function renderResumenTec(cont) {
   const hoy = claveDiaAMI(firebase.firestore.Timestamp.now());
   const meta = Number(metas_[pareja_] || 0);
   const n = hechasHoyPorPareja(pareja_);
-  const pendientes = ordenes_.filter(o => !o.estadoCampo).length;
-  const arrastradas = ordenes_.filter(o => esResiduo(o) && !o.estadoCampo).length;
+  const pendientes = ordenes_.filter(o => !o.estadoCampo && !bloqueadaLect(o)).length;
+  const arrastradas = ordenes_.filter(o => esResiduo(o) && !o.estadoCampo && !bloqueadaLect(o)).length;
+  const bloqueadas = ordenes_.filter(o => !o.estadoCampo && bloqueadaLect(o)).length;
   const visitasHoy = ordenes_.filter(o => o.estadoCampo === 'visita' && claveDiaAMI(o.fechaVisita) === hoy).length;
   const hoyLista = [...ordenes_, ...condominios_]
     .filter(o => (realizada(o) && claveDiaAMI(o.fechaHecha) === hoy) || (o.estadoCampo === 'visita' && claveDiaAMI(o.fechaVisita) === hoy))
@@ -549,6 +557,7 @@ function renderResumenTec(cont) {
     </div>
 
     <button class="btn-action marca" id="ami-abrir-mapa" style="margin-bottom:14px">${svgA(ICO_A.mapa, 16)} Abrir el mapa</button>
+    ${bloqueadas ? `<div class="cm-lista" style="margin-bottom:14px">${filaA('muted', ICO_A.candado, `${bloqueadas} bloqueada${bloqueadas > 1 ? 's' : ''} por lectura`, 'No se pueden trabajar estos días', 'bloqueadas')}</div>` : ''}
 
     <div class="ds-mini" style="margin-bottom:20px">
       <div class="ds-m" data-ir="pendientes" style="cursor:pointer"><div class="ds-num-md">${pendientes}</div><div class="ds-lbl-sm" style="margin-top:6px">Pendientes</div></div>
@@ -561,13 +570,14 @@ function renderResumenTec(cont) {
       : `<div class="ds-card" style="text-align:center;padding:22px 16px;color:var(--text-3);font-size:13px">Aún no hay cambios ni visitas hoy.</div>`}`;
   cont.querySelector('#ami-abrir-mapa').onclick = () => window.__router.navigateTo('ami_mapa');
   cont.querySelectorAll('[data-ir]').forEach(m => m.onclick = () => irAOrdenes(m.dataset.ir));
+  cont.querySelectorAll('[data-accion="bloqueadas"]').forEach(f => f.onclick = () => irAOrdenes('bloqueadas'));
 }
 
 // ── Órdenes ───────────────────────────────────────
 function gruposAmi(lista) {
   const reciente = arr => arr.sort((a, b) => (b.fechaHecha?.seconds || 0) - (a.fechaHecha?.seconds || 0));
   const g = [{ id: 'pendientes', t: 'Pendientes',
-    arr: lista.filter(o => !o.estadoCampo && !o._yaCambiada).sort((a, b) => diasArrastrada(b) - diasArrastrada(a)) }];
+    arr: lista.filter(o => !o.estadoCampo && !o._yaCambiada && !bloqueadaLect(o)).sort((a, b) => diasArrastrada(b) - diasArrastrada(a)) }];
   if (esAdmin_) {
     g.push({ id: 'porconfirmar', t: 'Por confirmar', arr: reciente(lista.filter(o => o.estadoCampo === 'hecha')) });
     g.push({ id: 'confirmadas',  t: 'Confirmadas',   arr: reciente(lista.filter(o => o.estadoCampo === 'aprobada')) });
@@ -575,6 +585,8 @@ function gruposAmi(lista) {
     g.push({ id: 'hechas', t: 'Hechas', arr: reciente(lista.filter(realizada)) });
   }
   g.push({ id: 'visitas', t: 'Visitas', arr: lista.filter(o => o.estadoCampo === 'visita') });
+  g.push({ id: 'bloqueadas', t: 'Bloqueadas', arr: lista.filter(o => !o.estadoCampo && !o._yaCambiada && bloqueadaLect(o))
+    .sort((a, b) => String(a.fechaLectura).localeCompare(String(b.fechaLectura))) });
   if (esAdmin_) g.push({ id: 'padron', t: 'En el padrón', arr: lista.filter(o => o._yaCambiada && !o.estadoCampo) });
   return g;
 }
@@ -635,7 +647,8 @@ function renderOrdenes(cont) {
 
 function tarjetaAmi(o, { estado = false } = {}) {
   const dias = diasArrastrada(o);
-  const arrastrada = esResiduo(o) && !o.estadoCampo;
+  const bloq = bloqueadaLect(o);
+  const arrastrada = esResiduo(o) && !o.estadoCampo && !bloq;
   const est = o.estadoCampo === 'aprobada' ? ['ok', 'Confirmada']
     : o.estadoCampo === 'hecha' ? (esAdmin_ ? ['warn', 'Por confirmar'] : ['ok', 'Hecha'])
     : o.estadoCampo === 'visita' ? ['warn', 'Visita']
@@ -654,6 +667,7 @@ function tarjetaAmi(o, { estado = false } = {}) {
       <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
         <span class="cm-wo">NC ${escA(o.nc || '—')}</span>
         ${arrastrada ? `<span class="cm-pill warn">Arrastrada · ${dias} día${dias > 1 ? 's' : ''}</span>` : ''}
+        ${bloq ? `<span class="cm-pill muted">${svgA(ICO_A.candado, 11)} Lectura ${escA(textoFecha(o.fechaLectura))} · se libera ${escA(textoFecha(liberaEl(o.fechaLectura)))}</span>` : ''}
         ${o.tipoSitio === 'condominio' ? `<span class="cm-pill violet">${escA(o.edificio || 'Condominio')}</span>` : ''}
         ${o._yaCambiada ? '<span class="cm-pill ok">En el padrón</span>' : ''}
         ${estado ? `<span class="cm-pill ${est[0]}">${est[1]}</span>` : ''}
@@ -792,7 +806,9 @@ async function buscarHistorial(nc) {
 }
 
 // ── Importar ruta diaria (Excel) ──────────────────
-// Columnas: NC, NOMBRE, DIRECCIÓN, DS, MEDIDOR, LATITUD, LONGITUD.
+// Columnas: NC (o Contrato), NOMBRE, DIRECCIÓN, DS, MEDIDOR, LATITUD, LONGITUD
+// y, si vienen, R.Lec (ruta de lectura), F. Lectura y Forma. Con la fecha de
+// lectura la orden se bloquea esos días (ver js/lectura.js).
 // NC nuevo -> crea orden con fechaRuta = hoy. NC existente -> actualiza datos
 // pero CONSERVA su fechaRuta original (para no perder los días de arrastre).
 async function importarRuta(file) {
@@ -804,19 +820,22 @@ async function importarRuta(file) {
     if (!matriz.length) { toast('El archivo está vacío', 'error'); return; }
 
     const norm = s => String(s ?? '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[\s._-]/g,'');
-    // Buscar fila de encabezados (la que tenga "nc")
-    let hIdx = matriz.findIndex(r => r.some(c => norm(c) === 'nc'));
-    if (hIdx === -1) { toast('No se encontró la columna NC', 'error'); return; }
+    // Buscar fila de encabezados (la que tenga "nc" o "contrato")
+    let hIdx = matriz.findIndex(r => r.some(c => ['nc', 'contrato'].includes(norm(c))));
+    if (hIdx === -1) { toast('No se encontró la columna NC o Contrato', 'error'); return; }
     const head = matriz[hIdx].map(norm);
     const col = (...alias) => head.findIndex(h => alias.includes(h));
     const idx = {
-      nc:  col('nc'),
+      nc:  col('nc', 'contrato'),
       nombre: col('nombre','cliente'),
-      direccion: col('direccion','direccin','direc'),
+      direccion: col('direccion','direccin','direc','direcc'),
       ds: col('ds'),
       medidor: col('medidor','serie'),
       lat: col('latitud','lat'),
       lng: col('longitud','long','lng'),
+      ruta: col('rlec', 'rutalectura', 'rutalec', 'ruta'),
+      fLectura: col('flectura', 'fechalectura', 'fechadelectura', 'flec'),
+      forma: col('forma'),
     };
 
     const filas = matriz.slice(hIdx + 1);
@@ -832,8 +851,17 @@ async function importarRuta(file) {
         medidor: idx.medidor>=0 ? String(r[idx.medidor] ?? '').trim() : '',
         latitud: idx.lat>=0 ? String(r[idx.lat] ?? '').trim() : '',
         longitud: idx.lng>=0 ? String(r[idx.lng] ?? '').trim() : '',
+        rutaLectura: idx.ruta>=0 ? String(r[idx.ruta] ?? '').trim() : '',
+        fechaLectura: idx.fLectura>=0 ? fechaLecturaDe(r[idx.fLectura]) : '',
+        forma: idx.forma>=0 ? String(r[idx.forma] ?? '').trim() : '',
       });
     }
+    // Solo se tocan los datos de lectura si el archivo trae esas columnas
+    const conLectura = idx.fLectura >= 0;
+    const datosLectura = r => conLectura ? { rutaLectura: r.rutaLectura, fechaLectura: r.fechaLectura } : {};
+    const datosForma = r => idx.forma >= 0 ? { forma: r.forma } : {};
+    const bloqueadasHoy = registros.filter(r => enLectura(r.fechaLectura)).length;
+    const sinFecha = conLectura ? registros.filter(r => !r.fechaLectura).length : 0;
     if (!registros.length) { toast('No se encontraron órdenes con NC', 'error'); return; }
 
     // Traer las órdenes existentes para saber cuáles ya están (por NC)
@@ -859,7 +887,9 @@ async function importarRuta(file) {
     if (isNaN(fechaRutaDate)) { toast('Fecha inválida', 'error'); return; }
 
     const etqFecha = fechaRutaDate.toLocaleDateString('es-SV', { weekday:'long', day:'numeric', month:'short' });
-    if (!confirm(`Ruta del ${etqFecha}\n\n${registros.length} órdenes:\n${nuevos.length} nuevas\n${actualizar.length} ya existían (se actualizan sus datos)\n\n¿Continuar?`)) return;
+    if (!confirm(`Ruta del ${etqFecha}\n\n${registros.length} órdenes:\n${nuevos.length} nuevas\n${actualizar.length} ya existían (se actualizan sus datos)`
+      + (conLectura ? `\n\nLectura: ${bloqueadasHoy} bloqueada${bloqueadasHoy !== 1 ? 's' : ''} hoy (2 días antes y después de su fecha de lectura)` + (sinFecha ? `\n${sinFecha} sin fecha de lectura válida (no se bloquean)` : '') : '')
+      + `\n\n¿Continuar?`)) return;
 
     toast('Cargando ruta…', 'ok');
     const ahora = firebase.firestore.Timestamp.now();
@@ -874,6 +904,7 @@ async function importarRuta(file) {
           nc: r.nc, nombre: r.nombre, cliente: r.nombre,
           direccion: r.direccion, ds: r.ds, medidor: r.medidor,
           latitud: r.latitud, longitud: r.longitud,
+          ...datosLectura(r), ...datosForma(r),
           pareja: null, estadoCampo: null,
           fechaRuta: fechaRutaTs, importadaEn: ahora,
         });
@@ -884,11 +915,15 @@ async function importarRuta(file) {
     for (let i = 0; i < actualizar.length; i += 400) {
       const batch = db.batch();
       actualizar.slice(i, i + 400).forEach(r => {
-        batch.update(db.collection(COLECCION).doc(existentesPorNC.get(r.nc)), {
-          nombre: r.nombre, cliente: r.nombre,
-          direccion: r.direccion, ds: r.ds, medidor: r.medidor,
-          latitud: r.latitud, longitud: r.longitud,
-        });
+        // Solo lo que trae el archivo: una columna que no viene (por ejemplo
+        // DS en el Excel de clientes con fecha de lectura) no borra el dato.
+        const upd = { ...datosLectura(r), ...datosForma(r) };
+        if (idx.nombre >= 0) { upd.nombre = r.nombre; upd.cliente = r.nombre; }
+        if (idx.direccion >= 0) upd.direccion = r.direccion;
+        if (idx.ds >= 0) upd.ds = r.ds;
+        if (idx.medidor >= 0) upd.medidor = r.medidor;
+        if (idx.lat >= 0 && idx.lng >= 0) { upd.latitud = r.latitud; upd.longitud = r.longitud; }
+        if (Object.keys(upd).length) batch.update(db.collection(COLECCION).doc(existentesPorNC.get(r.nc)), upd);
       });
       await batch.commit();
     }

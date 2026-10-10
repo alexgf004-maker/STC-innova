@@ -14,6 +14,7 @@ import { suscribir, leer, tecnicosActivos } from '../vivo.js';
 import { padronAmi } from './ami_padron.js';
 import { toast, escapeHtml, guardarConEspera } from '../ui.js';
 import { ponerEtiquetas } from './etiquetas_mapa.js';
+import { enLectura, liberaEl, textoFecha } from '../lectura.js';
 import { avisoOrdenDuplicada } from './orden_duplicada.js';
 import { devolverAPendiente, puedeDevolverse } from './ami_devolver.js';
 import { abrirVistaCondominio, refrescarVistaCondominio, cerrarVistaCondominio, claveEdificio } from './ami_condominio.js';
@@ -41,6 +42,8 @@ let map_ = null;
 let calendario_ = []; // lecturas cargadas desde Firestore
 
 function isBlocked_(orden) {
+  // AMI: cada orden trae su fecha de lectura (Excel con "F. Lectura")
+  if (enLectura(orden.fechaLectura)) return true;
   if (!orden.unidadLectura || !calendario_.length) return false;
   const hoy = new Date(); hoy.setHours(0,0,0,0);
   return calendario_.some(cal => {
@@ -57,6 +60,14 @@ function isBlocked_(orden) {
     fecha.setHours(0,0,0,0);
     return Math.abs((fecha - hoy) / (1000*60*60*24)) <= 2;
   });
+}
+
+// El técnico no puede trabajar una orden bloqueada por lectura (por si el
+// panel quedó abierto desde antes de que empezara el bloqueo).
+function bloqueadaParaTecnico(o) {
+  if (role_ !== 'tecnico' || !((!o.estadoCampo || o.estadoCampo === 'visita') && isBlocked_(o))) return false;
+  toast('Orden bloqueada por lectura: no se puede trabajar estos días', 'error');
+  return true;
 }
 
 // Residuo: orden pendiente cuya ruta (fechaRuta) es de un día anterior a hoy.
@@ -788,7 +799,7 @@ function plotMarkers() {
     // (zoom 16+, cuando se ponen las etiquetas) y no se dibujaba ningún punto.
     const latlng = [parseFloat(orden.latitud), parseFloat(orden.longitud)];
     if (!isFinite(latlng[0]) || !isFinite(latlng[1])) return;
-    const bloqueada = !orden.estadoCampo && isBlocked_(orden);
+    const bloqueada = (!orden.estadoCampo || orden.estadoCampo === 'visita') && isBlocked_(orden);
     const yaCambiado  = orden.estadoCampo === 'ya_cambiado';
     const esMalUbicado = orden.estadoCampo === 'mal_ubicado';
     let marker;
@@ -896,6 +907,7 @@ function mostrarSelectorEncimadas(lista) {
   if (!panel || !content) { verOrden(lista[0].id); return; }
 
   const estadoTxt = (x) => x._yaCambiada ? 'Ya cambiada'
+    : (!x.estadoCampo || x.estadoCampo === 'visita') && isBlocked_(x) ? 'Bloqueada por lectura'
     : x.estadoCampo === 'hecha' ? 'Realizada'
     : x.estadoCampo === 'visita' ? 'Visita'
     : x.estadoCampo === 'ya_cambiado' ? 'Ya cambiado'
@@ -1037,8 +1049,13 @@ function verOrden(id) {
   const panel   = document.getElementById('mapa-panel');
   const content = document.getElementById('mapa-panel-content');
 
-  // Si está bloqueada por lectura, mostrar solo el candado
-  if (isBlocked_(o)) {
+  // Bloqueada por lectura (pendiente o visita): el técnico solo ve el
+  // candado; la oficina ve la ficha con el aviso, pero no se puede marcar.
+  const bloqueada = (!o.estadoCampo || o.estadoCampo === 'visita') && isBlocked_(o);
+  const fechasLect = o.fechaLectura && enLectura(o.fechaLectura)
+    ? `Lectura el ${escapeHtml(textoFecha(o.fechaLectura))}${o.rutaLectura ? ' (ruta ' + escapeHtml(o.rutaLectura) + ')' : ''}. Se libera el ${escapeHtml(textoFecha(liberaEl(o.fechaLectura)))}.`
+    : '';
+  if (bloqueada && isTecnico) {
     content.innerHTML = `
       <div style="padding:24px 16px;text-align:center">
         <svg viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" width="40" height="40" style="margin:0 auto 12px">
@@ -1047,6 +1064,7 @@ function verOrden(id) {
         </svg>
         <div style="font-size:14px;font-weight:700;color:var(--text-2);margin-bottom:6px">Orden bloqueada</div>
         <div style="font-size:12px;color:var(--text-4)">Esta orden está en período de lectura<br>y no puede realizarse en este momento.</div>
+        ${fechasLect ? `<div style="font-size:12px;color:var(--text-3);margin-top:10px">${fechasLect}</div>` : ''}
       </div>
     `;
     panel.classList.add('open');
@@ -1069,6 +1087,11 @@ function verOrden(id) {
         ${!o.estadoCampo             ? '<div class="estado-badge muted">Pendiente</div>' : ''}
       </div>
     </div>
+    ${bloqueada ? `
+    <div style="display:flex;align-items:flex-start;gap:8px;background:rgba(100,116,139,.16);border:1px solid rgba(148,163,184,.35);border-radius:11px;padding:9px 12px;margin-bottom:11px;font-size:12px;color:#cbd5e1;line-height:1.4">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15" style="flex-shrink:0;margin-top:1px"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+      <span><b>Bloqueada por lectura.</b> ${fechasLect || 'Está en período de lectura.'} El técnico no puede marcarla estos días.</span>
+    </div>` : ''}
 
     <!-- Dirección — legible bajo el sol sin exagerar -->
     ${o.direccion ? `
@@ -1226,6 +1249,7 @@ async function eliminarOrden(id) {
 function marcarHecha(id) {
   const o = ordenes_.find(x => x.id === id);
   if (!o) return;
+  if (bloqueadaParaTecnico(o)) return;
   closePanel();           // limpia panel pero también pone selectedOrden_ = null
   selectedOrden_ = o;     // restaurar después de closePanel
   openSheet('sheet-realizada');
@@ -1277,6 +1301,7 @@ async function confirmarRealizada() {
 function marcarVisita(id) {
   const o = ordenes_.find(x => x.id === id);
   if (!o) return;
+  if (bloqueadaParaTecnico(o)) return;
   closePanel();           // limpia panel pero también pone selectedOrden_ = null
   selectedOrden_ = o;     // restaurar después de closePanel
 

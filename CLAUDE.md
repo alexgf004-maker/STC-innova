@@ -67,6 +67,8 @@ js/
     cambios.js + mapa.js           área Cambios (identificador: WO)
     caracterizacion.js + caracterizacion_mapa.js   instalación + retiro (titular/suplentes)
     ami.js + ami_mapa.js           área AMI (identificador: NC, NO tiene WO)
+                                   ruta con "F. Lectura" / "R.Lec": la orden guarda fechaLectura y se
+                                   bloquea 2 días antes y después (js/lectura.js), como Cambios
     reclamos.js             bitácora Reclamos SIGET
     factibilidades.js + factibilidades_mapa.js   área Factibilidades (técnico individual, semáforo de días)
   factibilidades_comun.js  listeners compartidos de órdenes abiertas de Factibilidades
