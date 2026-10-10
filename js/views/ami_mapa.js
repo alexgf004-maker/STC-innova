@@ -15,6 +15,7 @@ import { padronAmi } from './ami_padron.js';
 import { toast, escapeHtml, guardarConEspera } from '../ui.js';
 import { ponerEtiquetas } from './etiquetas_mapa.js';
 import { enLectura, liberaEl, textoFecha } from '../lectura.js';
+import { fichaBloqueada } from './ficha_bloqueada.js';
 import { avisoOrdenDuplicada } from './orden_duplicada.js';
 import { devolverAPendiente, puedeDevolverse } from './ami_devolver.js';
 import { abrirVistaCondominio, refrescarVistaCondominio, cerrarVistaCondominio, claveEdificio } from './ami_condominio.js';
@@ -823,11 +824,12 @@ function plotMarkers() {
         bubblingMouseEvents: false,   // que el toque no cierre el panel al abrirlo
         radius: hecha || bloqueada ? Math.max(2, r - 1) : r,
         fillColor: color,
-        fillOpacity: hecha ? 0.6 : bloqueada ? 0.55 : 1,
-        color: residuo ? '#f59e0b' : visita ? '#cbd5e1' : cerca ? '#ffffff' : 'rgba(5,10,20,.55)',
-        weight: residuo ? (cerca ? 3 : 2) : cerca ? 2 : 1,
-        opacity: bloqueada ? 0.6 : 1,
-        dashArray: bloqueada && cerca ? '3 3' : null,
+        fillOpacity: hecha ? 0.6 : bloqueada ? 0.8 : 1,
+        // Bloqueada: gris pizarra con borde claro fino (antes punteado, que a
+        // radio chico se veía como un pentágono).
+        color: bloqueada ? (cerca ? '#cbd5e1' : 'rgba(203,213,225,.7)') : residuo ? '#f59e0b' : visita ? '#cbd5e1' : cerca ? '#ffffff' : 'rgba(5,10,20,.55)',
+        weight: bloqueada ? (cerca ? 1.5 : 1) : residuo ? (cerca ? 3 : 2) : cerca ? 2 : 1,
+        opacity: 1,
       });
     }
     marker._ordenId = orden.id;
@@ -1056,17 +1058,10 @@ function verOrden(id) {
     ? `Lectura el ${escapeHtml(textoFecha(o.fechaLectura))}${o.rutaLectura ? ' (ruta ' + escapeHtml(o.rutaLectura) + ')' : ''}. Se libera el ${escapeHtml(textoFecha(liberaEl(o.fechaLectura)))}.`
     : '';
   if (bloqueada && isTecnico) {
-    content.innerHTML = `
-      <div style="padding:24px 16px;text-align:center">
-        <svg viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" width="40" height="40" style="margin:0 auto 12px">
-          <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
-          <path d="M7 11V7a5 5 0 0110 0v4"/>
-        </svg>
-        <div style="font-size:14px;font-weight:700;color:var(--text-2);margin-bottom:6px">Orden bloqueada</div>
-        <div style="font-size:12px;color:var(--text-4)">Esta orden está en período de lectura<br>y no puede realizarse en este momento.</div>
-        ${fechasLect ? `<div style="font-size:12px;color:var(--text-3);margin-top:10px">${fechasLect}</div>` : ''}
-      </div>
-    `;
+    content.innerHTML = fichaBloqueada({
+      titulo: `NC ${o.nc || '—'}`, cliente: o.cliente, direccion: o.direccion,
+      fechaLectura: o.fechaLectura, ruta: o.rutaLectura, extra: [['Medidor', o.medidor]],
+    });
     panel.classList.add('open');
     return;
   }
@@ -1081,10 +1076,10 @@ function verOrden(id) {
       <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0">
         ${o.pareja ? `<div class="pareja-chip" style="color:${c};border-color:${c}33;background:${c}15">${o.pareja}</div>` : ''}
         ${o._yaCambiada ? `<div class="estado-badge ok" style="background:rgba(22,163,74,.15);border-color:rgba(22,163,74,.4);color:#16a34a">Ya cambiada</div>` : ''}
-        ${esResiduoAMI(o) ? `<div class="estado-badge warn">Arrastrada</div>` : ''}
+        ${esResiduoAMI(o) && !bloqueada ? `<div class="estado-badge warn">Arrastrada</div>` : ''}
         ${o.estadoCampo === 'hecha'  ? '<div class="estado-badge ok">Realizada</div>'    : ''}
         ${o.estadoCampo === 'visita' ? '<div class="estado-badge warn">Visita</div>'     : ''}
-        ${!o.estadoCampo             ? '<div class="estado-badge muted">Pendiente</div>' : ''}
+        ${!o.estadoCampo             ? `<div class="estado-badge muted">${bloqueada ? 'Bloqueada' : 'Pendiente'}</div>` : ''}
       </div>
     </div>
     ${bloqueada ? `

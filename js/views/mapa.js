@@ -13,6 +13,7 @@ import { leerPadron } from '../padrones.js';
 import { suscribir, leer } from '../vivo.js';
 import { toast, escapeHtml, guardarConEspera } from '../ui.js';
 import { ponerEtiquetas } from './etiquetas_mapa.js';
+import { fichaBloqueada } from './ficha_bloqueada.js';
 import { avisoOrdenDuplicada } from './orden_duplicada.js';
 
 const PAREJA_COLORS = {
@@ -36,11 +37,13 @@ const ESTADO_COLORS = {
 let map_ = null;
 let calendario_ = []; // lecturas cargadas desde Firestore
 
-function isBlocked_(orden) {
-  if (!orden.unidadLectura || !calendario_.length) return false;
+// Entrada del calendario de lecturas que bloquea hoy esta orden (o null):
+// { fecha: 'AAAA-MM-DD', mru }. Se bloquea ±2 días alrededor de la lectura.
+function lecturaQueBloquea_(orden) {
+  if (!orden.unidadLectura || !calendario_.length) return null;
   const hoy = new Date(); hoy.setHours(0,0,0,0);
-  return calendario_.some(cal => {
-    if (!orden.unidadLectura.startsWith(cal.mru)) return false;
+  for (const cal of calendario_) {
+    if (!orden.unidadLectura.startsWith(cal.mru)) continue;
     let fecha;
     if (cal.fechaLectura?.toDate) {
       fecha = cal.fechaLectura.toDate();
@@ -51,9 +54,14 @@ function isBlocked_(orden) {
       fecha = new Date(cal.fechaLectura);
     }
     fecha.setHours(0,0,0,0);
-    return Math.abs((fecha - hoy) / (1000*60*60*24)) <= 2;
-  });
+    if (Math.abs((fecha - hoy) / (1000*60*60*24)) <= 2) {
+      const clave = `${fecha.getFullYear()}-${String(fecha.getMonth() + 1).padStart(2, '0')}-${String(fecha.getDate()).padStart(2, '0')}`;
+      return { fecha: clave, mru: cal.mru };
+    }
+  }
+  return null;
 }
+const isBlocked_ = orden => !!lecturaQueBloquea_(orden);
 let markers_ = [];
 let markersContiguos_ = [];   // marcadores temporales de contiguos
 let contiguosData_ = null;     // caché del JSON de contiguos
@@ -636,12 +644,14 @@ function plotMarkers() {
         bubblingMouseEvents: false,
         radius:      hecha || bloqueada ? Math.max(2, r - 1) : r,
         fillColor:   color,
-        fillOpacity: hecha ? 0.6 : bloqueada ? 0.55 : 1,
+        fillOpacity: hecha ? 0.6 : bloqueada ? 0.8 : 1,
         // Ubicación aproximada (por dirección): borde amarillo punteado.
-        color:       orden.ubicacionAprox ? '#fbbf24' : visita ? '#cbd5e1' : cerca ? '#ffffff' : 'rgba(5,10,20,.55)',
-        weight:      cerca ? 2 : 1,
-        opacity:     bloqueada ? 0.6 : 1,
-        dashArray:   (bloqueada || orden.ubicacionAprox) && cerca ? '3 3' : null,
+        // Bloqueada: gris pizarra con borde claro fino (antes punteado, que a
+        // radio chico se veía como un pentágono).
+        color:       bloqueada ? (cerca ? '#cbd5e1' : 'rgba(203,213,225,.7)') : orden.ubicacionAprox ? '#fbbf24' : visita ? '#cbd5e1' : cerca ? '#ffffff' : 'rgba(5,10,20,.55)',
+        weight:      bloqueada ? (cerca ? 1.5 : 1) : cerca ? 2 : 1,
+        opacity:     1,
+        dashArray:   !bloqueada && orden.ubicacionAprox && cerca ? '3 3' : null,
       });
     }
     marker._ordenId = orden.id;
@@ -708,18 +718,13 @@ function verOrden(id) {
   const panel   = document.getElementById('mapa-panel');
   const content = document.getElementById('mapa-panel-content');
 
-  // Si está bloqueada por lectura, mostrar solo el candado
-  if (isBlocked_(o)) {
-    content.innerHTML = `
-      <div style="padding:24px 16px;text-align:center">
-        <svg viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" width="40" height="40" style="margin:0 auto 12px">
-          <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
-          <path d="M7 11V7a5 5 0 0110 0v4"/>
-        </svg>
-        <div style="font-size:14px;font-weight:700;color:var(--text-2);margin-bottom:6px">Orden bloqueada</div>
-        <div style="font-size:12px;color:var(--text-4)">Esta orden está en período de lectura<br>y no puede realizarse en este momento.</div>
-      </div>
-    `;
+  // Si está bloqueada por lectura, mostrar solo la ficha de bloqueo
+  const lect = lecturaQueBloquea_(o);
+  if (lect) {
+    content.innerHTML = fichaBloqueada({
+      titulo: o.wo ? `WO ${o.wo}` : `NC ${o.nc || '—'}`, cliente: o.cliente, direccion: o.direccion,
+      fechaLectura: lect.fecha, ruta: o.unidadLectura, etiquetaRuta: 'Unidad de lectura', extra: [['NC', o.wo ? o.nc : '']],
+    });
     panel.classList.add('open');
     return;
   }

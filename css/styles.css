@@ -2605,3 +2605,48 @@ body[data-area="fb"] {           /* Factibilidades: rosa */
   .tab-pildora { transition: none !important; }
   .pestana-der, .pestana-izq { animation: none; }
 }
+
+/* ── Ficha de gota bloqueada por lectura (mapas de Cambios y AMI) ── */
+.bl-ficha { padding: 2px 2px 4px; }
+.bl-cab { display: flex; align-items: center; gap: 12px; }
+.bl-ico {
+  width: 46px; height: 46px; border-radius: 14px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  color: #fde68a; background: linear-gradient(135deg, rgba(251,191,36,.22), rgba(251,191,36,.08));
+  border: 1px solid rgba(251,191,36,.35);
+}
+.bl-eti { font-size: 11px; font-weight: 600; letter-spacing: .04em; color: var(--text-3); text-transform: uppercase; }
+.bl-tit { font-size: 17px; font-weight: 700; color: #fff; letter-spacing: -.01em; margin-top: 1px; }
+.bl-cuenta {
+  flex-shrink: 0; text-align: center; min-width: 54px; padding: 6px 8px; border-radius: 12px;
+  background: var(--glass); border: 1px solid var(--border); font-size: 10.5px; color: var(--text-3); line-height: 1.15;
+}
+.bl-cuenta b { display: block; font-size: 19px; font-weight: 700; color: #fff; }
+.bl-sub { font-size: 13px; color: var(--text-2); margin: 12px 0 14px; line-height: 1.45; }
+.bl-sub b { color: #fff; font-weight: 600; }
+.bl-tira { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; margin-bottom: 14px; }
+.bl-dia {
+  display: flex; flex-direction: column; align-items: center; gap: 1px;
+  padding: 7px 0 6px; border-radius: 11px; border: 1px solid var(--border);
+  background: rgba(148,163,184,.08); color: var(--text-2);
+}
+.bl-dia-s { font-size: 10px; text-transform: capitalize; color: var(--text-3); }
+.bl-dia-n { font-size: 16px; font-weight: 700; color: #e2e8f0; }
+.bl-dia-t { font-size: 9.5px; font-weight: 600; min-height: 12px; color: var(--text-3); }
+.bl-dia.lect { background: rgba(251,191,36,.14); border-color: rgba(251,191,36,.4); }
+.bl-dia.lect .bl-dia-n, .bl-dia.lect .bl-dia-t { color: #fcd34d; }
+.bl-dia.libre { background: rgba(34,197,94,.1); border-color: rgba(34,197,94,.35); }
+.bl-dia.libre .bl-dia-n, .bl-dia.libre .bl-dia-t { color: #86efac; }
+.bl-dia.hoy { box-shadow: 0 0 0 2px #fff inset; }
+.bl-dia.hoy .bl-dia-t { color: #fff; }
+.bl-dir {
+  font-size: 13.5px; font-weight: 500; color: rgba(255,255,255,.95); line-height: 1.4;
+  background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.1); border-radius: 11px; padding: 10px 12px; margin-bottom: 10px;
+}
+.bl-info { border: 1px solid var(--border); border-radius: 11px; padding: 4px 12px; margin-bottom: 10px; }
+.bl-fila { display: flex; justify-content: space-between; gap: 12px; padding: 7px 0; font-size: 12.5px; }
+.bl-fila + .bl-fila { border-top: 1px solid var(--border); }
+.bl-fila span:first-child { color: var(--text-3); flex-shrink: 0; }
+.bl-fila span:last-child { color: #e2e8f0; font-weight: 500; text-align: right; text-transform: capitalize; }
+.bl-nota { font-size: 11.5px; color: var(--text-3); line-height: 1.45; margin-bottom: 12px; }
+.bl-ok { width: 100%; }
