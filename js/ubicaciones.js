@@ -24,6 +24,14 @@ function clave(s) {
   return /^\d+$/.test(k) ? k.replace(/^0+(?=\d)/, '') : k;
 }
 
+// El padrón de DELSUR trae el medidor con su modelo: "1430749-EM-10 (240V)".
+// La referencia del Excel (MD1430749) y el número de serie traen solo el
+// número, así que se guarda solo eso.
+function claveMedidor(s) {
+  const m = String(s ?? '').match(/^\s*(\d+)\s*-/);
+  return m ? clave(m[1]) : clave(s);
+}
+
 // Dentro de El Salvador (con margen).
 const enSV = (lat, lng) => lat > 12.9 && lat < 14.6 && lng > -90.3 && lng < -87.5;
 
@@ -72,7 +80,7 @@ export function leerPadronUbicaciones(hojas) {
     const v = (r, i) => (i >= 0 ? String(r[i] ?? '').trim() : '');
     for (const r of rows.slice(cab.fila + 1)) {
       if (!r || !r.length) continue;
-      const nc = clave(v(r, ix.nc)), md = clave(v(r, ix.md)), ds = clave(v(r, ix.ds));
+      const nc = clave(v(r, ix.nc)), md = claveMedidor(v(r, ix.md)), ds = clave(v(r, ix.ds));
       if (!nc && !md && !ds) continue;
       leidas++;
       let lat, lng;
@@ -107,7 +115,12 @@ function nuevoIndice() {
     nc, md, ds,
     agregar(n, m, d, lat, lng) {
       lat = numero(lat); lng = numero(lng);
-      poner(nc, clave(n), lat, lng); poner(md, clave(m), lat, lng); poner(ds, clave(d), lat, lng);
+      poner(nc, clave(n), lat, lng); poner(ds, clave(d), lat, lng);
+      const mk = claveMedidor(m);
+      poner(md, mk, lat, lng);
+      // Padrón subido antes de separar el modelo: "1430749EM10240V" -> 1430749
+      const pre = mk.match(/^(\d+)[A-Z]/);
+      if (pre) poner(md, clave(pre[1]), lat, lng);
     },
   };
 }
