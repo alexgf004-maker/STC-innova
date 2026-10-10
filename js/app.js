@@ -214,7 +214,10 @@ function abrirPadrones() {
       if (!f) return;
       if (!def.excel) { subir(async () => JSON.parse(await f.text())); return; }
       subir(async () => {
-        const wb = XLSX.read(await f.arrayBuffer(), { type: 'array' });
+        // CSV como texto: si viene con punto y coma y coma decimal (Excel en
+        // español), "13,7" no debe leerse como 137 (ubicaciones.js lo convierte).
+        const csv = /\.csv$/i.test(f.name);
+        const wb = XLSX.read(await f.arrayBuffer(), { type: 'array', raw: csv });
         const r = leerPadronUbicaciones(wb.SheetNames.map(n => XLSX.utils.sheet_to_json(wb.Sheets[n], { header: 1, defval: '' })));
         if (r.error) throw new Error(r.error);
         return {

@@ -75,7 +75,12 @@ export function leerPadronUbicaciones(hojas) {
       leidas++;
       let lat, lng;
       if (ix.lat >= 0 && ix.lng >= 0) { lat = numero(r[ix.lat]); lng = numero(r[ix.lng]); }
-      else { const p = v(r, ix.par).split(/[,;\s]+/).filter(Boolean); lat = numero(p[0]); lng = numero(p[1]); }
+      else {
+        // "13.7, -89.2" o, con coma decimal, "13,7 -89,2"
+        const t = v(r, ix.par);
+        const p = (t.includes('.') ? t.split(/[,;\s]+/) : t.split(/[;\s]+/)).filter(Boolean);
+        lat = numero(p[0]); lng = numero(p[1]);
+      }
       // Columnas cruzadas (latitud en la de longitud): se corrige solo.
       if (!enSV(lat, lng) && enSV(lng, lat)) [lat, lng] = [lng, lat];
       if (!enSV(lat, lng)) { descartadas++; continue; }
