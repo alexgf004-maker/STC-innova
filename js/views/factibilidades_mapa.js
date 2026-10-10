@@ -372,7 +372,9 @@ function verOrden(id) {
       ${o.ubicacionAprox && !o.coordCorregida ? `
       <div style="display:flex;align-items:flex-start;gap:8px;background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.35);border-radius:11px;padding:9px 12px;margin-bottom:11px;font-size:12px;color:#fde68a;line-height:1.4">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15" style="flex-shrink:0;margin-top:1px"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-        <span><b>Ubicación aproximada</b>${o.ubicacionNivel ? ` (a nivel de ${esc(o.ubicacionNivel)})` : ''}: sacada de la dirección. Guíate por la dirección y la referencia; estando en el sitio, corrige la ubicación.</span>
+        <span>${o.ubicacionFuente === 'padron'
+          ? `<b>Ubicación aproximada</b>: junto al ${esc(o.ubicacionNivel || 'punto de referencia')}. Guíate por la referencia; estando en el sitio, corrige la ubicación.`
+          : `<b>Ubicación aproximada</b>${o.ubicacionNivel ? ` (a nivel de ${esc(o.ubicacionNivel)})` : ''}: sacada de la dirección. Guíate por la dirección y la referencia; estando en el sitio, corrige la ubicación.`}</span>
       </div>` : ''}
       ${o.referencia || o.telefono ? `
       <div style="padding:10px 12px;background:var(--glass);border:1px solid var(--border);border-radius:10px;margin-bottom:11px">

@@ -13,16 +13,19 @@
  * y se recuerda para la próxima. Lo reasignado a mano en la app
  * (asignacionManual) no se pisa al volver a importar.
  *
- * El Excel no trae coordenadas: las órdenes se ubican por dirección con
- * Google (geocodificar.js) y quedan marcadas como aproximadas. Tampoco trae
- * departamento, y "Población" a veces es solo un cantón con nombre repetido
- * en otros municipios: el "Centro planif." dice la zona de DELSUR y con eso se
- * limita la búsqueda (ver CENTROS).
+ * El Excel no trae coordenadas. Se ubican con el padrón de ubicaciones
+ * (ubicaciones.js): por el NC o medidor del propio cliente, o junto a la
+ * referencia del vecino que viene en el Texto breve (MD/NC/DS). Las que no
+ * se encuentren pueden ubicarse, si el admin lo pide, por dirección con
+ * Google (geocodificar.js); eso es muy aproximado y queda marcado. El Excel
+ * tampoco trae departamento: el "Centro planif." dice la zona de DELSUR y con
+ * eso se limita la búsqueda en Google (ver CENTROS).
  */
 import { db } from '../firebase.js';
 import { toast, escapeHtml as esc } from '../ui.js';
 import { COL_ORDENES, COL_CONFIG } from '../factibilidades_comun.js';
 import { geocodificar, leerClave, guardarClave } from '../geocodificar.js';
+import { cargarIndiceUbicaciones, ubicarPorCodigos } from '../ubicaciones.js';
 
 const ID = 'fb-sheet-importar';
 const norm = s => String(s ?? '').toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
@@ -30,7 +33,7 @@ const norm = s => String(s ?? '').toUpperCase().normalize('NFD').replace(/[̀-ͯ
 // Centro de planificación DELSUR -> departamento (zona de búsqueda en Google).
 const CENTROS = { '1110': 'San Salvador', '2110': 'La Libertad', '3110': 'La Libertad', '3510': 'La Paz' };
 
-let filas_ = [], plan_ = null, tecnicos_ = [], session_ = null, mapeo_ = {}, archivo_ = '';
+let filas_ = [], plan_ = null, tecnicos_ = [], session_ = null, mapeo_ = {}, archivo_ = '', usarGoogle_ = false;
 
 // ── Lectura del Excel ─────────────────────────────
 function fechaExcel(v) {
@@ -137,11 +140,24 @@ async function armarPlan(filas) {
   });
   const nuevas = filas.filter(f => !ex.has(f.numeroOrden));
   const existentes = filas.filter(f => ex.has(f.numeroOrden)).map(f => ({ f, o: ex.get(f.numeroOrden) }));
+
+  // Ubicar con el padrón (NC / medidor del cliente o la referencia del vecino)
+  const aUbicar = [...nuevas, ...existentes.filter(({ o }) => hayQueUbicar(o)).map(({ f }) => f)];
+  const codigosDe = f => ({ nc: f.nc, medidor: f.serieActual, referencia: f.referencia, ds: f.dsct });
+  const porPadron = new Map();
+  let fuentes = [];
+  if (aUbicar.length) {
+    const r = await cargarIndiceUbicaciones(idx => aUbicar.some(f => !ubicarPorCodigos(idx, codigosDe(f))));
+    fuentes = r.fuentes;
+    aUbicar.forEach(f => { const u = ubicarPorCodigos(r.indice, codigosDe(f)); if (u) porPadron.set(f.numeroOrden, u); });
+  }
+  const porFuente = {};
+  porPadron.forEach(u => { porFuente[u.fuente] = (porFuente[u.fuente] || 0) + 1; });
   return {
     nuevas, existentes, codigos, hayClave: !!clave,
+    aUbicar: aUbicar.length, porPadron, porFuente, fuentes, sinPadronUbic: !fuentes.includes('ubicaciones'),
     porCodigo: Object.fromEntries(codigos.map(c => [c, filas.filter(f => f.codigoTecnico === c).length])),
     sinCodigo: filas.filter(f => !f.codigoTecnico).length,
-    sinCoord: nuevas.length + existentes.filter(({ o }) => hayQueUbicar(o)).length,
   };
 }
 
@@ -195,7 +211,7 @@ async function cargarArchivo(file) {
   error('');
   archivo_ = file.name;
   const plan = document.getElementById('fbi-plan');
-  plan.innerHTML = '<div class="import-info-box"><div class="import-info-label">Leyendo y comparando…</div></div>';
+  plan.innerHTML = '<div class="import-info-box"><div class="import-info-label">Leyendo, comparando y buscando ubicaciones…</div></div>';
   document.getElementById('fbi-ok').style.display = 'none';
   try {
     const wb = XLSX.read(await file.arrayBuffer(), { type: 'array' });
@@ -224,7 +240,11 @@ function pintarPlan() {
     <div style="font-size:11px;color:var(--text-4);margin:10px 0 6px">${esc(archivo_)} · ${filas_.length} órdenes</div>
     ${fila(p.nuevas.length, 'Órdenes nuevas', 'Entran abiertas, con la fecha de liberación del Excel', 'var(--fb-light, #f472b6)')}
     ${fila(p.existentes.length, 'Ya estaban en la app', 'Se actualizan sus datos; estado, resultado y reasignaciones manuales se respetan', '#60a5fa')}
-    ${p.sinCoord ? fila(p.sinCoord, 'Sin coordenadas', p.hayClave ? 'Se ubican por dirección con Google, dentro de su zona (aproximado). Incluye las ya ubicadas aproximadas que nadie corrigió' : 'Sin clave de Google entran sin punto en el mapa. <a href="#" id="fbi-clave" style="color:#60a5fa">Poner clave</a>', '#fbbf24') : ''}
+    ${p.aUbicar ? fila(p.porPadron.size, 'Ubicadas con el padrón', Object.entries(p.porFuente).map(([f, n]) => `${n} por ${esc(f)}`).join(' · ') || 'Ninguna referencia se encontró en los padrones', '#22c55e') : ''}
+    ${p.aUbicar - p.porPadron.size ? fila(p.aUbicar - p.porPadron.size, 'Sin encontrar en el padrón', (usarGoogle_ ? 'Se ubican por dirección con Google (muy aproximado).' : 'Entran sin punto nuevo en el mapa; el técnico fija la ubicación en el sitio.')
+      + (p.hayClave ? `<label style="display:flex;align-items:center;gap:8px;margin-top:6px;color:var(--text-2)"><input type="checkbox" id="fbi-google" ${usarGoogle_ ? 'checked' : ''}/> Ubicarlas por dirección con Google</label>`
+        : ' <a href="#" id="fbi-clave" style="color:#60a5fa">Poner clave de Google</a>'), '#fbbf24') : ''}
+    ${p.aUbicar && p.sinPadronUbic ? `<div style="font-size:11.5px;color:#fbbf24;margin-top:6px">Todavía no está el padrón de ubicaciones: súbelo en el menú, Padrones de clientes. Por ahora solo se busca en Caracterización y Contiguos.</div>` : ''}
     ${p.repetidas ? `<div style="font-size:11px;color:var(--text-4);margin-top:6px">${p.repetidas} órdenes repetidas en el archivo (se toma la primera).</div>` : ''}
     <div style="font-size:12px;font-weight:700;color:var(--text-2);margin:16px 0 4px">Asignar por usuario DELSUR</div>
     <div style="font-size:11.5px;color:var(--text-3);margin-bottom:8px">Se recuerda para la próxima. Después puedes reasignar orden por orden.</div>
@@ -237,6 +257,8 @@ function pintarPlan() {
     ${!tecnicos_.length ? '<div style="font-size:11.5px;color:#fbbf24;margin-top:6px">No hay técnicos activos en Factibilidades: asígnalos en Usuarios para poder cruzarlos.</div>'
       : '<div style="font-size:11.5px;color:var(--text-3);margin-top:6px">¿No aparece un técnico? Asígnale el área Factibilidades en Usuarios.</div>'}`;
   document.querySelectorAll('#fbi-plan select[data-cod]').forEach(s => s.onchange = () => { mapeo_[s.dataset.cod] = s.value; });
+  const chk = document.getElementById('fbi-google');
+  if (chk) chk.onchange = () => { usarGoogle_ = chk.checked; pintarPlan(); };
   const lnk = document.getElementById('fbi-clave');
   if (lnk) lnk.onclick = async e => {
     e.preventDefault();
@@ -264,20 +286,24 @@ async function importar() {
     const tec = cod => tecnicos_.find(t => t.id === mapeo_[cod]) || null;
     const ahora = firebase.firestore.Timestamp.now();
 
-    // 1. Ubicar por dirección lo que no tiene coordenadas
+    // 1. Ubicar: con el padrón (ya calculado en el plan) y, si se pidió, el
+    //    resto por dirección con Google.
     const aUbicar = [
       ...p.nuevas.map(f => ({ f })),
       ...p.existentes.filter(({ o }) => hayQueUbicar(o)).map(({ f, o }) => ({ f, o })),
     ];
     const geo = new Map();
-    if (aUbicar.length && p.hayClave) {
-      const res = await geocodificar(aUbicar.map(x => x.f._geo),
+    const resto = aUbicar.filter(x => !p.porPadron.has(x.f.numeroOrden));
+    if (resto.length && p.hayClave && usarGoogle_) {
+      const res = await geocodificar(resto.map(x => x.f._geo),
         (i, t) => { lbl.textContent = `Ubicando ${i}/${t}…`; });
-      res.forEach((r, i) => { if (r) geo.set(aUbicar[i].f.numeroOrden, r); });
+      res.forEach((r, i) => { if (r) geo.set(resto[i].f.numeroOrden, r); });
     }
     const coord = f => {
+      const u = p.porPadron.get(f.numeroOrden);
+      if (u) return { latitud: u.lat, longitud: u.lng, ubicacionAprox: !u.exacta, ubicacionFuente: 'padron', ubicacionNivel: u.fuente, ubicacionTipo: '' };
       const r = geo.get(f.numeroOrden);
-      return r ? { latitud: r.lat, longitud: r.lng, ubicacionAprox: true, ubicacionTipo: r.tipo, ubicacionNivel: r.nivel || '' } : {};
+      return r ? { latitud: r.lat, longitud: r.lng, ubicacionAprox: true, ubicacionFuente: 'direccion', ubicacionTipo: r.tipo, ubicacionNivel: r.nivel || '' } : {};
     };
     const datos = f => ({
       numeroOrden: f.numeroOrden, nc: f.nc, aviso: f.aviso, cliente: f.cliente, direccion: f.direccion, departamento: f.departamento,
@@ -316,9 +342,9 @@ async function importar() {
     await db.collection(COL_CONFIG).doc('general').set({ codigosDelsur: mapeo_ }, { merge: true });
 
     document.getElementById(ID).classList.remove('open');
-    const sinPunto = aUbicar.length - geo.size;
+    const sinPunto = aUbicar.length - p.porPadron.size - geo.size;
     toast(`Factibilidades: ${p.nuevas.length} nuevas, ${p.existentes.length} actualizadas`
-      + (aUbicar.length ? ` · ${geo.size} ubicadas por dirección${sinPunto ? `, ${sinPunto} sin punto` : ''}` : ''), 'ok', 6000);
+      + (aUbicar.length ? ` · ${p.porPadron.size} ubicadas con el padrón` + (geo.size ? `, ${geo.size} por dirección` : '') + (sinPunto ? `, ${sinPunto} sin punto nuevo` : '') : ''), 'ok', 6000);
   } catch (e) {
     console.error('[factibilidades] importar:', e);
     error('No se pudo importar: ' + e.message + '. Lo que alcanzó a guardarse queda; puedes volver a subir el archivo.');

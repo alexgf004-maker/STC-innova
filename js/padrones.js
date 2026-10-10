@@ -18,6 +18,8 @@ import { db } from './firebase.js';
 export const PADRONES = {
   caracterizacion: { titulo: 'Padrón de Caracterización' },
   contiguos:       { titulo: 'Contiguos (Cambios y AMI)' },
+  // Se sube en Excel (NC / medidor / DS + coordenadas), ver ubicaciones.js.
+  ubicaciones:     { titulo: 'Ubicaciones por NC y medidor (Factibilidades)', excel: true },
 };
 
 const MAX_BYTES = 800 * 1024;   // margen bajo el límite de 1 MiB por documento

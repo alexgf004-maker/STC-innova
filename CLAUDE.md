@@ -72,8 +72,13 @@ js/
   factibilidades_comun.js  listeners compartidos de órdenes abiertas de Factibilidades
   views/factibilidades_importar.js  importador del Excel (Orden, Aviso, Calle/Distrito/Población…);
                            cruce Pto.tbjo.resp. (usuario DELSUR) -> técnico en factibilidades_config/general.codigosDelsur
+  ubicaciones.js           ubicar órdenes por NC / medidor / DS con el padrón "ubicaciones" (Excel que sube
+                           el admin en Padrones de clientes; filas [nc, md, ds, lat, lng]) más Caracterización
+                           y Contiguos. Factibilidades lo usa primero (NC/medidor del cliente o la referencia
+                           del vecino en el Texto breve); marca ubicacionFuente 'padron' y ubicacionNivel
   geocodificar.js          coordenadas aproximadas por dirección (Google Maps JS Geocoder);
-                           clave en config_privada/google (solo admin/asistente); marca ubicacionAprox
+                           clave en config_privada/google (solo admin/asistente); marca ubicacionAprox.
+                           En Factibilidades es opcional (casilla al importar) y solo para lo que no está en el padrón
     bodega.js, usuarios.js, areas.js
 ```
 

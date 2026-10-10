@@ -8,6 +8,7 @@ import { auth, db, llamar, mensajeServidor } from './firebase.js';
 import { initRouter, navigateTo, goBack, canGoBack } from './router.js';
 import { toast as __appToast } from './ui.js';
 import { PADRONES, infoPadron, subirPadron } from './padrones.js';
+import { leerPadronUbicaciones, olvidarIndiceUbicaciones } from './ubicaciones.js';
 
 const SESSION_KEY = 'innova_session';
 const LOGIN_PATH  = '/STC-innova/login.html';
@@ -148,7 +149,7 @@ function abrirPadrones() {
         <button class="cm-ico-btn" id="pad-cerrar" title="Cerrar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" width="18" height="18"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
       </div>
       <div style="font-size:12.5px;color:var(--text-3);line-height:1.5;margin-bottom:16px">
-        Se guardan en Firebase y solo los ven usuarios con sesión activa. Para actualizar uno, sube su archivo .json.
+        Se guardan en Firebase y solo los ven usuarios con sesión activa. Para actualizar uno, sube su archivo de nuevo.
       </div>
       <div id="pad-lista" style="display:flex;flex-direction:column;gap:10px"></div>
     </div>`;
@@ -164,9 +165,10 @@ function abrirPadrones() {
       <div style="font-size:14px;font-weight:600"></div>
       <div class="pad-estado" style="font-size:12px;color:var(--text-3);margin-top:4px">Revisando…</div>
       <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
-        <button class="cm-btn marca pad-archivo">Subir archivo .json</button>
-        <input type="file" accept=".json,application/json" style="display:none"/>
+        <button class="cm-btn marca pad-archivo">Subir archivo ${def.excel ? 'Excel' : '.json'}</button>
+        <input type="file" accept="${def.excel ? '.xlsx,.xls,.csv' : '.json,application/json'}" style="display:none"/>
       </div>
+      ${def.excel ? `<div style="font-size:11.5px;color:var(--text-3);line-height:1.5;margin-top:8px">Columnas: NC (o Contrato) y/o Medidor, opcional DS, y Latitud y Longitud (o una columna Coordenadas). Se toman todas las hojas que tengan esas columnas.</div>` : ''}
       <div class="pad-prog" style="font-size:12px;color:var(--text-2);margin-top:8px"></div>`;
     card.firstElementChild.textContent = def.titulo;
     lista.appendChild(card);
@@ -193,8 +195,10 @@ function abrirPadrones() {
       try {
         prog.textContent = 'Leyendo…';
         const datos = await obtener();
-        const n = await subirPadron(nombre, datos, session.displayName, (i, t) => { prog.textContent = `Subiendo parte ${i} de ${t}…`; });
-        prog.textContent = `Listo: ${n} parte${n > 1 ? 's' : ''}.`;
+        const resumen = datos._resumen || '';
+        const n = await subirPadron(nombre, datos.filas || datos, session.displayName, (i, t) => { prog.textContent = `Subiendo parte ${i} de ${t}…`; });
+        if (def.excel) olvidarIndiceUbicaciones();
+        prog.textContent = `Listo: ${n} parte${n > 1 ? 's' : ''}.` + (resumen ? ' ' + resumen : '');
         await pintarEstado();
       } catch (e) {
         prog.textContent = 'Error: ' + e.message;
@@ -207,7 +211,18 @@ function abrirPadrones() {
     inp.onchange = () => {
       const f = inp.files[0];
       inp.value = '';
-      if (f) subir(async () => JSON.parse(await f.text()));
+      if (!f) return;
+      if (!def.excel) { subir(async () => JSON.parse(await f.text())); return; }
+      subir(async () => {
+        const wb = XLSX.read(await f.arrayBuffer(), { type: 'array' });
+        const r = leerPadronUbicaciones(wb.SheetNames.map(n => XLSX.utils.sheet_to_json(wb.Sheets[n], { header: 1, defval: '' })));
+        if (r.error) throw new Error(r.error);
+        return {
+          filas: r.filas,
+          _resumen: `${r.filas.length.toLocaleString('es-SV')} con coordenadas`
+            + (r.descartadas ? ` · ${r.descartadas.toLocaleString('es-SV')} descartadas (sin coordenadas válidas)` : ''),
+        };
+      });
     };
     pintarEstado();
   });
