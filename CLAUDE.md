@@ -72,6 +72,8 @@ js/
     reclamos.js             bitácora Reclamos SIGET
     factibilidades.js + factibilidades_mapa.js   área Factibilidades (técnico individual, semáforo de días)
   factibilidades_comun.js  listeners compartidos de órdenes abiertas de Factibilidades
+                           y modo atrasadas por técnico (config general.modoAtrasadas {uid: true},
+                           radioCercanas): el técnico solo ve sus rojas + las cercanas; sin rojas, amarillas
   views/factibilidades_importar.js  importador del Excel (Orden, Aviso, Calle/Distrito/Población…);
                            cruce Pto.tbjo.resp. (usuario DELSUR) -> técnico en factibilidades_config/general.codigosDelsur
   ubicaciones.js           ubicar órdenes por NC / medidor / DS con el padrón "ubicaciones" (Excel que sube

@@ -15,7 +15,7 @@
 
 import { db } from '../firebase.js';
 import { tecnicosActivos } from '../vivo.js';
-import { suscribirAbiertas, suscribirConfig, suscribirCerradas, guardarConfig, META_DEFECTO, AREA, COL_ORDENES } from '../factibilidades_comun.js';
+import { suscribirAbiertas, suscribirConfig, suscribirCerradas, guardarConfig, META_DEFECTO, AREA, COL_ORDENES, aplicarModoAtrasadas, textoModoAtrasadas, RADIO_CERCANAS_DEFECTO } from '../factibilidades_comun.js';
 import { semaforoOrden, SEMAFORO, aFecha, claveDia } from '../dias_habiles.js';
 import { toast, escapeHtml } from '../ui.js';
 import { abrirResultado, abrirReasignar, puedeActuar, cerrarHojas } from './factibilidades_acciones.js';
@@ -44,8 +44,9 @@ const esc = v => escapeHtml(v == null ? '' : String(v));
 
 let container_, session_, esAdmin_, activeTab_;
 let ordenes_ = [], cargado_ = false, error_ = null;
+let todas_ = [], foco_ = null;   // técnico: todas sus abiertas y el modo atrasadas (ordenes_ = lo que ve)
 let off_ = null, offCfg_ = null, mapaMod_ = null;   // mapaMod_: mapa abierto como pestaña (oficina)
-let cfg_ = { festivos: [], festivosSet: new Set(), meta: META_DEFECTO };
+let cfg_ = { festivos: [], festivosSet: new Set(), meta: META_DEFECTO, modoAtrasadas: {}, radioCercanas: RADIO_CERCANAS_DEFECTO };
 let filtroSem_ = 'todas', busq_ = '', limite_ = 40;
 let filtroPedido_ = null;          // el inicio del técnico pide abrir la lista ya filtrada
 let cerradas_ = [], offCerr_ = null, tecnicos_ = [];   // oficina: cerradas del mes y técnicos del área
@@ -65,7 +66,7 @@ export function init(container, session) {
   session_   = session;
   esAdmin_   = session.role === 'admin' || session.role === 'asistente';
   activeTab_ = esAdmin_ ? 'panel' : 'ordenes';
-  ordenes_ = []; cargado_ = false; error_ = null;
+  ordenes_ = []; todas_ = []; foco_ = null; cargado_ = false; error_ = null;
   filtroSem_ = filtroPedido_ || 'todas'; filtroPedido_ = null; busq_ = ''; limite_ = 40;
   cerradas_ = []; tecnicos_ = [];
   tecF_ = 'todos'; modoSel_ = false; selec_ = new Set();
@@ -73,13 +74,20 @@ export function init(container, session) {
   renderShell();
   setTab(activeTab_);
   const repintar = () => { if (container_.isConnected && activeTab_ !== 'mapa') setTab(activeTab_); };
+  // Técnico con modo atrasadas: solo ve sus atrasadas y las cercanas a ellas
+  const derivar = () => {
+    if (esAdmin_) { ordenes_ = todas_; foco_ = null; return; }
+    const r = aplicarModoAtrasadas(todas_, cfg_, session_.uid);
+    ordenes_ = r.lista; foco_ = r.foco;
+  };
   offCfg_ = suscribirConfig(cfg => {
     cfg_ = cfg;
+    derivar();
     repintar();
     if (container_.querySelector('#fb-sheet-festivos')?.classList.contains('open')) pintarFestivos();
   });
   off_ = suscribirAbiertas(session, (lista, err) => {
-    if (err) { error_ = err; } else { ordenes_ = lista; error_ = null; }
+    if (err) { error_ = err; } else { todas_ = lista; derivar(); error_ = null; }
     cargado_ = true;
     repintar();
   });
@@ -288,6 +296,11 @@ function renderPanel(cont) {
             <div style="font-size:15px;font-weight:700;color:${f.hoy >= meta ? '#22c55e' : 'var(--text)'}">${f.hoy}<span style="font-size:11px;font-weight:500;color:var(--text-3)"> / ${meta}</span></div>
             ${barra(f.hoy, meta, f.hoy >= meta ? '#22c55e' : 'var(--fb-light)')}
           </div>
+          <div style="flex-basis:100%;padding-left:48px;margin-top:8px">
+            <button class="fb-modo ${cfg_.modoAtrasadas[f.uid] ? 'on' : ''}" data-modo="${esc(f.uid)}" title="Que solo vea sus atrasadas y las cercanas a ellas">
+              <span class="fb-modo-sw"></span>Solo atrasadas${cfg_.modoAtrasadas[f.uid] ? ' · activo' : ''}
+            </button>
+          </div>
           ${f.pend ? `
           <div style="flex-basis:100%;padding-left:48px">
             <div class="ds-bar" style="height:5px;margin-top:9px;display:flex;overflow:hidden">${['verde', 'amarillo', 'rojo'].map(c => f[c] ? `<i style="width:${(f[c] / f.pend * 100).toFixed(1)}%;background:${SEMAFORO[c].color}"></i>` : '').join('')}</div>
@@ -324,6 +337,21 @@ function renderPanel(cont) {
   cont.querySelectorAll('.cm-fila[data-tec]').forEach(el => el.onclick = () => irALista('todas', el.dataset.tec));
   // Tocar "3 atrasadas" de un técnico abre su lista ya filtrada por ese color
   cont.querySelectorAll('.fb-sem').forEach(el => el.onclick = e => { e.stopPropagation(); irALista(el.dataset.color, el.dataset.tec); });
+  cont.querySelectorAll('.fb-modo').forEach(b => b.onclick = e => { e.stopPropagation(); cambiarModoAtrasadas(b.dataset.modo); });
+}
+
+// Modo atrasadas por técnico (se guarda en la config del área)
+async function cambiarModoAtrasadas(uid) {
+  const activar = !cfg_.modoAtrasadas[uid];
+  const nombre = (tecnicos_.find(u => u.id === uid) || {}).displayName || ordenes_.find(o => o.asignadoUid === uid)?.asignadoNombre || 'el técnico';
+  if (activar && !confirm(`Modo atrasadas para ${nombre}\n\nSolo verá sus órdenes atrasadas y las que estén a menos de ${cfg_.radioCercanas} m de alguna de ellas. Cuando termine las atrasadas verá las por vencer, y luego todo.\n\n¿Activar?`)) return;
+  try {
+    await guardarConfig({ modoAtrasadas: { [uid]: activar } });
+    toast(activar ? `Modo atrasadas activado para ${nombre}` : `${nombre} vuelve a ver todas sus órdenes`, 'ok');
+  } catch (err) {
+    console.error('[factibilidades] modo atrasadas:', err);
+    toast('No se pudo guardar: ' + err.message, 'error');
+  }
 }
 
 function irALista(filtro, tec = 'todos') {
@@ -340,12 +368,19 @@ function abrirMeta() {
       <div class="form-label">Meta por técnico</div>
       <input class="form-input" id="fb-meta-val" type="number" inputmode="numeric" min="1" max="99" value="${cfg_.meta}"/>
     </div>
-    <button class="btn-primary full" id="fb-meta-guardar">Guardar meta</button>`;
+    <div class="form-field">
+      <div class="form-label">Modo atrasadas: distancia de las cercanas (metros)</div>
+      <input class="form-input" id="fb-radio-val" type="number" inputmode="numeric" min="50" max="3000" step="50" value="${cfg_.radioCercanas}"/>
+      <div style="font-size:11.5px;color:var(--text-3);margin-top:6px">Con el modo activo, el técnico ve además las órdenes a esta distancia de una atrasada.</div>
+    </div>
+    <button class="btn-primary full" id="fb-meta-guardar">Guardar</button>`;
   body.querySelector('#fb-meta-guardar').onclick = async () => {
     const v = parseInt(body.querySelector('#fb-meta-val').value, 10);
     if (!(v >= 1 && v <= 99)) { toast('Escribe una meta entre 1 y 99', 'warn'); return; }
+    const radio = parseInt(body.querySelector('#fb-radio-val').value, 10);
+    if (!(radio >= 50 && radio <= 3000)) { toast('La distancia debe estar entre 50 y 3000 metros', 'warn'); return; }
     try {
-      await guardarConfig({ meta: v, metaActualizadaPor: session_.displayName, metaActualizadaEn: firebase.firestore.Timestamp.now() });
+      await guardarConfig({ meta: v, radioCercanas: radio, metaActualizadaPor: session_.displayName, metaActualizadaEn: firebase.firestore.Timestamp.now() });
       container_.querySelector('#fb-sheet-meta').classList.remove('open');
       toast('Meta guardada', 'ok');
     } catch (err) {
@@ -529,6 +564,7 @@ function renderOrdenes(cont) {
   [...selec_].forEach(id => { if (!ordenes_.some(o => o.id === id)) selec_.delete(id); });   // ya se cerraron
 
   cont.innerHTML = `
+    ${foco_ ? avisoModo() : ''}
     <div class="buscar-wrap" style="margin-bottom:12px">
       ${svg(ICO.buscar, 14, 'style="color:var(--text-4);flex-shrink:0"')}
       <input class="buscar-input" id="fb-buscar" placeholder="Buscar orden, cliente o dirección…" autocomplete="off" spellcheck="false" value="${esc(busq_)}"/>
@@ -606,6 +642,7 @@ function tarjeta(o) {
         <span class="cm-wo">${esc(o.numeroOrden || '—')}</span>
         <span class="cm-pill ${s ? s.pill : 'muted'}">${textoDias(dias)}</span>
         ${o.estado === 'visita' ? '<span class="cm-pill muted">Sin acceso</span>' : ''}
+        ${foco_?.cercanasIds.has(o.id) ? '<span class="cm-pill violet">Cercana</span>' : ''}
       </div>
       ${o.cliente ? `<div class="cm-cli">${esc(o.cliente)}</div>` : ''}
       ${o.direccion ? `<div class="cm-meta">${esc(o.direccion)}</div>` : ''}
@@ -621,6 +658,11 @@ function tarjeta(o) {
 }
 
 const coordOk = o => isFinite(parseFloat(o.latitud)) && isFinite(parseFloat(o.longitud));
+
+// Aviso del modo atrasadas para el técnico (lista e inicio)
+function avisoModo(foco = foco_) {
+  return `<div class="fb-aviso-modo">${svg(ICO.alerta, 16)}<span>${esc(textoModoAtrasadas(foco))}</span></div>`;
+}
 
 // ── Inicio del técnico (lo abre home.js) ──────────
 // Meta del día (cerradas hoy contra la meta) y, destacadas, las rojas y
@@ -702,12 +744,15 @@ export function initHomeTecnico(container, session) {
         : `<div class="ds-card" style="text-align:center;padding:22px 16px;color:var(--text-3);font-size:13px">Aún no has cerrado órdenes hoy.</div>`;
     }
     if (abiertas) {
+      // Con modo atrasadas solo cuenta lo que tiene a la vista
+      const { lista, foco } = aplicarModoAtrasadas(abiertas, cfg, session.uid);
       const c = { rojo: 0, amarillo: 0 };
-      abiertas.forEach(o => { const k = semaforoOrden(o, cfg.festivosSet).color; if (k in c) c[k]++; });
+      lista.forEach(o => { const k = semaforoOrden(o, cfg.festivosSet).color; if (k in c) c[k]++; });
       q('#fbh-rojo').textContent = c.rojo;
       q('#fbh-amarillo').textContent = c.amarillo;
-      q('#fbh-abiertas').textContent = abiertas.length;
-      q('#fbh-aviso').textContent = c.rojo ? `Empieza por las ${c.rojo} atrasada${c.rojo !== 1 ? 's' : ''}: llevan más de 5 días hábiles.` : '';
+      q('#fbh-abiertas').textContent = lista.length;
+      if (foco) q('#fbh-aviso').innerHTML = avisoModo(foco);
+      else q('#fbh-aviso').textContent = c.rojo ? `Empieza por las ${c.rojo} atrasada${c.rojo !== 1 ? 's' : ''}: llevan más de 5 días hábiles.` : '';
     }
   };
 

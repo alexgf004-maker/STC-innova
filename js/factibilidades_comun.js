@@ -13,6 +13,7 @@
 
 import { db } from './firebase.js';
 import { suscribir } from './vivo.js';
+import { semaforoOrden } from './dias_habiles.js';
 
 export const COL_ORDENES = 'factibilidades_ordenes';
 export const COL_CONFIG  = 'factibilidades_config';
@@ -48,15 +49,67 @@ export function suscribirAbiertas(session, cb) {
 }
 
 // ── Configuración (festivos y meta diaria) ────────
-// Un solo documento: factibilidades_config/general = { festivos: ['AAAA-MM-DD'], meta }
+// Un solo documento: factibilidades_config/general = { festivos: ['AAAA-MM-DD'], meta,
+//   modoAtrasadas: { uid: true }, radioCercanas }
 export const META_DEFECTO = 13;
+export const RADIO_CERCANAS_DEFECTO = 300;   // metros
 const DOC_CONFIG = 'general';
 
 function leerConfig(lista) {
   const d = (lista || []).find(x => x.id === DOC_CONFIG) || {};
   const festivos = [...new Set((Array.isArray(d.festivos) ? d.festivos : []).filter(f => /^\d{4}-\d{2}-\d{2}$/.test(f)))].sort();
   const meta = Number(d.meta) > 0 ? Number(d.meta) : META_DEFECTO;
-  return { festivos, festivosSet: new Set(festivos), meta };
+  const modoAtrasadas = d.modoAtrasadas && typeof d.modoAtrasadas === 'object' ? d.modoAtrasadas : {};
+  const radioCercanas = Number(d.radioCercanas) > 0 ? Number(d.radioCercanas) : RADIO_CERCANAS_DEFECTO;
+  return { festivos, festivosSet: new Set(festivos), meta, modoAtrasadas, radioCercanas };
+}
+
+// ── Modo atrasadas (por técnico) ──────────────────
+// Para que se atiendan las órdenes viejas: el técnico con este modo solo ve
+// sus atrasadas (rojas) y las que estén cerca de alguna de ellas, aunque sean
+// nuevas, para que las haga de paso. Si ya no tiene atrasadas, se le muestran
+// las por vencer (amarillas) con sus cercanas; si tampoco, todas.
+const metros = (a, b) => {
+  const R = 6371000, rad = Math.PI / 180;
+  const dLat = (b[0] - a[0]) * rad, dLng = (b[1] - a[1]) * rad;
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(a[0] * rad) * Math.cos(b[0] * rad) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+};
+const punto = o => { const p = [parseFloat(o.latitud), parseFloat(o.longitud)]; return isFinite(p[0]) && isFinite(p[1]) ? p : null; };
+
+/**
+ * Órdenes que ve el técnico. Devuelve { lista, foco } donde foco es null si
+ * el modo está apagado, o { nivel: 'rojo'|'amarillo'|null, base, cercanas,
+ * cercanasIds } (nivel null = ya no le quedan rojas ni amarillas: ve todo).
+ */
+export function aplicarModoAtrasadas(lista, cfg, uid) {
+  if (!cfg?.modoAtrasadas?.[uid]) return { lista, foco: null };
+  const color = o => semaforoOrden(o, cfg.festivosSet).color;
+  const nivel = lista.some(o => color(o) === 'rojo') ? 'rojo' : lista.some(o => color(o) === 'amarillo') ? 'amarillo' : null;
+  if (!nivel) return { lista, foco: { nivel: null, base: 0, cercanas: 0, cercanasIds: new Set() } };
+  const base = lista.filter(o => color(o) === nivel);
+  const puntosBase = base.map(punto).filter(Boolean);
+  const radio = cfg.radioCercanas || RADIO_CERCANAS_DEFECTO;
+  const cercanas = lista.filter(o => {
+    if (color(o) === nivel) return false;
+    const p = punto(o);
+    return !!p && puntosBase.some(b => metros(p, b) <= radio);
+  });
+  return {
+    lista: [...base, ...cercanas],
+    foco: { nivel, base: base.length, cercanas: cercanas.length, cercanasIds: new Set(cercanas.map(o => o.id)) },
+  };
+}
+
+/** Texto corto del modo para el técnico: "Modo atrasadas: 12 atrasadas · 4 cercanas". */
+export function textoModoAtrasadas(foco) {
+  if (!foco) return '';
+  if (!foco.nivel) return 'Modo atrasadas: ya no tienes atrasadas ni por vencer. Ves todas tus órdenes.';
+  const n = foco.base;
+  const que = foco.nivel === 'rojo' ? (n === 1 ? 'atrasada' : 'atrasadas') : 'por vencer';
+  return `Modo atrasadas: ves solo ${n === 1 ? 'tu orden' : `tus ${n} órdenes`} ${que}`
+    + (foco.cercanas ? ` y ${foco.cercanas} cercana${foco.cercanas !== 1 ? 's' : ''} a ellas` : '')
+    + (foco.nivel === 'amarillo' ? ' (ya no tienes atrasadas)' : '') + '.';
 }
 
 /** cb(config) con { festivos, festivosSet, meta }; si falla, la config por defecto. */

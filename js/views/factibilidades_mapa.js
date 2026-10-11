@@ -12,7 +12,7 @@
 
 import { db } from '../firebase.js';
 import { tecnicosActivos } from '../vivo.js';
-import { suscribirAbiertas, suscribirConfig, META_DEFECTO, AREA } from '../factibilidades_comun.js';
+import { suscribirAbiertas, suscribirConfig, META_DEFECTO, AREA, aplicarModoAtrasadas } from '../factibilidades_comun.js';
 import { semaforoOrden, SEMAFORO, aFecha } from '../dias_habiles.js';
 import { escapeHtml } from '../ui.js';
 import { ponerEtiquetas } from './etiquetas_mapa.js';
@@ -23,6 +23,7 @@ const COLOR_SIN_FECHA = '#94a3b8';
 let map_ = null, lienzo_ = null, markers_ = [], yaCentrado_ = false;
 let session_, role_;
 let ordenes_ = [];
+let todas_ = [], foco_ = null;   // técnico: todas sus abiertas y el modo atrasadas (ordenes_ = lo que ve)
 // Oficina: filtros por semáforo y técnico, y técnicos del área para reasignar
 let semF_ = 'todas', tecF_ = 'todos', tecnicos_ = [];
 const pasaFiltro = o => (semF_ === 'todas' || sem(o).color === semF_)
@@ -78,6 +79,7 @@ export function init(container, session) {
   session_ = session;
   role_    = session.role;
   yaCentrado_ = false;
+  todas_ = []; ordenes_ = []; foco_ = null;
   semF_ = 'todas'; tecF_ = 'todos'; tecnicos_ = [];
   if (role_ !== 'tecnico') {
     tecnicosActivos(db).then(l => { tecnicos_ = l.filter(u => u.asignacionActual?.area === AREA); })
@@ -86,10 +88,17 @@ export function init(container, session) {
 
   renderShell(container);
   initMap();
-  offCfg_ = suscribirConfig(cfg => { cfg_ = cfg; plotMarkers(); actualizarChip(); });
+  // Técnico con modo atrasadas: solo sus atrasadas y las cercanas a ellas
+  const derivar = () => {
+    if (role_ !== 'tecnico') { ordenes_ = todas_; foco_ = null; return; }
+    const r = aplicarModoAtrasadas(todas_, cfg_, session_.uid);
+    ordenes_ = r.lista; foco_ = r.foco;
+  };
+  offCfg_ = suscribirConfig(cfg => { cfg_ = cfg; derivar(); plotMarkers(); actualizarChip(); refrescarPanel(); });
   off_ = suscribirAbiertas(session, (lista, err) => {
     if (err) { console.warn('[fb-mapa]', err.message); return; }
-    ordenes_ = lista;
+    todas_ = lista;
+    derivar();
     if (pendiente_) abrirPendiente();
     plotMarkers();
     centrarEnOrdenes();
@@ -277,7 +286,9 @@ function plotMarkers() {
       renderer: lienzo_, bubblingMouseEvents: false, radius: r,
       fillColor: colorDe(o), fillOpacity: 1,
       // Ubicación aproximada (por dirección, sin corregir): borde amarillo punteado
-      color: o.ubicacionAprox && !o.coordCorregida ? '#fbbf24' : cerca ? '#ffffff' : 'rgba(5,10,20,.55)', weight: cerca ? 2 : 1,
+      // Modo atrasadas: las cercanas (de paso) llevan borde violeta
+      color: foco_?.cercanasIds.has(o.id) ? '#a78bfa' : o.ubicacionAprox && !o.coordCorregida ? '#fbbf24' : cerca ? '#ffffff' : 'rgba(5,10,20,.55)',
+      weight: foco_?.cercanasIds.has(o.id) ? (cerca ? 3 : 2) : cerca ? 2 : 1,
       dashArray: o.ubicacionAprox && !o.coordCorregida && cerca ? '3 3' : null,
     });
     m._ordenId = o.id;
@@ -298,6 +309,11 @@ function actualizarChip() {
   const vis = visibles();
   const rojas = vis.filter(o => sem(o).color === 'rojo').length;
   const filtrado = semF_ !== 'todas' || tecF_ !== 'todos';
+  if (foco_?.nivel) {
+    el.innerHTML = `<span style="color:${SEMAFORO[foco_.nivel].color}">${foco_.base} ${foco_.nivel === 'rojo' ? 'atrasada' + (foco_.base !== 1 ? 's' : '') : 'por vencer'}</span>`
+      + (foco_.cercanas ? ` · <span style="color:#a78bfa">${foco_.cercanas} cercana${foco_.cercanas !== 1 ? 's' : ''}</span>` : '');
+    return;
+  }
   el.innerHTML = `${vis.length}${filtrado ? ' de ' + ordenes_.length : ''} abierta${ordenes_.length !== 1 ? 's' : ''}${rojas ? ` · <span style="color:${SEMAFORO.rojo.color}">${rojas} en rojo</span>` : ''}`;
   document.getElementById('fbm-filtro')?.style.setProperty('background', filtrado ? 'var(--fb-glass)' : '');
 }
@@ -355,8 +371,12 @@ function verOrden(id) {
           <div style="font-size:17px;font-weight:800;color:#fff;letter-spacing:-.01em">${esc(o.numeroOrden || '—')}</div>
           ${o.cliente ? `<div style="font-size:13px;font-weight:500;color:rgba(255,255,255,.85);margin-top:2px">${esc(o.cliente)}</div>` : ''}
         </div>
-        ${o.estado === 'visita' ? '<div class="estado-badge warn" style="flex-shrink:0">Sin acceso</div>' : ''}
+        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0">
+          ${o.estado === 'visita' ? '<div class="estado-badge warn">Sin acceso</div>' : ''}
+          ${foco_?.cercanasIds.has(o.id) ? '<div class="estado-badge" style="color:#c4b5fd;border-color:rgba(167,139,250,.45);background:rgba(139,92,246,.15)">Cercana</div>' : ''}
+        </div>
       </div>
+      ${foco_?.cercanasIds.has(o.id) ? `<div style="font-size:12px;color:#c4b5fd;margin:-4px 0 11px">Está cerca de una de tus ${foco_.nivel === 'rojo' ? 'atrasadas' : 'por vencer'}: aprovecha y hazla de paso.</div>` : ''}
       <div style="display:flex;align-items:center;gap:12px;border-radius:12px;padding:10px 12px;margin-bottom:11px;background:${s ? s.color + '1f' : 'var(--glass)'};border:1px solid ${s ? s.color + '66' : 'var(--border)'}">
         <div style="font-size:30px;font-weight:600;line-height:1;color:${s ? s.color : '#fff'}">${dias ?? '—'}</div>
         <div style="flex:1;min-width:0">
