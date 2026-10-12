@@ -551,8 +551,27 @@ function renderOrdenes(cont) {
     cont.innerHTML = `<div class="dev-module"><div class="dev-title">${esAdmin_ ? 'Aún no hay órdenes' : 'No tienes órdenes abiertas'}</div><p>${esAdmin_ ? 'Las órdenes llegan con el Excel de DELSUR.' : 'Cuando te asignen órdenes aparecerán aquí.'}</p></div>`;
     return;
   }
-  // Si el buscador tenía el foco, se devuelve después de repintar
-  const enfocado = document.activeElement?.id === 'fb-buscar' ? document.activeElement.selectionStart : null;
+  // El buscador se crea una sola vez y solo se repintan los resultados: si se
+  // volvía a crear al escribir (o al llegar un cambio en vivo), el teléfono
+  // perdía el teclado que se estaba usando (el numérico volvía al de letras)
+  // y escribir rápido se trababa.
+  let cuerpo = cont.querySelector('#fb-ord-cuerpo');
+  if (!cuerpo || !cont.querySelector('#fb-buscar')) {
+    cont.innerHTML = `
+      <div id="fb-ord-aviso"></div>
+      <div class="buscar-wrap" style="margin-bottom:12px">
+        ${svg(ICO.buscar, 14, 'style="color:var(--text-4);flex-shrink:0"')}
+        <input class="buscar-input" id="fb-buscar" enterkeyhint="search" placeholder="Buscar orden, cliente o dirección…" autocomplete="off" spellcheck="false" value="${esc(busq_)}"/>
+      </div>
+      <div id="fb-ord-cuerpo"></div>`;
+    const inp = cont.querySelector('#fb-buscar');
+    let tm = null;
+    inp.oninput = () => { clearTimeout(tm); tm = setTimeout(() => { busq_ = inp.value; limite_ = 40; renderOrdenes(cont); }, 200); };
+    cuerpo = cont.querySelector('#fb-ord-cuerpo');
+  }
+  const inpB = cont.querySelector('#fb-buscar');
+  if (inpB.value !== busq_ && document.activeElement !== inpB) inpB.value = busq_;
+  cont.querySelector('#fb-ord-aviso').innerHTML = foco_ ? avisoModo() : '';
   const q = busq_.trim().toLowerCase();
   const filtro = FILTROS.find(x => x.id === filtroSem_) || FILTROS[0];
   const base = ordenes_.filter(pasaTec);
@@ -563,12 +582,7 @@ function renderOrdenes(cont) {
   const tecs = esAdmin_ ? tecnicosConOrdenes() : [];
   [...selec_].forEach(id => { if (!ordenes_.some(o => o.id === id)) selec_.delete(id); });   // ya se cerraron
 
-  cont.innerHTML = `
-    ${foco_ ? avisoModo() : ''}
-    <div class="buscar-wrap" style="margin-bottom:12px">
-      ${svg(ICO.buscar, 14, 'style="color:var(--text-4);flex-shrink:0"')}
-      <input class="buscar-input" id="fb-buscar" placeholder="Buscar orden, cliente o dirección…" autocomplete="off" spellcheck="false" value="${esc(busq_)}"/>
-    </div>
+  cuerpo.innerHTML = `
     ${!q && esAdmin_ ? `
     <div class="filter-row" style="margin-bottom:8px">
       ${[{ id: 'todos', nombre: 'Todos los técnicos' }, ...tecs, { id: 'sin', nombre: 'Sin asignar' }].map(t => `<div class="filter-chip ${tecF_ === t.id ? 'active' : ''}" data-tecf="${esc(t.id)}">${esc(t.nombre)}</div>`).join('')}
@@ -589,10 +603,6 @@ function renderOrdenes(cont) {
       ${mostrar.length > vis.length ? `<button class="cm-btn" id="fb-ver-mas" style="width:100%;height:44px;margin-top:10px">Ver ${Math.min(40, mostrar.length - vis.length)} más (${mostrar.length - vis.length} restantes)</button>` : ''}`
       : `<div class="ds-card" style="text-align:center;padding:24px 16px;color:var(--text-3);font-size:13px">${q ? 'Nada coincide.' : `No hay órdenes en "${filtro.t}".`}</div>`}`;
 
-  const inp = cont.querySelector('#fb-buscar');
-  if (enfocado != null) { inp.focus(); try { inp.setSelectionRange(enfocado, enfocado); } catch {} }
-  let tm = null;
-  inp.oninput = () => { clearTimeout(tm); tm = setTimeout(() => { busq_ = inp.value; limite_ = 40; renderOrdenes(cont); }, 250); };
   cont.querySelectorAll('[data-sem]').forEach(c => c.onclick = () => { filtroSem_ = c.dataset.sem; limite_ = 40; renderOrdenes(cont); });
   cont.querySelectorAll('[data-tecf]').forEach(c => c.onclick = () => { tecF_ = c.dataset.tecf; limite_ = 40; renderOrdenes(cont); });
   cont.querySelector('#fb-sel-entrar')?.addEventListener('click', () => { modoSel_ = true; selec_.clear(); renderOrdenes(cont); });

@@ -604,11 +604,26 @@ function renderOrdenes(cont) {
   const vis = mostrar.slice(0, limite_);
   const parejasL = [...new Set(ordenes_.map(o => o.pareja).filter(Boolean))].sort((a, b) => (parseInt(String(a).replace(/\D/g,''),10)||0) - (parseInt(String(b).replace(/\D/g,''),10)||0));
 
-  cont.innerHTML = `
-    <div class="buscar-wrap" style="margin-bottom:12px">
-      ${svgA(ICO_A.buscar, 14, 'style="color:var(--text-4);flex-shrink:0"')}
-      <input class="buscar-input" id="ami-buscar" placeholder="Buscar NC, cliente o medidor…" autocomplete="off" spellcheck="false" value="${escA(busq_)}"/>
-    </div>
+  // El buscador se crea una sola vez y solo se repintan los resultados: si se
+  // volvía a crear al escribir, el teléfono perdía el teclado que se estaba
+  // usando (el numérico volvía al de letras) y escribir rápido se trababa.
+  let cuerpo = cont.querySelector('#ami-ord-cuerpo');
+  if (!cuerpo || !cont.querySelector('#ami-buscar')) {
+    cont.innerHTML = `
+      <div class="buscar-wrap" style="margin-bottom:12px">
+        ${svgA(ICO_A.buscar, 14, 'style="color:var(--text-4);flex-shrink:0"')}
+        <input class="buscar-input" id="ami-buscar" enterkeyhint="search" placeholder="Buscar NC, cliente o medidor…" autocomplete="off" spellcheck="false" value="${escA(busq_)}"/>
+      </div>
+      <div id="ami-ord-cuerpo"></div>`;
+    const inp = cont.querySelector('#ami-buscar');
+    let tm = null;
+    inp.oninput = () => { clearTimeout(tm); tm = setTimeout(() => { busq_ = inp.value; limite_ = 40; renderOrdenes(cont); }, 200); };
+    cuerpo = cont.querySelector('#ami-ord-cuerpo');
+  }
+  const inpB = cont.querySelector('#ami-buscar');
+  if (inpB.value !== busq_ && document.activeElement !== inpB) inpB.value = busq_;
+
+  cuerpo.innerHTML = `
     ${!q && esAdmin_ && parejasL.length ? `
     <div class="filter-row" style="margin-bottom:8px">
       ${['todas', ...parejasL, 'sin'].map(p => `<div class="filter-chip ${parejaF_ === p ? 'active' : ''}" data-pareja="${escA(p)}">${p === 'todas' ? 'Todas las parejas' : p === 'sin' ? 'Sin asignar' : escA(p)}</div>`).join('')}
@@ -624,18 +639,6 @@ function renderOrdenes(cont) {
       : `<div class="ds-card" style="text-align:center;padding:24px 16px;color:var(--text-3);font-size:13px">${q ? 'Nada coincide en la ruta actual.' : ordenes_.length ? `No hay órdenes en "${grupo.t}".` : 'Aún no hay ruta cargada.'}</div>`}
     <div id="ami-hist-resultados"></div>`;
 
-  const inp = cont.querySelector('#ami-buscar');
-  let tm = null;
-  inp.oninput = () => {
-    clearTimeout(tm);
-    tm = setTimeout(() => {
-      busq_ = inp.value; limite_ = 40;
-      const pos = inp.selectionStart;
-      renderOrdenes(cont);
-      const n = cont.querySelector('#ami-buscar');
-      if (n) { n.focus(); try { n.setSelectionRange(pos, pos); } catch {} }
-    }, 250);
-  };
   cont.querySelectorAll('[data-pareja]').forEach(c => c.onclick = () => { parejaF_ = c.dataset.pareja; limite_ = 40; renderOrdenes(cont); });
   cont.querySelectorAll('[data-est]').forEach(c => c.onclick = () => { filtroOrd_ = c.dataset.est; limite_ = 40; renderOrdenes(cont); });
   cont.querySelector('#ami-ver-mas')?.addEventListener('click', () => { limite_ += 40; renderOrdenes(cont); });

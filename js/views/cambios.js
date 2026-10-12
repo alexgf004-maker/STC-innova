@@ -1123,12 +1123,18 @@ function renderOrdenes() {
     : grupo.arr;
   const visibles = mostrar.slice(0, limiteOrd_);
 
-  content.innerHTML = `
+  // El encabezado y el buscador se crean una sola vez y solo se repintan los
+  // resultados: si se volvían a crear en cada tecla, el teléfono perdía el
+  // teclado que se estaba usando (el numérico volvía al de letras), se
+  // repetía la animación de entrada y escribir rápido se trababa.
+  let cuerpo = document.getElementById('cm-ord-cuerpo');
+  if (!cuerpo || !document.getElementById('cm-buscar-ord')) {
+    content.innerHTML = `
     <div class="anim-up">
       <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:14px">
         <div style="flex:1;min-width:0">
           <div style="font-size:24px;font-weight:600;letter-spacing:-.02em;line-height:1.15">${isTecnico ? 'Mis órdenes' : 'Órdenes'}</div>
-          <div style="font-size:12px;color:var(--text-3);margin-top:4px">${isTecnico ? esc(pareja_ || '') + ' · ' : ''}${lista.length} órdenes</div>
+          <div style="font-size:12px;color:var(--text-3);margin-top:4px" id="cm-ord-sub"></div>
         </div>
         ${isTecnico ? `
         <button class="cm-btn marca" style="height:38px;padding:0 14px" onclick="window.__cambios.openCampo()">
@@ -1138,8 +1144,23 @@ function renderOrdenes() {
 
       <div class="buscar-wrap" style="margin-bottom:12px">
         ${svgCm(ICO_CM.buscar, 14, 'style="color:var(--text-4);flex-shrink:0"')}
-        <input class="buscar-input" id="cm-buscar-ord" placeholder="Buscar WO, NC, cliente o dirección…" autocomplete="off" spellcheck="false" value="${esc(busqOrd_)}"/>
+        <input class="buscar-input" id="cm-buscar-ord" enterkeyhint="search" placeholder="Buscar WO, NC, cliente o dirección…" autocomplete="off" spellcheck="false" value="${esc(busqOrd_)}"/>
       </div>
+      <div id="cm-ord-cuerpo"></div>
+    </div>`;
+    const inp = document.getElementById('cm-buscar-ord');
+    let tm = null;
+    inp.addEventListener('input', () => {
+      clearTimeout(tm);
+      tm = setTimeout(() => { busqOrd_ = inp.value; limiteOrd_ = 40; renderOrdenes(); }, 200);
+    });
+    cuerpo = document.getElementById('cm-ord-cuerpo');
+  }
+  const inpB = document.getElementById('cm-buscar-ord');
+  if (inpB.value !== busqOrd_ && document.activeElement !== inpB) inpB.value = busqOrd_;
+  document.getElementById('cm-ord-sub').textContent = `${isTecnico ? (pareja_ || '') + ' · ' : ''}${lista.length} órdenes`;
+
+  cuerpo.innerHTML = `
 
       ${!isTecnico ? `
       <div class="filter-row" style="margin-bottom:8px">
@@ -1170,19 +1191,7 @@ function renderOrdenes() {
       <div class="ds-card" style="text-align:center;padding:24px 16px;color:var(--text-3);font-size:13px">
         ${q ? 'Ninguna orden coincide con la búsqueda.' : `No hay órdenes en "${grupo.t}".`}
       </div>`}
-    </div>
   `;
-
-  const inp = document.getElementById('cm-buscar-ord');
-  if (inp) {
-    inp.addEventListener('input', e => {
-      busqOrd_ = e.target.value; limiteOrd_ = 40;
-      const pos = e.target.selectionStart;
-      renderOrdenes();
-      const n = document.getElementById('cm-buscar-ord');
-      if (n) { n.focus(); try { n.setSelectionRange(pos, pos); } catch {} }
-    });
-  }
 }
 
 function setFiltroOrd(id)  { filtroOrd_ = id; limiteOrd_ = 40; renderOrdenes(); }

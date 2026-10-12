@@ -151,6 +151,19 @@ function renderShell(container) {
         <button class="mapa-btn-icon" id="fbm-mi-ubicacion" title="Mi ubicación">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>
         </button>
+        <button class="mapa-btn-icon" id="fbm-buscar" title="Buscar orden" style="border-color:var(--fb-border);color:var(--fb-light)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        </button>
+      </div>
+
+      <!-- Buscador de órdenes (oculto hasta tocar la lupa) -->
+      <div id="fbm-buscar-box" style="display:none;position:absolute;top:64px;left:12px;right:12px;z-index:1000;background:rgba(13,17,23,.96);border:1px solid var(--fb-border);border-radius:12px;padding:10px">
+        <div style="display:flex;gap:8px;align-items:center">
+          <input id="fbm-buscar-input" type="text" enterkeyhint="search" autocomplete="off" spellcheck="false" placeholder="Número de orden, cliente o dirección"
+            style="flex:1;min-width:0;padding:9px 12px;border-radius:9px;border:1px solid var(--border);background:var(--glass);color:#f1f5f9;font-size:13px;font-family:inherit;outline:none"/>
+          <button id="fbm-buscar-cerrar" style="padding:9px 12px;border-radius:9px;border:1px solid var(--border);background:var(--glass);color:#94a3b8;font-size:12px;cursor:pointer;font-family:inherit">Cerrar</button>
+        </div>
+        <div id="fbm-buscar-res" style="margin-top:8px;max-height:45vh;overflow-y:auto"></div>
       </div>
 
       <div class="mapa-panel" id="mapa-panel">
@@ -179,6 +192,18 @@ function renderShell(container) {
   };
   const btnF = container.querySelector('#fbm-filtro');
   if (btnF) btnF.onclick = abrirFiltro;
+  // Buscador: solo se repintan los resultados (el campo no se vuelve a crear,
+  // así el teclado que se esté usando no cambia al escribir)
+  const caja = container.querySelector('#fbm-buscar-box');
+  const inpB = container.querySelector('#fbm-buscar-input');
+  container.querySelector('#fbm-buscar').onclick = () => {
+    const abrir = caja.style.display === 'none';
+    caja.style.display = abrir ? 'block' : 'none';
+    if (abrir) { inpB.focus(); buscarOrden(inpB.value); }
+  };
+  container.querySelector('#fbm-buscar-cerrar').onclick = () => { caja.style.display = 'none'; inpB.blur(); };
+  let tmB = null;
+  inpB.oninput = () => { clearTimeout(tmB); tmB = setTimeout(() => buscarOrden(inpB.value), 200); };
   window.__fbMapa = {
     verOrden, abrirGoogleMaps,
     resultado: id => abrirResultado(ordenes_.find(x => x.id === id), session_, () => cerrarPanel()),
@@ -316,6 +341,44 @@ function actualizarChip() {
   }
   el.innerHTML = `${vis.length}${filtrado ? ' de ' + ordenes_.length : ''} abierta${ordenes_.length !== 1 ? 's' : ''}${rojas ? ` · <span style="color:${SEMAFORO.rojo.color}">${rojas} en rojo</span>` : ''}`;
   document.getElementById('fbm-filtro')?.style.setProperty('background', filtrado ? 'var(--fb-glass)' : '');
+}
+
+// ── Buscar orden ──────────────────────────────────
+// Busca en lo que la persona puede ver (el técnico, sus órdenes; con modo
+// atrasadas, solo esas y las cercanas). Al elegir, centra la gota y abre la
+// ficha; si un filtro de la oficina la escondía, se quitan los filtros.
+function buscarOrden(texto) {
+  const res = document.getElementById('fbm-buscar-res');
+  if (!res) return;
+  const q = String(texto || '').trim().toLowerCase();
+  if (!q) { res.innerHTML = ''; return; }
+  const hallados = ordenes_
+    .filter(o => [o.numeroOrden, o.cliente, o.direccion, o.nc, o.aviso].some(v => v && String(v).toLowerCase().includes(q)))
+    .sort((a, b) => (sem(b).dias ?? -1) - (sem(a).dias ?? -1));
+  res.innerHTML = hallados.length ? hallados.slice(0, 8).map(o => {
+    const ll = latLngDe(o);
+    const conPunto = coordValida(ll[0], ll[1]);
+    return `
+      <button class="fbm-res" data-id="${esc(o.id)}" style="display:flex;align-items:center;gap:10px;width:100%;text-align:left;padding:9px 10px;margin-top:6px;border-radius:10px;border:1px solid var(--border);background:var(--glass);cursor:pointer;font-family:inherit">
+        <span style="width:10px;height:10px;border-radius:50%;background:${colorDe(o)};flex-shrink:0"></span>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:13px;font-weight:700;color:#f1f5f9">${esc(o.numeroOrden || '—')} <span style="font-weight:500;color:${colorDe(o)}">· ${textoDias(sem(o).dias)}</span></div>
+          <div style="font-size:11px;color:#94a3b8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(o.cliente || '')}${o.cliente && o.direccion ? ' · ' : ''}${esc(o.direccion || '')}</div>
+        </div>
+        ${conPunto ? '' : '<span style="font-size:10.5px;color:#fbbf24;flex-shrink:0">Sin punto</span>'}
+      </button>`;
+  }).join('') + (hallados.length > 8 ? `<div style="font-size:11px;color:#94a3b8;margin-top:6px;text-align:center">${hallados.length - 8} más: escribe más del número</div>` : '')
+    : `<div style="font-size:12px;color:#94a3b8;padding:6px 2px">Ninguna orden coincide${role_ === 'tecnico' ? ' entre las tuyas' : ''}.</div>`;
+  res.querySelectorAll('.fbm-res').forEach(b => b.onclick = () => {
+    const o = ordenes_.find(x => x.id === b.dataset.id);
+    if (!o) return;
+    if (!pasaFiltro(o)) { semF_ = 'todas'; tecF_ = 'todos'; plotMarkers(); actualizarChip(); }
+    document.getElementById('fbm-buscar-box').style.display = 'none';
+    document.getElementById('fbm-buscar-input')?.blur();
+    const ll = latLngDe(o);
+    if (map_ && coordValida(ll[0], ll[1])) map_.setView(ll, 17);
+    verOrden(o.id);
+  });
 }
 
 // ── Panel ─────────────────────────────────────────
