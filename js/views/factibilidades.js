@@ -442,6 +442,7 @@ async function exportarExcel(desde) {
     const visitas = Array.isArray(o.visitas) ? o.visitas : [];
     return {
       'Orden': o.numeroOrden || '',
+      'Tipo': o.claseActividad || '',
       'Cliente': o.cliente || '',
       'Dirección': o.direccion || '',
       'Técnico': o.asignadoNombre || 'Sin asignar',
@@ -656,7 +657,7 @@ function tarjeta(o) {
       </div>
       ${o.cliente ? `<div class="cm-cli">${esc(o.cliente)}</div>` : ''}
       ${o.direccion ? `<div class="cm-meta">${esc(o.direccion)}</div>` : ''}
-      <div class="cm-meta">Liberada ${fmtFecha(o.fechaLiberacion)}</div>
+      <div class="cm-meta">${o.claseActividad ? esc(o.claseActividad) + ' · ' : ''}Liberada ${fmtFecha(o.fechaLiberacion)}</div>
       ${esAdmin_ ? `<div class="cm-meta">${o.asignadoNombre ? esc(o.asignadoNombre) : '<span style="color:#fbbf24">Sin asignar</span>'}${o.asignacionManual ? ' · reasignada' : ''}</div>` : ''}
       ${sel ? '' : `<div class="cm-ord-acc">
         ${puedeActuar(o, session_) ? `<button class="cm-btn marca" data-resultado="${o.id}" style="flex:1">${svg(ICO.check, 14)} Resultado</button>` : ''}

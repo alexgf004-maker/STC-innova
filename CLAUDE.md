@@ -75,6 +75,8 @@ js/
                            y modo atrasadas por técnico (config general.modoAtrasadas {uid: true},
                            radioCercanas): el técnico solo ve sus rojas + las cercanas; sin rojas, amarillas
   views/factibilidades_importar.js  importador del Excel (Orden, Aviso, Calle/Distrito/Población…);
+                           acepta también el formato "Fact mapa" (Texto cabecera, Municipio, Usuario,
+                           Lat/Long de los que ya tienen medidor, Clase de actividad PM -> claseActividad);
                            cruce Pto.tbjo.resp. (usuario DELSUR) -> técnico en factibilidades_config/general.codigosDelsur
   ubicaciones.js           ubicar órdenes por NC / medidor / DS con el padrón "ubicaciones" (Excel que sube
                            el admin en Padrones de clientes; filas [nc, md, ds, lat, lng]) más Caracterización

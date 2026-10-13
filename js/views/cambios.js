@@ -2094,7 +2094,8 @@ function mapearOrdenesExcel(rows) {
     }; });
   return { error: null, data, sinCoordenadas: idx.latitud === -1,
     // Excel de clientes nuevos (Aviso + Población): es de Factibilidades, no de Cambios.
-    esFactibilidades: idx.aviso >= 0 && idx.poblacion >= 0 };
+    // También el formato "Fact mapa" (Texto cabecera de la orden + Población).
+    esFactibilidades: idx.poblacion >= 0 && (idx.aviso >= 0 || col('TEXTO CABECERA DE LA ORDEN') >= 0 || col('CLASE DE ACTIVIDAD PM') >= 0) };
 }
 
 function openImport() {

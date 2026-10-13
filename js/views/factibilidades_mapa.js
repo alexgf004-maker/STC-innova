@@ -459,8 +459,9 @@ function verOrden(id) {
           ? `<b>Ubicación aproximada</b>: junto al ${esc(o.ubicacionNivel || 'punto de referencia')}. Guíate por la referencia; estando en el sitio, corrige la ubicación.`
           : `<b>Ubicación aproximada</b>${o.ubicacionNivel ? ` (a nivel de ${esc(o.ubicacionNivel)})` : ''}: sacada de la dirección. Guíate por la dirección y la referencia; estando en el sitio, corrige la ubicación.`}</span>
       </div>` : ''}
-      ${o.referencia || o.telefono ? `
+      ${o.referencia || o.telefono || o.claseActividad ? `
       <div style="padding:10px 12px;background:var(--glass);border:1px solid var(--border);border-radius:10px;margin-bottom:11px">
+        ${o.claseActividad ? fila('Tipo', esc(o.claseActividad)) : ''}
         ${o.referencia ? fila('Referencia', esc(textoReferencia(o.referencia))) : ''}
         ${o.telefono ? fila('Teléfono', `<a href="tel:${esc(o.telefono)}" style="color:#60a5fa">${esc(o.telefono)}</a>`) : ''}
       </div>` : ''}

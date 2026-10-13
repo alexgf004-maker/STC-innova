@@ -8,6 +8,13 @@
  * Número de serie, Fabricante, Ubic.técn. y Pto.tbjo.resp. (usuario DELSUR
  * del técnico). Centro planif., Autor, Status usuario y Fecha fin real no.
  *
+ * Formato "Fact mapa" (también se acepta): Nombre completo, Meddior, Marca
+ * MD, DS/CT, Municipio, Población, Distrito, Calle, Nº (edificio), Calle 4,
+ * Texto cabecera de la orden (mismo código), Fe.aviso (fecha base del
+ * semáforo: no trae liberación), Orden, Clase de actividad PM, Usuario
+ * (usuario DELSUR) y Lat/Long (solo para los que ya tienen medidor: se usan
+ * tal cual). El departamento sale del municipio (DEPTO_DE).
+ *
  * Asignación: cada usuario DELSUR (DGUERR, AAPERE…) se cruza con un técnico
  * del área; el cruce se guarda en factibilidades_config/general.codigosDelsur
  * y se recuerda para la próxima. Lo reasignado a mano en la app
@@ -33,6 +40,16 @@ const norm = s => String(s ?? '').toUpperCase().normalize('NFD').replace(/[̀-ͯ
 // Centro de planificación DELSUR -> departamento (zona de búsqueda en Google).
 const CENTROS = { '1110': 'San Salvador', '2110': 'La Libertad', '3110': 'La Libertad', '3510': 'La Paz' };
 
+// Formato nuevo (trae Municipio y no Centro planif.): municipio -> departamento.
+// Nombres de municipio anteriores a la reforma, que son los que usa DELSUR.
+const DEPTO_DE = {};
+[
+  ['La Libertad', 'La Libertad, Teotepeque, Chiltiupan, Tamanique, Jicalapa, Antiguo Cuscatlan, Nuevo Cuscatlan, Santa Tecla, Quezaltepeque, San Jose Villanueva, Huizucar, Zaragoza, Colon, Comasagua, Jayaque, Talnique, Tepecoyo, Sacacoyo, Ciudad Arce, San Juan Opico, San Pablo Tacachico, San Matias'],
+  ['La Paz', 'Zacatecoluca, Santiago Nonualco, San Pedro Nonualco, San Juan Nonualco, San Rafael Obrajuelo, San Luis La Herradura, San Luis Talpa, San Juan Talpa, Santa Maria Ostuma, San Pedro Masahuat, San Antonio Masahuat, Olocuilta, El Rosario, Cuyultitan, Tapalhuaca, San Juan Tepezontes, San Miguel Tepezontes, San Emigdio, Paraiso de Osorio, San Francisco Chinameca, Jerusalen, Mercedes La Ceiba'],
+  ['San Salvador', 'San Salvador, Panchimalco, Rosario de Mora, San Marcos, Santo Tomas, Santiago Texacuangos, Soyapango, Mejicanos, Ilopango, Apopa, Ayutuxtepeque, Cuscatancingo, Ciudad Delgado, Guazapa, Aguilares, El Paisnal, Nejapa, San Martin, Tonacatepeque'],
+  ['San Vicente', 'San Vicente, Tecoluca, Apastepeque, Guadalupe, San Cayetano Istepeque, Verapaz, Tepetitan, San Ildefonso, Santa Clara, San Esteban Catarina, San Sebastian, Santo Domingo, San Lorenzo'],
+].forEach(([dep, lista]) => lista.split(',').forEach(m => { DEPTO_DE[norm(m)] = dep; }));
+
 let filas_ = [], plan_ = null, tecnicos_ = [], session_ = null, mapeo_ = {}, archivo_ = '', usarGoogle_ = false;
 
 // ── Lectura del Excel ─────────────────────────────
@@ -46,13 +63,19 @@ function fechaExcel(v) {
   return m ? new Date(+m[3], +m[2] - 1, +m[1]) : null;
 }
 
-// "1.2.1.1.[NC].1.[teléfono].1.[referencia]" -> { telefono, referencia }
+// "1.2.1.1.[NC].1.[teléfono].1.[referencia]" -> { nc, telefono, referencia }
+// La referencia es lo último: MD... (medidor del vecino), NC... (su
+// contrato), DS.../CT... (poste o transformador) o un número solo, que se
+// busca como medidor, contrato y DS (ver ubicaciones.js).
 function leerCodigo(t) {
   const partes = String(t || '').split('.').map(x => x.trim());
   const telefono = partes.find(x => /^[267]\d{7}$/.test(x)) || '';
   const ult = partes[partes.length - 1] || '';
-  const referencia = ult && ult !== telefono && !/^\d{1,2}$/.test(ult) ? ult.replace(/\s+/g, '').toUpperCase() : '';
-  return { telefono, referencia };
+  const ref = ult && ult !== telefono && !/^\d{1,2}$/.test(ult) ? ult.replace(/\s+/g, '').toUpperCase() : '';
+  // "DS" o "MD" sin número no sirven de referencia
+  const referencia = /\d/.test(ref) ? ref : '';
+  const nc = /^\d{6,}$/.test(partes[4] || '') ? partes[4] : '';
+  return { nc, telefono, referencia };
 }
 
 export function leerExcel(rows) {
@@ -61,11 +84,18 @@ export function leerExcel(rows) {
   if (h === -1) return { error: 'No se encontró la columna "Orden". ¿Es el Excel de Factibilidades?' };
   const H = (rows[h] || []).map(norm);
   const c = (...a) => H.findIndex(x => a.includes(x));
+  // Dos formatos de DELSUR: el primero (Contrato, Aviso, Liberación real,
+  // Texto breve, Centro planif.) y el de "Fact mapa" (Texto cabecera,
+  // Municipio, Nº, Usuario, Lat/Long para los que ya tienen medidor).
   const ix = {
-    orden: c('ORDEN'), nc: c('CONTRATO'), aviso: c('AVISO'), fAviso: c('FECHA DE AVISO'), fLib: c('LIBERACION REAL'),
-    texto: c('TEXTO BREVE'), centro: c('CENTRO PLANIF.', 'CENTRO PLANIF'), poblacion: c('POBLACION'), distrito: c('DISTRITO'), calle: c('CALLE'),
-    cliente: c('DESCRIPCION'), serie: c('NUMERO DE SERIE'), marca: c('FABRICANTE'), dsct: c('UBIC.TECN.'),
-    codigo: c('PTO.TBJO.RESP.'),
+    orden: c('ORDEN'), nc: c('CONTRATO'), aviso: c('AVISO'), fAviso: c('FECHA DE AVISO', 'FE.AVISO', 'FE. AVISO'), fLib: c('LIBERACION REAL'),
+    texto: c('TEXTO BREVE', 'TEXTO CABECERA DE LA ORDEN'), centro: c('CENTRO PLANIF.', 'CENTRO PLANIF'),
+    municipio: c('MUNICIPIO'), poblacion: c('POBLACION'), distrito: c('DISTRITO'), calle: c('CALLE'),
+    numero: c('Nº (EDIFICIO)', 'NO (EDIFICIO)', 'N (EDIFICIO)', 'NUMERO'), calle2: c('CALLE 4', 'CALLE 2', 'CALLE 3'),
+    cliente: c('DESCRIPCION', 'NOMBRE COMPLETO', 'NOMBRE'), serie: c('NUMERO DE SERIE', 'MEDIDOR', 'MEDDIOR'),
+    marca: c('FABRICANTE', 'MARCA MD', 'MARCA'), dsct: c('UBIC.TECN.', 'DS/CT'),
+    codigo: c('PTO.TBJO.RESP.', 'USUARIO'), clase: c('CLASE DE ACTIVIDAD PM'),
+    lat: c('LAT', 'LATITUD'), lng: c('LONG', 'LONGITUD'),
   };
   if (ix.calle === -1 && ix.poblacion === -1) return { error: 'No se encontraron las columnas de dirección (Calle, Distrito, Población).' };
   const v = (r, i) => (i >= 0 ? String(r[i] ?? '').trim() : '');
@@ -78,22 +108,30 @@ export function leerExcel(rows) {
     if (vistos.has(numeroOrden)) { repetidas++; return; }
     vistos.add(numeroOrden);
     const cod = leerCodigo(v(r, ix.texto));
-    const calle = v(r, ix.calle), distrito = v(r, ix.distrito), poblacion = v(r, ix.poblacion);
-    const departamento = CENTROS[v(r, ix.centro)] || '';
+    const calle = [v(r, ix.calle), v(r, ix.numero)].filter(Boolean).join(' ');
+    const calle2 = v(r, ix.calle2), distrito = v(r, ix.distrito), poblacion = v(r, ix.poblacion), municipio = v(r, ix.municipio);
+    const departamento = CENTROS[v(r, ix.centro)] || DEPTO_DE[norm(municipio)] || '';
+    // Coordenadas del archivo (las trae para clientes que ya tienen medidor)
+    const lat = ix.lat >= 0 ? parseFloat(String(r[ix.lat]).replace(',', '.')) : NaN;
+    const lng = ix.lng >= 0 ? parseFloat(String(r[ix.lng]).replace(',', '.')) : NaN;
+    const coordOk = lat > 12.9 && lat < 14.6 && lng > -90.3 && lng < -87.5;
+    const lugar = municipio && norm(municipio) !== norm(poblacion) ? [poblacion, municipio] : [poblacion];
     filas.push({
       numeroOrden,
-      nc: v(r, ix.nc),
+      nc: v(r, ix.nc) || cod.nc,
       aviso: v(r, ix.aviso),
       cliente: v(r, ix.cliente),
-      direccion: [calle, distrito, poblacion].filter(Boolean).join(', '),
+      direccion: [calle, calle2, distrito, ...lugar].filter(Boolean).join(', '),
       departamento,
+      claseActividad: v(r, ix.clase).replace(/^Factibilidad\s+/i, ''),
+      _coord: coordOk ? { lat, lng } : null,
       // Consultas para Google, de la más detallada a la más general (sin nombre del cliente).
       _geo: {
         zona: departamento,
         consultas: [
-          [calle, distrito, poblacion, departamento],
-          [distrito, poblacion, departamento],
-          [poblacion, departamento],
+          [calle, distrito, ...lugar, departamento],
+          [distrito, ...lugar, departamento],
+          [...lugar, departamento],
         ].map(p => p.filter(Boolean)).filter(p => p.length > 1 || !departamento)
           .map(p => p.join(', ') + ', El Salvador'),
       },
@@ -104,7 +142,9 @@ export function leerExcel(rows) {
       dsct: v(r, ix.dsct),
       codigoTecnico: v(r, ix.codigo).toUpperCase(),
       fechaAviso: fechaExcel(ix.fAviso >= 0 ? r[ix.fAviso] : ''),
-      fechaLiberacion: fechaExcel(ix.fLib >= 0 ? r[ix.fLib] : ''),
+      // El formato nuevo no trae liberación: los días (DíasTransc de DELSUR)
+      // se cuentan desde el aviso, así que esa es la fecha base del semáforo.
+      fechaLiberacion: fechaExcel(ix.fLib >= 0 ? r[ix.fLib] : (ix.fAviso >= 0 ? r[ix.fAviso] : '')),
     });
   });
   return { filas, repetidas };
@@ -142,7 +182,9 @@ async function armarPlan(filas) {
   const existentes = filas.filter(f => ex.has(f.numeroOrden)).map(f => ({ f, o: ex.get(f.numeroOrden) }));
 
   // Ubicar con el padrón (NC / medidor del cliente o la referencia del vecino)
-  const aUbicar = [...nuevas, ...existentes.filter(({ o }) => hayQueUbicar(o)).map(({ f }) => f)];
+  // Las que traen coordenadas en el archivo no se buscan: se usan esas
+  const aUbicar = [...nuevas, ...existentes.filter(({ o }) => hayQueUbicar(o)).map(({ f }) => f)].filter(f => !f._coord);
+  const conCoordArchivo = filas.filter(f => f._coord).length;
   const codigosDe = f => ({ nc: f.nc, medidor: f.serieActual, referencia: f.referencia, ds: f.dsct });
   const porPadron = new Map();
   let fuentes = [], resumenPadron = null;
@@ -161,7 +203,7 @@ async function armarPlan(filas) {
   porPadron.forEach(u => { porFuente[u.fuente] = (porFuente[u.fuente] || 0) + 1; });
   return {
     nuevas, existentes, codigos, hayClave: !!clave,
-    aUbicar: aUbicar.length, porPadron, porFuente, porMotivo, resumenPadron, fuentes, sinPadronUbic: !fuentes.includes('ubicaciones'),
+    aUbicar: aUbicar.length, conCoordArchivo, porPadron, porFuente, porMotivo, resumenPadron, fuentes, sinPadronUbic: !fuentes.includes('ubicaciones'),
     porCodigo: Object.fromEntries(codigos.map(c => [c, filas.filter(f => f.codigoTecnico === c).length])),
     sinCodigo: filas.filter(f => !f.codigoTecnico).length,
   };
@@ -258,6 +300,7 @@ function pintarPlan() {
     <div style="font-size:11px;color:var(--text-4);margin:10px 0 6px">${esc(archivo_)} · ${filas_.length} órdenes</div>
     ${fila(p.nuevas.length, 'Órdenes nuevas', 'Entran abiertas, con la fecha de liberación del Excel', 'var(--fb-light, #f472b6)')}
     ${fila(p.existentes.length, 'Ya estaban en la app', 'Se actualizan sus datos; estado, resultado y reasignaciones manuales se respetan', '#60a5fa')}
+    ${p.conCoordArchivo ? fila(p.conCoordArchivo, 'Con coordenadas en el archivo', 'Ya tienen medidor: se ubican en su punto exacto (no se toca una ubicación corregida en el sitio)', '#22c55e') : ''}
     ${p.aUbicar ? fila(p.porPadron.size, 'Ubicadas con el padrón', Object.entries(p.porFuente).map(([f, n]) => `${n} por ${esc(f)}`).join(' · ') || 'Ninguna referencia se encontró en los padrones', '#22c55e') : ''}
     ${p.aUbicar - p.porPadron.size ? fila(p.aUbicar - p.porPadron.size, 'Sin encontrar en el padrón', textoMotivos(p.porMotivo) + (usarGoogle_ ? 'Se ubican por dirección con Google (muy aproximado).' : 'Entran sin punto nuevo en el mapa; el técnico fija la ubicación en el sitio.')
       + (p.hayClave ? `<label style="display:flex;align-items:center;gap:8px;margin-top:6px;color:var(--text-2)"><input type="checkbox" id="fbi-google" ${usarGoogle_ ? 'checked' : ''}/> Ubicarlas por dirección con Google</label>`
@@ -310,7 +353,7 @@ async function importar() {
     const aUbicar = [
       ...p.nuevas.map(f => ({ f })),
       ...p.existentes.filter(({ o }) => hayQueUbicar(o)).map(({ f, o }) => ({ f, o })),
-    ];
+    ].filter(x => !x.f._coord);
     const geo = new Map();
     const resto = aUbicar.filter(x => !p.porPadron.has(x.f.numeroOrden));
     if (resto.length && p.hayClave && usarGoogle_) {
@@ -319,6 +362,7 @@ async function importar() {
       res.forEach((r, i) => { if (r) geo.set(resto[i].f.numeroOrden, r); });
     }
     const coord = f => {
+      if (f._coord) return { latitud: f._coord.lat, longitud: f._coord.lng, ubicacionAprox: false, ubicacionFuente: 'excel', ubicacionNivel: '', ubicacionTipo: '' };
       const u = p.porPadron.get(f.numeroOrden);
       if (u) return { latitud: u.lat, longitud: u.lng, ubicacionAprox: !u.exacta, ubicacionFuente: 'padron', ubicacionNivel: u.fuente, ubicacionTipo: '' };
       const r = geo.get(f.numeroOrden);
@@ -328,6 +372,7 @@ async function importar() {
       numeroOrden: f.numeroOrden, nc: f.nc, aviso: f.aviso, cliente: f.cliente, direccion: f.direccion, departamento: f.departamento,
       telefono: f.telefono, referencia: f.referencia, serieActual: f.serieActual, marca: f.marca, dsct: f.dsct,
       codigoTecnico: f.codigoTecnico, fechaAviso: ts(f.fechaAviso), fechaLiberacion: ts(f.fechaLiberacion),
+      claseActividad: f.claseActividad || '',
     });
 
     // 2. Escrituras
@@ -343,7 +388,8 @@ async function importar() {
     });
     p.existentes.forEach(({ f, o }) => {
       const upd = { ...datos(f), actualizadaEn: ahora };
-      if (hayQueUbicar(o)) Object.assign(upd, coord(f));
+      // Coordenadas del archivo: mandan, salvo que alguien corrigió el punto en el sitio
+      if (f._coord ? !o.coordCorregida : hayQueUbicar(o)) Object.assign(upd, coord(f));
       if (!o.asignacionManual && o.estado !== 'cerrada') {
         const t = tec(f.codigoTecnico);
         upd.asignadoUid = t ? t.id : null;
