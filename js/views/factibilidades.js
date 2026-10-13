@@ -18,7 +18,7 @@ import { tecnicosActivos } from '../vivo.js';
 import { suscribirAbiertas, suscribirConfig, suscribirCerradas, guardarConfig, META_DEFECTO, AREA, COL_ORDENES, aplicarModoAtrasadas, textoModoAtrasadas, RADIO_CERCANAS_DEFECTO } from '../factibilidades_comun.js';
 import { semaforoOrden, SEMAFORO, aFecha, claveDia } from '../dias_habiles.js';
 import { toast, escapeHtml } from '../ui.js';
-import { abrirResultado, abrirReasignar, puedeActuar, cerrarHojas } from './factibilidades_acciones.js';
+import { abrirResultado, abrirReasignar, puedeActuar, cerrarHojas, corregirUbicacion } from './factibilidades_acciones.js';
 import { abrirImportar, abrirAsignarCodigos } from './factibilidades_importar.js';
 
 const ICO = {
@@ -625,6 +625,8 @@ function renderOrdenes(cont) {
   cont.querySelectorAll('[data-reasignar]').forEach(b => b.onclick = () => refrescarTecnicos().then(tecs => abrirReasignar([ordenes_.find(o => o.id === b.dataset.reasignar)], session_, tecs)));
   cont.querySelector('#fb-ver-mas')?.addEventListener('click', () => { limite_ += 40; renderOrdenes(cont); });
   cont.querySelectorAll('[data-resultado]').forEach(b => b.onclick = () => abrirResultado(ordenes_.find(o => o.id === b.dataset.resultado), session_));
+  // Sin punto en el mapa: fijar la ubicación con el GPS o escribiendo las coordenadas
+  cont.querySelectorAll('[data-ubicar]').forEach(b => b.onclick = () => corregirUbicacion(ordenes_.find(o => o.id === b.dataset.ubicar), session_));
   cont.querySelectorAll('[data-vermapa]').forEach(b => b.onclick = () => verEnMapa(b.dataset.vermapa));
   cont.querySelectorAll('[data-navegar]').forEach(b => b.onclick = () => {
     const o = ordenes_.find(x => x.id === b.dataset.navegar);
@@ -663,7 +665,8 @@ function tarjeta(o) {
         ${puedeActuar(o, session_) ? `<button class="cm-btn marca" data-resultado="${o.id}" style="flex:1">${svg(ICO.check, 14)} Resultado</button>` : ''}
         ${esAdmin_ ? `<button class="cm-btn marca" data-reasignar="${o.id}" style="flex:1">${svg(ICO.usuario, 14)} Reasignar</button>` : ''}
         ${coordOk(o) ? `<button class="cm-btn" data-vermapa="${o.id}">${svg(ICO.mapa, 14)} Mapa</button>
-        <button class="cm-btn" data-navegar="${o.id}">${svg(ICO.nav, 14)} Navegar</button>` : '<span class="cm-meta" style="margin:0">Sin coordenadas</span>'}
+        <button class="cm-btn" data-navegar="${o.id}">${svg(ICO.nav, 14)} Navegar</button>`
+          : puedeActuar(o, session_) ? `<button class="cm-btn" data-ubicar="${o.id}">${svg(ICO.mapa, 14)} Ubicar</button>` : '<span class="cm-meta" style="margin:0">Sin coordenadas</span>'}
       </div>`}
     </div>`;
 }
