@@ -63,7 +63,10 @@ export function initRouter(session) {
   currentSession = session;
   buildNavbar(session);
   activarPestanasAnimadas(contentArea);
-  navigateTo('home');
+  // Tras "Reintentar" (recarga), volver a la pantalla que no abrió
+  let volver = null;
+  try { volver = sessionStorage.getItem('router_volver_a'); sessionStorage.removeItem('router_volver_a'); } catch {}
+  navigateTo(volver && /^[a-z_]+$/.test(volver) ? volver : 'home');
 }
 
 export function goBack() {
@@ -159,7 +162,16 @@ export async function navigateTo(tabId, _esRegreso) {
 
   try {
     if (!viewCache[tabId]) {
-      viewCache[tabId] = await import(`./views/${tabId}.js`);
+      try {
+        viewCache[tabId] = await import(`./views/${tabId}.js`);
+      } catch (errCarga) {
+        // Con mala señal la descarga del módulo puede fallar y el navegador
+        // recuerda ese fallo (volver a tocar no lo arregla). Un reintento
+        // con otra dirección lo vuelve a pedir.
+        console.warn(`[router] Reintentando '${tabId}':`, errCarga.message);
+        await new Promise(r => setTimeout(r, 800));
+        viewCache[tabId] = await import(`./views/${tabId}.js?r=${Date.now()}`);
+      }
     }
     // Si el usuario navegó a otra vista mientras cargaba el módulo, abortar
     if (currentTab !== tabId) return;
@@ -188,13 +200,22 @@ export async function navigateTo(tabId, _esRegreso) {
       return;
     }
 
-    // Si el módulo simplemente no existe
+    // No se pudo abrir (casi siempre, la descarga falló por la señal). Antes
+    // decía "Módulo en desarrollo", que confundía.
+    const detalle = String(err?.message || '').replace(/[<>&"]/g, '').slice(0, 160);
     contentArea.innerHTML = `
       <div class="dev-module anim-up" style="margin-top:16px">
-        <div class="dev-title">Módulo en desarrollo</div>
-        <p>La sección <strong>${tabId}</strong> estará disponible próximamente.</p>
+        <div class="dev-title">No se pudo abrir esta pantalla</div>
+        <p>Puede ser la señal. Revisa la conexión y toca Reintentar.</p>
+        <button class="btn-primary" id="router-reintentar" style="margin-top:14px;width:auto;padding:0 22px">Reintentar</button>
+        ${detalle ? `<p style="font-size:11px;color:var(--text-4);margin-top:12px;word-break:break-word">${detalle}</p>` : ''}
       </div>
     `;
+    // Recargar limpia los módulos que el navegador recuerda como fallidos
+    contentArea.querySelector('#router-reintentar').onclick = () => {
+      try { sessionStorage.setItem('router_volver_a', tabId); } catch {}
+      location.reload();
+    };
   }
 }
 
