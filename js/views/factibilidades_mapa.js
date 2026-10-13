@@ -231,6 +231,23 @@ function initMap() {
 
   map_.on('click', cerrarPanel);
   map_.on('zoomend', () => plotMarkers());
+  // Al pellizcar, Leaflet solo estira la imagen del lienzo: las gotas se
+  // agrandaban y, en el mapa con giro (técnico), se corrían de su lugar y al
+  // soltar "saltaban". Se redibujan en su sitio en cada paso del pellizco;
+  // con el mapa girado se ocultan mientras dura el gesto (igual que en los
+  // mapas de Cambios y AMI).
+  map_.on('zoom', () => {
+    if (map_._animatingZoom || !lienzo_ || !map_.hasLayer(lienzo_)) return;
+    const giro = map_._rotate ? (map_.getBearing() || 0) : 0;   // solo el mapa del técnico gira
+    if (Math.round(giro) % 360 !== 0) {
+      lienzo_._container.style.opacity = '0';
+      return;
+    }
+    lienzo_._reset();
+    // Dibujar ya (no en el próximo cuadro) para que no se vean un paso atrás.
+    if (lienzo_._redrawRequest) { L.Util.cancelAnimFrame(lienzo_._redrawRequest); lienzo_._redraw(); }
+  });
+  map_.on('zoomend', () => { if (lienzo_?._container) lienzo_._container.style.opacity = ''; });
   map_.on('moveend', () => { if (map_.getZoom() >= 16) plotMarkers(); });
 
   iniciarGeolocalizacion();
