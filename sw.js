@@ -80,3 +80,14 @@ self.addEventListener('fetch', event => {
     return;
   }
 });
+
+// ── Notificación tocada (material por recibir): abrir o traer la app ──
+self.addEventListener('notificationclick', event => {
+  event.notification.close();
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(lista => {
+      const abierta = lista.find(c => c.url.includes('/STC-innova/'));
+      return abierta ? abierta.focus() : self.clients.openWindow('/STC-innova/');
+    })
+  );
+});

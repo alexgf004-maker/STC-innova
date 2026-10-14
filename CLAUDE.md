@@ -78,6 +78,9 @@ js/
                            acepta también el formato "Fact mapa" (Texto cabecera, Municipio, Usuario,
                            Lat/Long de los que ya tienen medidor, Clase de actividad PM -> claseActividad);
                            cruce Pto.tbjo.resp. (usuario DELSUR) -> técnico en factibilidades_config/general.codigosDelsur
+  aviso_material.js        material por recibir (técnico) en TODA la app: ventana encima de cualquier
+                           pantalla (posponer 10 min), franja fija y vibración; acepta/rechaza con las
+                           funciones exportadas de views/home.js
   ubicaciones.js           ubicar órdenes por NC / medidor / DS con el padrón "ubicaciones" (Excel que sube
                            el admin en Padrones de clientes; filas [nc, md, ds, lat, lng]) más Caracterización
                            y Contiguos. Factibilidades lo usa primero (NC/medidor del cliente o la referencia

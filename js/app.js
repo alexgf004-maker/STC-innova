@@ -9,6 +9,7 @@ import { initRouter, navigateTo, goBack, canGoBack } from './router.js';
 import { toast as __appToast } from './ui.js';
 import { PADRONES, infoPadron, subirPadron } from './padrones.js';
 import { leerPadronUbicaciones, olvidarIndiceUbicaciones } from './ubicaciones.js';
+import { iniciarAvisoMaterial } from './aviso_material.js';
 
 const SESSION_KEY = 'innova_session';
 const LOGIN_PATH  = '/STC-innova/login.html';
@@ -536,6 +537,9 @@ window.addEventListener('DOMContentLoaded', async () => {
   }
 
   initRouter(session);
+
+  // Material por recibir (técnico): aviso en cualquier pantalla, no solo el Inicio
+  iniciarAvisoMaterial(session);
 
   // Aviso de solicitudes de material (admin/asistente)
   if (session.role === 'admin' || session.role === 'asistente') {

@@ -181,11 +181,13 @@ function __expandirSeriesPend(m){
   return (m.seriales||[]).map(s=>String(s).trim()).filter(Boolean);
 }
 
-async function aceptarDespachoPendiente(id){
-  const p = __pendientesTec.find(x=>x.id===id);
-  if(!p) return;
+// También la usa el aviso de material de toda la app (js/aviso_material.js),
+// que le pasa el despacho. Devuelve true si se aceptó.
+export async function aceptarDespachoPendiente(id, pDado){
+  const p = pDado || __pendientesTec.find(x=>x.id===id);
+  if(!p) return false;
   const btn = document.querySelector(`#despachos-pend-tec button[onclick*="${id}"]`);
-  if(!confirm('¿Confirmas que recibiste todo este material?')) return;
+  if(!confirm('¿Confirmas que recibiste todo este material?')) return false;
 
   // Bloquear botones mientras procesa
   document.querySelectorAll('#despachos-pend-tec button').forEach(b=>b.disabled=true);
@@ -202,7 +204,7 @@ async function aceptarDespachoPendiente(id){
       if(!__pendientesTec.length) document.getElementById('despachos-pend-tec')?.remove();
       document.querySelectorAll('#despachos-pend-tec button').forEach(b=>b.disabled=false);
       alert('Este despacho ya fue aceptado.');
-      return;
+      return true;
     }
 
     const session = JSON.parse(localStorage.getItem('innova_session') || '{}');
@@ -311,17 +313,19 @@ async function aceptarDespachoPendiente(id){
     if(!__pendientesTec.length) document.getElementById('despachos-pend-tec')?.remove();
 
     alert('Material aceptado correctamente. Queda registrado en tu historial.');
+    return true;
   }catch(err){
     console.error('[home] Error al aceptar despacho:',err);
     alert('Error al aceptar: '+err.message);
     document.querySelectorAll('#despachos-pend-tec button').forEach(b=>b.disabled=false);
+    return false;
   }
 }
 
-async function rechazarDespachoPendiente(id){
-  const p = __pendientesTec.find(x=>x.id===id);
-  if(!p) return;
-  if(!confirm('¿Rechazar este material? Se le notificará a quien te lo entrega para corregir.')) return;
+export async function rechazarDespachoPendiente(id, pDado){
+  const p = pDado || __pendientesTec.find(x=>x.id===id);
+  if(!p) return false;
+  if(!confirm('¿Rechazar este material? Se le notificará a quien te lo entrega para corregir.')) return false;
   document.querySelectorAll('#despachos-pend-tec button').forEach(b=>b.disabled=true);
   try{
     await db.collection('despachos_pendientes').doc(id).delete();
@@ -330,10 +334,12 @@ async function rechazarDespachoPendiente(id){
     if(card) card.remove();
     if(!__pendientesTec.length) document.getElementById('despachos-pend-tec')?.remove();
     alert('Material rechazado. El despacho fue devuelto.');
+    return true;
   }catch(err){
     console.error('[home] Error al rechazar:',err);
     alert('Error al rechazar: '+err.message);
     document.querySelectorAll('#despachos-pend-tec button').forEach(b=>b.disabled=false);
+    return false;
   }
 }
 
