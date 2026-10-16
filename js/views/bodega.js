@@ -54,6 +54,12 @@ const FILAS_DOC = [
 // ── Helpers ───────────────────────────────────────
 const safeNum = v => { const n = Number(v); return isNaN(n) ? 0 : n; };
 const safeStr = (v, fb='—') => (v!==undefined&&v!==null&&String(v).trim()) ? String(v).trim() : fb;
+// Nombre comparable: sin mayúsculas, acentos ni espacios de más
+const normNombre = v => String(v||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/\s+/g,' ').trim();
+// Técnico de la app por nombre (o usuario). Antes se comparaba el texto exacto:
+// si se escribía el nombre en vez de tocarlo en la lista, el despacho quedaba
+// sin técnico y no le aparecía a nadie.
+const buscarTecnico = nombre => { const n = normNombre(nombre); return n ? (tecnicos_.find(t => normNombre(t.displayName) === n) || tecnicos_.find(t => normNombre(t.username) === n) || null) : null; };
 // Muestra el nombre tal cual se escribió (antes forzaba Title Case y
 // destrozaba siglas y códigos: AWG -> Awg, 3x220 -> 3X220)
 const tc = str => safeStr(str,'');
@@ -1005,17 +1011,27 @@ function renderHistorial() {
     <div class="anim-up d1">
       ${sec('Pendientes de aceptación', pendientes.length)}
       <div class="flex-col gap-8">
-        ${pendientes.map(p=>`
-          <div class="ds-card" style="border-color:rgba(251,191,36,.3)">
+        ${pendientes.map(p=>{
+          const tec = tecnicos_.find(t=>t.id===p.tecnicoRecibeUid);
+          // Si la lista de técnicos no cargó, solo se marca el que no tiene ninguno
+          const huerfano = tecnicos_.length ? !tec : !p.tecnicoRecibeUid;
+          return `
+          <div class="ds-card" style="border-color:${huerfano?'rgba(239,68,68,.5)':'rgba(251,191,36,.3)'}">
             <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:10px">
               <div style="min-width:0">
-                <div style="font-size:14px;font-weight:600">${safeStr(p.usuarioResponsable)}</div>
-                <div style="font-size:11px;color:var(--text-4);margin-top:2px">${fmtDate(p.fecha)} · Esperando al técnico</div>
+                <div style="font-size:14px;font-weight:600">${escapeHtml(safeStr(p.usuarioResponsable))}</div>
+                <div style="font-size:11px;color:var(--text-4);margin-top:2px">${fmtDate(p.fecha)} · ${esperaTexto(p.fecha)}</div>
               </div>
               <button class="btn-action danger" style="height:30px;padding:0 12px;font-size:11px;flex-shrink:0;width:auto;flex:0 0 auto" onclick="window.__bodega._cancelarPend('${p.id}')">Cancelar</button>
             </div>
+            ${huerfano ? `
+            <div style="font-size:12px;color:#fca5a5;background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.35);border-radius:10px;padding:8px 10px;margin-bottom:10px;line-height:1.4">
+              <b>No le aparece a ningún técnico:</b> el nombre no quedó ligado a un usuario de la app.
+              <button class="btn-action marca" style="height:34px;font-size:12px;margin-top:8px;width:100%" onclick="window.__bodega._ligarPend('${p.id}')">Elegir el técnico</button>
+            </div>` : `
+            ${tec ? `<div style="font-size:11.5px;color:var(--text-3);margin-bottom:8px">Le aparece a <b style="color:var(--text-2)">${escapeHtml(safeStr(tec.displayName))}</b> en su app para aceptarlo</div>` : ''}`}
             ${lineas(p.items, 3)}
-          </div>`).join('')}
+          </div>`;}).join('')}
       </div>
     </div>` : '';
 
@@ -1051,9 +1067,63 @@ function renderHistorial() {
   window.__bodega._verMemo=(id)=>{const s=salidas_.find(x=>x.id===id);if(s)showMemo(s);};
   window.__bodega._devolucion=(id)=>{const s=salidas_.find(x=>x.id===id);if(s)abrirDevolucion(s);};
   window.__bodega._cancelarPend=(id)=>cancelarPendiente(id);
+  window.__bodega._ligarPend=(id)=>ligarPendiente(id);
   window.__bodega._aprobarDev=(id)=>aprobarDevolucionTecnico(id);
   window.__bodega._rechazarDev=(id)=>rechazarDevolucionTecnico(id);
   window.__bodega._verDev=(id)=>verDetalleDevolucion(id);
+}
+
+// Cuánto lleva esperando un despacho pendiente
+function esperaTexto(ts){
+  const d = ts?.toDate ? ts.toDate() : (ts?.seconds ? new Date(ts.seconds*1000) : null);
+  if(!d) return 'Esperando al técnico';
+  const min = Math.max(0, Math.round((Date.now()-d.getTime())/60000));
+  if(min < 60) return `Esperando al técnico · ${min} min`;
+  const h = Math.round(min/60);
+  return h < 24 ? `Esperando al técnico · ${h} h` : `Esperando al técnico · ${Math.round(h/24)} día${Math.round(h/24)!==1?'s':''}`;
+}
+
+// Despacho que quedó sin técnico (nombre escrito a mano): ligarlo a uno de la
+// lista para que le aparezca en su app
+function ligarPendiente(id){
+  const p=despachosPendientes_.find(x=>x.id===id);
+  if(!p) return;
+  document.getElementById('bod-ligar-pend')?.remove();
+  const ov=document.createElement('div');
+  ov.id='bod-ligar-pend';
+  ov.className='sheet-backdrop open';
+  const sugerido=buscarTecnico(p.usuarioResponsable);
+  ov.innerHTML=`<div class="sheet" style="max-height:85vh"><div class="sheet-handle"></div>
+    <div class="sheet-title">¿Quién recibe este material?</div>
+    <div class="sheet-body">
+      <div style="font-size:12px;color:var(--text-3);margin-bottom:10px">Se escribió "${escapeHtml(safeStr(p.usuarioResponsable))}". Elige el técnico para que le aparezca en su app.</div>
+      <input class="form-input" id="bod-ligar-buscar" placeholder="Buscar técnico…" autocomplete="off" style="margin-bottom:10px"/>
+      <div class="flex-col gap-6" id="bod-ligar-lista"></div>
+    </div></div>`;
+  document.body.appendChild(ov);
+  ov.addEventListener('click',e=>{ if(e.target===ov) ov.remove(); });
+  const pintar=q=>{
+    const n=normNombre(q);
+    const lista=tecnicos_.filter(t=>!n||normNombre(t.displayName).includes(n)||normNombre(t.username).includes(n));
+    ov.querySelector('#bod-ligar-lista').innerHTML=lista.length?lista.map(t=>`
+      <button class="btn-action outline" data-uid="${escapeHtml(t.id)}" style="justify-content:flex-start;text-align:left;height:auto;padding:10px 12px">
+        <span style="flex:1">${escapeHtml(safeStr(t.displayName))}${t.username?` <span style="color:var(--text-4);font-size:11px">@${escapeHtml(t.username)}</span>`:''}</span>
+        ${sugerido&&sugerido.id===t.id?'<span style="font-size:10px;color:#fbbf24">sugerido</span>':''}
+      </button>`).join(''):'<div style="font-size:12px;color:var(--text-3)">Nadie coincide.</div>';
+    ov.querySelectorAll('[data-uid]').forEach(b=>b.onclick=async()=>{
+      const t=tecnicos_.find(x=>x.id===b.dataset.uid);
+      if(!t) return;
+      try{
+        await db.collection('despachos_pendientes').doc(id).update({tecnicoRecibeUid:t.id,usuarioResponsable:safeStr(t.displayName)});
+        Object.assign(p,{tecnicoRecibeUid:t.id,usuarioResponsable:safeStr(t.displayName)});
+        ov.remove();
+        toast(`Listo: ya le aparece a ${safeStr(t.displayName)}`,'ok');
+        renderHistorial();
+      }catch(err){ toast('No se pudo guardar: '+err.message,'error'); }
+    });
+  };
+  ov.querySelector('#bod-ligar-buscar').oninput=e=>pintar(e.target.value);
+  pintar('');
 }
 
 async function cancelarPendiente(id){
@@ -2188,13 +2258,20 @@ function abrirDespacho(solicitud=null) {
     if(esCampanaNueva){
       try{
         // Buscar el UID del técnico que recibe (para que le llegue en su sesión)
-        const tecRecibe=tecnicos_.find(t=>safeStr(t.displayName)===hdr.responsable);
-        const tecPareja=tecnicos_.find(t=>safeStr(t.displayName)===hdr.pareja);
+        const tecRecibe=buscarTecnico(hdr.responsable);
+        const tecPareja=buscarTecnico(hdr.pareja);
+        // Sin técnico ligado el despacho no le aparece a nadie: no se envía
+        if(!tecRecibe){
+          if(errEl){errEl.textContent=`No encontré a "${hdr.responsable}" entre los técnicos de la app. Vuelve al primer paso y elígelo de la lista para que le llegue.`;errEl.style.display='block';}
+          if(btn) btn.disabled=false;
+          const l0=document.getElementById('btn-des-lbl'); if(l0) l0.textContent='Enviar para aceptación';
+          return;
+        }
         const pendData={
           area:areaDespacho,
           estado:'pendiente_aceptacion',
-          usuarioResponsable:hdr.responsable,
-          tecnicoRecibeUid:tecRecibe?.id||null,
+          usuarioResponsable:safeStr(tecRecibe.displayName,hdr.responsable),
+          tecnicoRecibeUid:tecRecibe.id,
           parejaAcompanante:hdr.pareja||'',parejaUid:tecPareja?.id||null,usuarioRespAsignado:hdr.usuarioResp||'',empresaContratista:hdr.contratista,
           placaVehiculo:placa,fechaEntrega:hdr.fechaEnt,
           entregadoPor:session_.displayName,entregadoPorUid:uid_,
