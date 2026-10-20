@@ -164,6 +164,8 @@ export function cleanup() {
   watchId_ = null;
   if (map_) { try { map_.remove(); } catch {} map_ = null; }
   markers_ = {}; markersRet_ = {}; ordenes_ = []; retiros_ = [];
+  if (rafAbanico_) { cancelAnimationFrame(rafAbanico_); rafAbanico_ = 0; }
+  lineasAbanico_ = null;
   selected_ = null; selectedRet_ = null; geoMarker_ = null; geoCircle_ = null;
   puntos_ = []; poliPreview_ = null; zonaPoligono_ = null;
 }
@@ -318,6 +320,9 @@ function initMap() {
     errorTileUrl: 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7',
   }).addTo(map_).on('tileerror', () => {});
 
+  // Al acercar o mover, las gotas encimadas se abren (o se cierran) en abanico
+  map_.on('zoomend moveend', programarAbanico);
+
   // Tocar el mapa (fuera de un marcador) cierra cualquier hoja abierta,
   // salvo cuando se está dibujando una zona.
   map_.on('click', () => {
@@ -416,7 +421,8 @@ function pintarOrden(o) {
     if (porConfirmar) color = '#22c55e';      // lista para confirmar: verde
     else if (o.pareja) color = colorPareja(o.pareja);
     const m = crearMarcador(t, color, porConfirmar ? '&#10003;' : '', false, false, porConfirmar);
-    m.on('click', () => porConfirmar ? abrirConfirmar(o.id) : abrirAsignarIndividual(o.id));
+    registrar(m, () => porConfirmar ? abrirConfirmar(o.id) : abrirAsignarIndividual(o.id),
+      { color, titulo: `NC ${t.nc || '—'}`, sub: porConfirmar ? 'Por confirmar' : (o.pareja || 'Sin asignar') });
     m.addTo(map_); markers_[o.id].titular = m;
     return;
   }
@@ -429,7 +435,8 @@ function pintarOrden(o) {
     const donde = o.logranoEn && o[o.logranoEn] ? o[o.logranoEn] : o.titular;
     if (donde?.lat != null) {
       const m = crearMarcador(donde, '#22c55e', '&#10003;', false, false, true);  // atenuado
-      m.on('click', () => abrirDetalle(o.id, o.logranoEn || 'titular'));
+      registrar(m, () => abrirDetalle(o.id, o.logranoEn || 'titular'),
+        { color: '#22c55e', titulo: `NC ${donde.nc || '—'}`, sub: 'Hecha · por confirmar' });
       m.addTo(map_); markers_[o.id].cerrada = m;
     }
     return;
@@ -449,7 +456,8 @@ function pintarOrden(o) {
     // Los UPR se pintan en celeste para que el técnico los reconozca al instante
     const color = (o.esUPR && k === 'titular') ? UPR_COLOR : NIVEL_COLOR[k];
     const m = crearMarcador(p, color, String(i === 0 ? 'T' : i), activo, destacar);
-    m.on('click', () => abrirDetalle(o.id, k));
+    registrar(m, () => abrirDetalle(o.id, k),
+      { color, titulo: `${NIVEL_LABEL[k]}${o.esUPR && k === 'titular' ? ' (UPR)' : ''} · NC ${p.nc || '—'}`, sub: p.nombre || p.direccion || '' });
     m.addTo(map_); markers_[o.id][k] = m;
   }
 
@@ -493,7 +501,7 @@ function marcarBotonRetiros() {
 }
 
 function quitarRetiro(id) {
-  if (markersRet_[id]) { if (map_) map_.removeLayer(markersRet_[id]); delete markersRet_[id]; }
+  if (markersRet_[id]) { if (map_) map_.removeLayer(markersRet_[id]); delete markersRet_[id]; programarAbanico(); }
 }
 
 // ── RETIROS: cuadrado ámbar (verde si retirado, rojo si no se pudo) ──
@@ -524,7 +532,8 @@ function pintarRetiro(r) {
     iconSize: [15, 15], iconAnchor: [7.5, 7.5],
   });
   const m = L.marker([r.lat, r.lng], { icon });
-  m.on('click', () => abrirDetalleRetiro(r.id));
+  registrar(m, () => abrirDetalleRetiro(r.id),
+    { color, cuadro: true, titulo: `Retiro · NC ${r.nc || '—'}`, sub: r.nombre || r.direccion || '' });
   m.addTo(map_);
   markersRet_[r.id] = m;
 }
@@ -678,6 +687,117 @@ function quitarMarcadores(ordenId) {
   if (!g) return;
   Object.values(g).forEach(m => { if (m && map_ && map_.hasLayer(m)) map_.removeLayer(m); });
   delete markers_[ordenId];
+  programarAbanico();
+}
+
+// ══ Puntos encimados ══════════════════════════════
+// El titular y sus suplentes suelen estar en la misma casa o edificio, y
+// órdenes vecinas caen casi en el mismo punto: las gotas quedaban una sobre
+// otra y solo se podía tocar la de arriba.
+//   - Al tocar donde hay varias, sale la lista para elegir cuál abrir.
+//   - Bien de cerca (ZOOM_ABANICO), las que caen juntas se abren en abanico
+//     alrededor de su punto real, con una línea fina hacia él.
+const ZOOM_ABANICO = 17;
+let lineasAbanico_ = null, rafAbanico_ = 0;
+
+function registrar(m, accion, etiq) {
+  m._real = m.getLatLng();
+  m._accion = accion;
+  m._etiq = etiq;
+  m.on('click', () => tocarMarcador(m));
+  programarAbanico();
+}
+
+function todosLosPuntos() {
+  if (!map_) return [];
+  const lista = [];
+  Object.values(markers_).forEach(g => Object.entries(g || {}).forEach(([k, m]) => { if (k !== 'linea' && m?._accion && map_.hasLayer(m)) lista.push(m); }));
+  Object.values(markersRet_).forEach(m => { if (m?._accion && map_.hasLayer(m)) lista.push(m); });
+  return lista;
+}
+
+function tocarMarcador(m) {
+  if (!map_) return;
+  const p = map_.latLngToContainerPoint(m.getLatLng());
+  const juntos = todosLosPuntos().filter(x => map_.latLngToContainerPoint(x.getLatLng()).distanceTo(p) <= 16);
+  if (juntos.length <= 1) { m._accion(); return; }
+  abrirElegirPunto(juntos);
+}
+
+function abrirElegirPunto(lista) {
+  const sheet = container_.querySelector('#crc-sheet');
+  if (!sheet) return;
+  cerrarTodasLasHojas();
+  sheet.innerHTML = `
+    <div style="width:36px;height:4px;background:var(--border);border-radius:2px;margin:0 auto 14px"></div>
+    <div style="font-size:16px;font-weight:800;color:#fff;margin-bottom:2px">${lista.length} puntos aquí</div>
+    <div style="font-size:12px;color:var(--text-3);margin-bottom:12px">Están muy juntos. Elige cuál quieres abrir${map_.getZoom() < ZOOM_ABANICO ? ' (o acércate más y se separan)' : ''}.</div>
+    <div style="display:flex;flex-direction:column;gap:8px">
+      ${lista.map((m, i) => {
+        const e = m._etiq || {};
+        return `<button data-i="${i}" style="display:flex;align-items:center;gap:10px;width:100%;text-align:left;padding:10px 12px;border-radius:12px;border:1px solid var(--border);background:var(--glass);cursor:pointer;font-family:inherit;color:inherit">
+          <span style="width:12px;height:12px;flex-shrink:0;border-radius:${e.cuadro ? '3px' : '50%'};background:${e.color || '#94a3b8'};border:2px solid rgba(255,255,255,.85)"></span>
+          <span style="flex:1;min-width:0">
+            <span style="display:block;font-size:13px;font-weight:700;color:#f1f5f9">${escapeHtml(e.titulo || 'Punto')}</span>
+            ${e.sub ? `<span style="display:block;font-size:11.5px;color:#94a3b8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(e.sub)}</span>` : ''}
+          </span>
+        </button>`;
+      }).join('')}
+    </div>`;
+  sheet.querySelectorAll('[data-i]').forEach(b => b.onclick = () => {
+    const m = lista[Number(b.dataset.i)];
+    sheet.classList.remove('abierta');
+    m?._accion();
+  });
+  sheet.classList.add('abierta');
+}
+
+function programarAbanico() {
+  if (rafAbanico_ || !map_) return;
+  rafAbanico_ = requestAnimationFrame(abrirAbanico);
+}
+
+function abrirAbanico() {
+  rafAbanico_ = 0;
+  if (!map_) return;
+  if (!lineasAbanico_) lineasAbanico_ = L.layerGroup().addTo(map_);
+  lineasAbanico_.clearLayers();
+  const puntos = todosLosPuntos();
+  // Primero todos a su lugar real
+  puntos.forEach(m => { if (!m.getLatLng().equals(m._real)) m.setLatLng(m._real); });
+  if (map_.getZoom() < ZOOM_ABANICO) return;
+
+  const vista = map_.getBounds().pad(0.3);
+  const items = puntos.filter(m => vista.contains(m._real)).map(m => ({ m, p: map_.latLngToContainerPoint(m._real) }));
+  // Agrupar los que están a menos de UMBRAL px (rejilla para no comparar todos con todos)
+  const UMBRAL = 12, celdas = new Map();
+  const clave = (x, y) => `${Math.floor(x / UMBRAL)}:${Math.floor(y / UMBRAL)}`;
+  items.forEach((it, i) => { const k = clave(it.p.x, it.p.y); if (!celdas.has(k)) celdas.set(k, []); celdas.get(k).push(i); });
+  const usado = new Set();
+  items.forEach((it, i) => {
+    if (usado.has(i)) return;
+    usado.add(i);
+    const grupo = [it];
+    const cx = Math.floor(it.p.x / UMBRAL), cy = Math.floor(it.p.y / UMBRAL);
+    for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) {
+      (celdas.get(`${cx + dx}:${cy + dy}`) || []).forEach(j => {
+        if (usado.has(j) || items[j].p.distanceTo(it.p) > UMBRAL) return;
+        usado.add(j); grupo.push(items[j]);
+      });
+    }
+    if (grupo.length < 2) return;
+    const n = grupo.length;
+    const c = grupo.reduce((a, g) => a.add(g.p), L.point(0, 0)).divideBy(n);
+    const R = Math.max(22, 17 / Math.sin(Math.PI / n));   // ~34 px entre gotas: cómodo para el dedo
+    const centro = map_.containerPointToLatLng(c);
+    grupo.forEach((g, k) => {
+      const ang = -Math.PI / 2 + (2 * Math.PI * k) / n;
+      const nuevo = map_.containerPointToLatLng(L.point(c.x + R * Math.cos(ang), c.y + R * Math.sin(ang)));
+      g.m.setLatLng(nuevo);
+      L.polyline([g.m._real, nuevo], { color: '#ffffff', weight: 1.5, opacity: .7, interactive: false }).addTo(lineasAbanico_);
+    });
+    L.circleMarker(centro, { radius: 3, color: '#ffffff', weight: 1, fillColor: '#0f172a', fillOpacity: 1, interactive: false }).addTo(lineasAbanico_);
+  });
 }
 
 // ── Detalle del punto + acciones de cascada ──
