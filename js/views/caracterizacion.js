@@ -18,6 +18,7 @@ import { db } from '../firebase.js';
 import { leerPadron } from '../padrones.js';
 import { leer } from '../vivo.js';
 import { toast, escapeHtml } from '../ui.js';
+import { META_CARACT } from '../metas.js';
 
 
 let session_   = null;
@@ -603,8 +604,8 @@ function renderResumen() { render(); }
 function renderLista() { render(); }
 
 // ── Panel (admin/asistente) ──
-const META_PAREJA = 7;
-const META_RETIROS = 12;
+const META_PAREJA = META_CARACT.instalaciones;   // ver js/metas.js (la misma del Inicio)
+const META_RETIROS = META_CARACT.retiros;
 
 function renderPanel() {
   const el = container_.querySelector('#crc-resumen');

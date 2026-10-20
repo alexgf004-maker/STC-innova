@@ -8,6 +8,7 @@ import { db } from '../firebase.js';
 import { leer, actual, tecnicosActivos } from '../vivo.js';
 import { leerStats, recalcularStats } from '../stats.js';
 import { toast, escapeHtml } from '../ui.js';
+import { META_CARACT, instalacionLograda } from '../metas.js';
 
 const META_DIARIA = 15;
 
@@ -404,16 +405,19 @@ async function cargarDatosTecnico(session, area, destino) {
     }
 
     // ── Meta del día ──────────────────────────────────
-    // Cambios: 15 fija · Caracterización: 7 fija · AMI: configurable (ami_config)
+    // Cambios: 15 fija · Caracterización: js/metas.js · AMI: configurable (ami_config)
     try {
       const claveHoy = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; })();
       const esDeHoy = (ts) => { const d = ts?.toDate ? ts.toDate() : (ts ? new Date(ts) : null); if (!d) return false; return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}` === claveHoy; };
       const setTxt = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
 
       if (area === 'Caracterizacion') {
-        // Dos metas separadas: 10 instalaciones y 12 retiros
-        const META_INST = 10, META_RET = 12;
-        const instHoy = ordenes.filter(o => (o.estado === 'por_confirmar' || o.estado === 'confirmada') && esDeHoy(o.fechaHecha)).length;
+        // Dos metas separadas, las mismas de la pantalla de Caracterización
+        // (js/metas.js). Instalación = lograda en algún punto: las órdenes
+        // cerradas solo con visitas no cuentan (antes sí, y el Inicio mostraba
+        // más instalaciones y otra meta que Caracterización).
+        const META_INST = META_CARACT.instalaciones, META_RET = META_CARACT.retiros;
+        const instHoy = ordenes.filter(o => instalacionLograda(o) && esDeHoy(o.fechaHecha)).length;
         const retHoy = retiros.filter(r => (r.estado === 'retirado' || r.estado === 'no_retirado') && esDeHoy(r.fechaHecho)).length;
         const pctInst = Math.min(100, Math.round((instHoy / META_INST) * 100));
         const pctRet  = Math.min(100, Math.round((retHoy / META_RET) * 100));
