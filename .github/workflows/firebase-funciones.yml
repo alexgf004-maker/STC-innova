@@ -2,6 +2,10 @@
 # cada vez que cambian en main. También se puede correr a mano desde la
 # pestaña Actions ("Run workflow").
 #
+# Si al entrar a la app la consola dice que .../login responde 404 o "blocked
+# by CORS policy", la función desapareció del servidor: correr este flujo a
+# mano la vuelve a publicar y prueba que el login funcione.
+#
 # Necesita el secreto FIREBASE_SERVICE_ACCOUNT (JSON de una cuenta de servicio
 # del proyecto innova-950ff con rol Propietario). Ver functions/LEEME.md.
 name: Publicar funciones de Firebase
