@@ -538,6 +538,19 @@ function pintarRetiro(r) {
   markersRet_[r.id] = m;
 }
 
+// Botón para irse hasta el punto con Google Maps (o la app de mapas del teléfono)
+function botonNavegar(lat, lng) {
+  if (lat == null || lng == null) return '';
+  return `<button class="btn-action outline crc-navegar" data-lat="${lat}" data-lng="${lng}" style="width:100%;margin-bottom:12px">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg>
+      Navegar hasta aquí
+    </button>`;
+}
+function ligarNavegar(sheet) {
+  sheet.querySelectorAll('.crc-navegar').forEach(b => b.onclick = () =>
+    window.open(`https://www.google.com/maps/dir/?api=1&destination=${b.dataset.lat},${b.dataset.lng}`, '_blank'));
+}
+
 function abrirDetalleRetiro(retiroId) {
   const r = retiros_.find(x => x.id === retiroId);
   if (!r) return;
@@ -561,6 +574,7 @@ function abrirDetalleRetiro(retiroId) {
       <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" style="flex-shrink:0;margin-top:1px"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>
       <div style="font-size:13px;font-weight:500;color:rgba(255,255,255,.95);line-height:1.4">${escapeHtml(r.direccion)}</div>
     </div>` : ''}
+    ${botonNavegar(r.lat, r.lng)}
 
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:14px">
       ${r.medidor ? `<div style="background:var(--glass);border:1px solid var(--border);border-radius:10px;padding:9px 11px;grid-column:1 / -1">
@@ -595,6 +609,7 @@ function abrirDetalleRetiro(retiroId) {
     </div>
   `;
   sheet.classList.add('abierta');
+  ligarNavegar(sheet);
 
   if (!hecho) {
     sheet.querySelector('#crc-ret-ok').onclick = () => marcarRetiro(retiroId, 'retirado');
@@ -832,6 +847,7 @@ function abrirDetalle(ordenId, nivel) {
       <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" style="flex-shrink:0;margin-top:1px"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>
       <div style="font-size:13px;font-weight:500;color:rgba(255,255,255,.95);line-height:1.4">${escapeHtml(p.direccion)}</div>
     </div>` : ''}
+    ${botonNavegar(p.lat, p.lng)}
 
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:${visitas.length?'12px':'16px'}">
       ${p.medidor ? `<div style="background:var(--glass);border:1px solid var(--border);border-radius:10px;padding:9px 11px;grid-column:1 / -1">
@@ -872,6 +888,7 @@ function abrirDetalle(ordenId, nivel) {
   `;
 
   sheet.classList.add('abierta');
+  ligarNavegar(sheet);
 
   if (!cerrada) {
     sheet.querySelector('#crc-hecha').onclick = () => marcarHecha(ordenId, nivel);
