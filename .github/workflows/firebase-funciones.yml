@@ -60,13 +60,13 @@ jobs:
             artifactregistry.googleapis.com run.googleapis.com eventarc.googleapis.com \
             iamcredentials.googleapis.com cloudbilling.googleapis.com --project "$PROYECTO"
 
-      # FUNCTIONS_DEPLOY_UNCHANGED: reconstruir aunque el código no cambie (si
-      # no, Firebase se salta las funciones "sin cambios" y una que ya no
-      # arranca en el servidor se queda rota).
+      # Reconstruir siempre, aunque el código no cambie: si no, Firebase se
+      # salta las funciones "sin cambios" y una que ya no arranca en el
+      # servidor se queda rota. La marca solo existe en esta copia de trabajo.
       - name: Publicar funciones
-        env:
-          FUNCTIONS_DEPLOY_UNCHANGED: 'true'
-        run: npx --yes firebase-tools@14 deploy --only functions --project "$PROYECTO" --force --non-interactive
+        run: |
+          echo "// publicación $GITHUB_SHA $GITHUB_RUN_ID.$GITHUB_RUN_ATTEMPT" >> functions/index.js
+          npx --yes firebase-tools@14 deploy --only functions --project "$PROYECTO" --force --non-interactive
 
       # Permisos de la cuenta con la que corren las funciones: firmar tokens de
       # acceso (login), leer y escribir Firestore y administrar cuentas de Auth.
@@ -116,3 +116,7 @@ jobs:
         if: failure()
         run: |
           gcloud functions logs read login --region us-central1 --gen2 --limit 40 --project "$PROYECTO" || true
+          echo "--- Detalle de los errores del servidor ---"
+          gcloud logging read 'resource.type="cloud_run_revision" AND resource.labels.service_name="login" AND severity>=WARNING' \
+            --limit 30 --freshness 1d --project "$PROYECTO" \
+            --format='value(timestamp,severity,textPayload,jsonPayload.message,protoPayload.status.message)' || true
