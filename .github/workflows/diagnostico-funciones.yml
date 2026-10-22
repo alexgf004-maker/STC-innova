@@ -1,0 +1,50 @@
+# Diagnóstico de las Cloud Functions (solo lee, no cambia nada).
+# Corre al cambiar este archivo o a mano desde Actions ("Run workflow").
+# Muestra el estado de la facturación, la cuenta con la que corren las
+# funciones, el servicio del login y los registros completos de arranque.
+name: Diagnóstico de funciones
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/diagnostico-funciones.yml'
+  workflow_dispatch:
+
+jobs:
+  diagnostico:
+    runs-on: ubuntu-latest
+    env:
+      PROYECTO: innova-950ff
+    steps:
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Facturación del proyecto
+        run: gcloud billing projects describe "$PROYECTO" || true
+
+      - name: Cuenta con la que corren las funciones
+        run: |
+          NUM=$(gcloud projects describe "$PROYECTO" --format='value(projectNumber)')
+          gcloud iam service-accounts describe "$NUM-compute@developer.gserviceaccount.com" --project "$PROYECTO" || true
+
+      - name: Servicio del login
+        run: |
+          gcloud run services describe login --region us-central1 --project "$PROYECTO" \
+            --format='yaml(spec.template.spec,status.conditions,status.latestReadyRevisionName,status.latestCreatedRevisionName)' || true
+          gcloud run revisions list --service login --region us-central1 --project "$PROYECTO" --limit 6 || true
+
+      - name: Registros completos del arranque del login
+        run: |
+          gcloud logging read 'resource.type="cloud_run_revision" AND resource.labels.service_name="login" AND timestamp>="2026-10-22T20:10:00Z"' \
+            --limit 80 --order asc --project "$PROYECTO" \
+            --format='table[no-heading](timestamp,severity,resource.labels.revision_name,textPayload,jsonPayload,protoPayload.status.message)' || true
+
+      - name: Avisos del proyecto (cuotas, suspensiones)
+        run: |
+          gcloud logging read 'severity>=ERROR AND timestamp>="2026-10-22T20:10:00Z" AND NOT resource.labels.service_name=("login" OR "cambiarpin" OR "adminpin" OR "crearusuario" OR "migrarpines")' \
+            --limit 30 --project "$PROYECTO" \
+            --format='table[no-heading](timestamp,resource.type,logName,textPayload,protoPayload.status.message)' || true
