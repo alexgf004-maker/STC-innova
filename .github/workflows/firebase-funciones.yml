@@ -60,6 +60,9 @@ jobs:
             artifactregistry.googleapis.com run.googleapis.com eventarc.googleapis.com \
             iamcredentials.googleapis.com cloudbilling.googleapis.com --project "$PROYECTO"
 
+      # Las funciones viven en us-east1 y us-central1 (ver functions/index.js).
+      # Si una región falla, las pruebas de abajo corren igual contra us-east1,
+      # que es la que usa la app primero.
       # Reconstruir siempre, aunque el código no cambie: si no, Firebase se
       # salta las funciones "sin cambios" y una que ya no arranca en el
       # servidor se queda rota. La marca solo existe en esta copia de trabajo.
@@ -71,6 +74,7 @@ jobs:
       # Permisos de la cuenta con la que corren las funciones: firmar tokens de
       # acceso (login), leer y escribir Firestore y administrar cuentas de Auth.
       - name: Permisos de las funciones
+        if: ${{ !cancelled() }}
         run: |
           NUM=$(gcloud projects describe "$PROYECTO" --format='value(projectNumber)')
           SA="$NUM-compute@developer.gserviceaccount.com"
@@ -84,9 +88,10 @@ jobs:
           echo "Permisos listos para $SA"
 
       - name: Probar que el login responde
+        if: ${{ !cancelled() }}
         run: |
           sleep 45
-          R=$(curl -s -X POST "https://us-central1-$PROYECTO.cloudfunctions.net/login" \
+          R=$(curl -s -X POST "https://us-east1-$PROYECTO.cloudfunctions.net/login" \
             -H 'Content-Type: application/json' -d '{"data":{"username":"prueba-despliegue-github","pin":"0000"}}')
           echo "$R"
           echo "$R" | grep -q 'PERMISSION_DENIED' || { echo "::error::El login no respondió como se esperaba"; exit 1; }
@@ -95,6 +100,7 @@ jobs:
       # Login correcto de punta a punta con un usuario temporal (se borra al
       # terminar): comprueba que el servidor lee Firestore y firma el token.
       - name: Probar un login correcto
+        if: ${{ !cancelled() }}
         run: |
           TK=$(gcloud auth print-access-token)
           FS="https://firestore.googleapis.com/v1/projects/$PROYECTO/databases/(default)/documents"
@@ -107,7 +113,7 @@ jobs:
           poner "users/$TUID" '{"fields":{"role":{"stringValue":"tecnico"},"active":{"booleanValue":true},"displayName":{"stringValue":"Prueba automatica (se borra sola)"},"username":{"stringValue":"'$U'"}}}'
           poner "pins/$TUID" '{"fields":{"pinHash":{"stringValue":"'$HASH'"},"pinSalt":{"stringValue":"'$SAL'"}}}'
           echo
-          R=$(curl -s -X POST "https://us-central1-$PROYECTO.cloudfunctions.net/login" \
+          R=$(curl -s -X POST "https://us-east1-$PROYECTO.cloudfunctions.net/login" \
             -H 'Content-Type: application/json' -d '{"data":{"username":"'$U'","pin":"'$PIN'"}}')
           echo "$R" | grep -q '"token"' || { echo "$R"; echo "::error::El login correcto no entregó el token"; exit 1; }
           echo "Login correcto: el servidor entregó el token de acceso."
@@ -115,7 +121,7 @@ jobs:
       - name: Registro de errores del login (si algo falló)
         if: failure()
         run: |
-          gcloud functions logs read login --region us-central1 --gen2 --limit 40 --project "$PROYECTO" || true
+          gcloud functions logs read login --region us-east1 --gen2 --limit 40 --project "$PROYECTO" || true
           echo "--- Detalle de los errores del servidor ---"
           gcloud logging read 'resource.type="cloud_run_revision" AND resource.labels.service_name="login" AND severity>=WARNING' \
             --limit 30 --freshness 1d --project "$PROYECTO" \

@@ -31,7 +31,12 @@ const { FieldValue } = require('firebase-admin/firestore');
 const crypto = require('crypto');
 
 admin.initializeApp();
-setGlobalOptions({ region: 'us-central1', maxInstances: 5 });
+setGlobalOptions({ maxInstances: 5 });
+
+// Se publican en dos regiones. El 22-10-2026 us-central1 dejó de arrancar
+// contenedores (ni la versión que ya funcionaba) y el login quedó caído; la
+// app llama primero a us-east1 y, si no responde, a us-central1.
+const OPC = { region: ['us-east1', 'us-central1'] };
 
 const db = () => admin.firestore();
 const FV = FieldValue;
@@ -119,7 +124,7 @@ async function uidDeUsuario(username) {
 }
 
 // ── login ─────────────────────────────────────────
-exports.login = onCall(async req => {
+exports.login = onCall(OPC, async req => {
   const username = normUsuario(req.data?.username);
   const pin = String(req.data?.pin || '');
   if (!username || !pin) throw new HttpsError('invalid-argument', 'Escribe tu usuario y tu PIN.');
@@ -153,7 +158,7 @@ exports.login = onCall(async req => {
 });
 
 // ── cambiarPin (el propio usuario) ────────────────
-exports.cambiarPin = onCall(async req => {
+exports.cambiarPin = onCall(OPC, async req => {
   const yo = await quienLlama(req);
   const actual = String(req.data?.actual || ''), nuevo = String(req.data?.nuevo || '');
   if (!pinValido(nuevo)) throw new HttpsError('invalid-argument', 'El PIN nuevo debe tener de 4 a 8 números.');
@@ -171,7 +176,7 @@ exports.cambiarPin = onCall(async req => {
 });
 
 // ── adminPin (el admin restablece el PIN de alguien) ──
-exports.adminPin = onCall(async req => {
+exports.adminPin = onCall(OPC, async req => {
   const yo = await quienLlama(req);
   if (yo.role !== 'admin') throw new HttpsError('permission-denied', 'Solo el admin puede cambiar el PIN de otra persona.');
   const uid = String(req.data?.uid || ''), pin = String(req.data?.pin || '');
@@ -183,7 +188,7 @@ exports.adminPin = onCall(async req => {
 });
 
 // ── crearUsuario (admin o asistente) ──────────────
-exports.crearUsuario = onCall(async req => {
+exports.crearUsuario = onCall(OPC, async req => {
   const yo = await quienLlama(req);
   if (yo.role !== 'admin' && yo.role !== 'asistente') throw new HttpsError('permission-denied', 'No puedes crear usuarios.');
   const username = normUsuario(req.data?.username);
@@ -226,7 +231,7 @@ exports.crearUsuario = onCall(async req => {
 });
 
 // ── migrarPines (admin): saca todos los PIN de las fichas de usuario ──
-exports.migrarPines = onCall(async req => {
+exports.migrarPines = onCall(OPC, async req => {
   const yo = await quienLlama(req);
   if (yo.role !== 'admin') throw new HttpsError('permission-denied', 'Solo el admin.');
   const snap = await db().collection('users').get();
