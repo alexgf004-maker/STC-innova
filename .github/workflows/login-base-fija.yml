@@ -1,0 +1,61 @@
+# Publica SOLO el login (us-central1) con gcloud y la imagen base fija al
+# publicar (--runtime-update-policy=on-deploy), en lugar de la actualización
+# automática de la base que usa firebase deploy. Creado el 22-10-2026, cuando
+# ninguna función lograba arrancar con la base automática.
+name: Login con base fija
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/login-base-fija.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: firebase-funciones
+  cancel-in-progress: false
+
+jobs:
+  publicar:
+    runs-on: ubuntu-latest
+    env:
+      PROYECTO: innova-950ff
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Publicar el login con base fija
+        run: |
+          NUM=$(gcloud projects describe "$PROYECTO" --format='value(projectNumber)')
+          printf '%s\n' \
+            "FIREBASE_CONFIG: '{\"projectId\":\"$PROYECTO\",\"databaseURL\":\"https://$PROYECTO-default-rtdb.firebaseio.com\",\"storageBucket\":\"$PROYECTO.firebasestorage.app\"}'" \
+            "GCLOUD_PROJECT: $PROYECTO" > /tmp/env.yaml
+          gcloud functions deploy login --gen2 --region us-central1 --project "$PROYECTO" \
+            --runtime nodejs22 --runtime-update-policy on-deploy \
+            --source functions --entry-point login --trigger-http --allow-unauthenticated \
+            --memory 256Mi --max-instances 5 --timeout 60s \
+            --service-account "$NUM-compute@developer.gserviceaccount.com" \
+            --env-vars-file /tmp/env.yaml --quiet
+
+      - name: Probar que el login responde
+        if: ${{ !cancelled() }}
+        run: |
+          sleep 20
+          R=$(curl -s -X POST "https://us-central1-$PROYECTO.cloudfunctions.net/login" \
+            -H 'Content-Type: application/json' -d '{"data":{"username":"prueba-despliegue-github","pin":"0000"}}')
+          echo "$R"
+          echo "$R" | grep -q 'PERMISSION_DENIED' || { echo "::error::El login no respondió como se esperaba"; exit 1; }
+          echo "El login responde bien (rechaza un usuario inventado)."
+
+      - name: Registros del arranque (si algo falló)
+        if: failure()
+        run: |
+          gcloud logging read 'resource.type="cloud_run_revision" AND resource.labels.service_name="login"' \
+            --limit 25 --freshness 30m --project "$PROYECTO" \
+            --format='table[no-heading](timestamp,severity,logName,textPayload,jsonPayload.message)' || true
+          gcloud run revisions list --service login --region us-central1 --project "$PROYECTO" --limit 4 || true
