@@ -10,14 +10,11 @@
 # del proyecto innova-950ff con rol Propietario). Ver functions/LEEME.md.
 name: Publicar funciones de Firebase
 
+# APAGADA la publicación automática al cambiar functions/ (22-10-2026):
+# firebase deploy deja la imagen base en actualización automática y ese día
+# ninguna función lograba arrancar así. Se publica con login-base-fija.yml.
+# Este flujo solo corre a mano.
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'functions/**'
-      - 'firebase.json'
-      - '.firebaserc'
-      - '.github/workflows/firebase-funciones.yml'
   workflow_dispatch:
 
 concurrency:

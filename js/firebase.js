@@ -35,11 +35,11 @@ db.enablePersistence({ synchronizeTabs: true })
 // Funciones del servidor. Devuelve lo que responde la función; si falla,
 // el error trae `code` ('functions/permission-denied', ...) y un mensaje
 // pensado para mostrarse tal cual.
-// Están publicadas en dos regiones: primero us-east1 y, si no contesta
-// (caída de la región, aún sin publicar), us-central1. Solo se reintenta
+// Están publicadas en dos regiones: primero us-central1 y, si no contesta
+// (caída de la región, aún sin publicar), us-east1. Solo se reintenta
 // cuando la llamada no llegó a la función, no cuando la función respondió
 // con un error suyo (PIN incorrecto, sin permiso...).
-const REGIONES = ['us-east1', 'us-central1'].map(r => firebase.app().functions(r));
+const REGIONES = ['us-central1', 'us-east1'].map(r => firebase.app().functions(r));
 const NO_LLEGO = ['functions/internal', 'functions/unavailable', 'functions/not-found'];
 export async function llamar(nombre, datos) {
   let ultimo;
