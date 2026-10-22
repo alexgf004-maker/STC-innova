@@ -60,7 +60,12 @@ jobs:
             artifactregistry.googleapis.com run.googleapis.com eventarc.googleapis.com \
             iamcredentials.googleapis.com cloudbilling.googleapis.com --project "$PROYECTO"
 
+      # FUNCTIONS_DEPLOY_UNCHANGED: reconstruir aunque el código no cambie (si
+      # no, Firebase se salta las funciones "sin cambios" y una que ya no
+      # arranca en el servidor se queda rota).
       - name: Publicar funciones
+        env:
+          FUNCTIONS_DEPLOY_UNCHANGED: 'true'
         run: npx --yes firebase-tools@14 deploy --only functions --project "$PROYECTO" --force --non-interactive
 
       # Permisos de la cuenta con la que corren las funciones: firmar tokens de
