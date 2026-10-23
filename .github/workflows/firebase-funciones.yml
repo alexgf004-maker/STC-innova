@@ -1,20 +1,22 @@
-# Publica las Cloud Functions de STC-innova (carpeta functions/) en Firebase
-# cada vez que cambian en main. También se puede correr a mano desde la
-# pestaña Actions ("Run workflow").
+# Publica las Cloud Functions de STC-innova (carpeta functions/) cada vez que
+# cambian en main. También se puede correr a mano desde la pestaña Actions
+# ("Run workflow").
 #
-# Si al entrar a la app la consola dice que .../login responde 404 o "blocked
-# by CORS policy", la función desapareció del servidor: correr este flujo a
-# mano la vuelve a publicar y prueba que el login funcione.
+# Se publican con gcloud y la imagen base fija al publicar
+# (--runtime-update-policy=on-deploy), no con firebase deploy: ese deja la
+# base en actualización automática, y el 22-10-2026 ninguna función lograba
+# arrancar así (el login estuvo caído de 3:27 a 4:30 pm).
 #
 # Necesita el secreto FIREBASE_SERVICE_ACCOUNT (JSON de una cuenta de servicio
 # del proyecto innova-950ff con rol Propietario). Ver functions/LEEME.md.
 name: Publicar funciones de Firebase
 
-# APAGADA la publicación automática al cambiar functions/ (22-10-2026):
-# firebase deploy deja la imagen base en actualización automática y ese día
-# ninguna función lograba arrancar así. Se publica con login-base-fija.yml.
-# Este flujo solo corre a mano.
 on:
+  push:
+    branches: [main]
+    paths:
+      - 'functions/**'
+      - '.github/workflows/firebase-funciones.yml'
   workflow_dispatch:
 
 concurrency:
@@ -26,6 +28,8 @@ jobs:
     runs-on: ubuntu-latest
     env:
       PROYECTO: innova-950ff
+      REGION: us-central1
+      FUNCIONES: login cambiarPin adminPin crearUsuario migrarPines
     steps:
       - uses: actions/checkout@v4
 
@@ -38,13 +42,6 @@ jobs:
             exit 1
           fi
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-
-      - name: Instalar dependencias de las funciones
-        run: npm ci --prefix functions
-
       - uses: google-github-actions/auth@v2
         with:
           credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
@@ -54,24 +51,28 @@ jobs:
       - name: Activar servicios necesarios
         run: |
           gcloud services enable cloudfunctions.googleapis.com cloudbuild.googleapis.com \
-            artifactregistry.googleapis.com run.googleapis.com eventarc.googleapis.com \
-            iamcredentials.googleapis.com cloudbilling.googleapis.com --project "$PROYECTO"
+            artifactregistry.googleapis.com run.googleapis.com \
+            iamcredentials.googleapis.com --project "$PROYECTO"
 
-      # Las funciones viven en us-east1 y us-central1 (ver functions/index.js).
-      # Si una región falla, las pruebas de abajo corren igual contra us-east1,
-      # que es la que usa la app primero.
-      # Reconstruir siempre, aunque el código no cambie: si no, Firebase se
-      # salta las funciones "sin cambios" y una que ya no arranca en el
-      # servidor se queda rota. La marca solo existe en esta copia de trabajo.
       - name: Publicar funciones
         run: |
-          echo "// publicación $GITHUB_SHA $GITHUB_RUN_ID.$GITHUB_RUN_ATTEMPT" >> functions/index.js
-          npx --yes firebase-tools@14 deploy --only functions --project "$PROYECTO" --force --non-interactive
+          NUM=$(gcloud projects describe "$PROYECTO" --format='value(projectNumber)')
+          printf '%s\n' \
+            "FIREBASE_CONFIG: '{\"projectId\":\"$PROYECTO\",\"databaseURL\":\"https://$PROYECTO-default-rtdb.firebaseio.com\",\"storageBucket\":\"$PROYECTO.firebasestorage.app\"}'" \
+            "GCLOUD_PROJECT: $PROYECTO" > /tmp/env.yaml
+          for F in $FUNCIONES; do
+            echo "=== $F ==="
+            gcloud functions deploy "$F" --gen2 --region "$REGION" --project "$PROYECTO" \
+              --runtime nodejs22 --runtime-update-policy on-deploy \
+              --source functions --entry-point "$F" --trigger-http --allow-unauthenticated \
+              --memory 256Mi --max-instances 5 --timeout 60s \
+              --service-account "$NUM-compute@developer.gserviceaccount.com" \
+              --env-vars-file /tmp/env.yaml --quiet
+          done
 
       # Permisos de la cuenta con la que corren las funciones: firmar tokens de
       # acceso (login), leer y escribir Firestore y administrar cuentas de Auth.
       - name: Permisos de las funciones
-        if: ${{ !cancelled() }}
         run: |
           NUM=$(gcloud projects describe "$PROYECTO" --format='value(projectNumber)')
           SA="$NUM-compute@developer.gserviceaccount.com"
@@ -85,10 +86,9 @@ jobs:
           echo "Permisos listos para $SA"
 
       - name: Probar que el login responde
-        if: ${{ !cancelled() }}
         run: |
-          sleep 45
-          R=$(curl -s -X POST "https://us-east1-$PROYECTO.cloudfunctions.net/login" \
+          sleep 20
+          R=$(curl -s -X POST "https://$REGION-$PROYECTO.cloudfunctions.net/login" \
             -H 'Content-Type: application/json' -d '{"data":{"username":"prueba-despliegue-github","pin":"0000"}}')
           echo "$R"
           echo "$R" | grep -q 'PERMISSION_DENIED' || { echo "::error::El login no respondió como se esperaba"; exit 1; }
@@ -97,7 +97,6 @@ jobs:
       # Login correcto de punta a punta con un usuario temporal (se borra al
       # terminar): comprueba que el servidor lee Firestore y firma el token.
       - name: Probar un login correcto
-        if: ${{ !cancelled() }}
         run: |
           TK=$(gcloud auth print-access-token)
           FS="https://firestore.googleapis.com/v1/projects/$PROYECTO/databases/(default)/documents"
@@ -110,16 +109,23 @@ jobs:
           poner "users/$TUID" '{"fields":{"role":{"stringValue":"tecnico"},"active":{"booleanValue":true},"displayName":{"stringValue":"Prueba automatica (se borra sola)"},"username":{"stringValue":"'$U'"}}}'
           poner "pins/$TUID" '{"fields":{"pinHash":{"stringValue":"'$HASH'"},"pinSalt":{"stringValue":"'$SAL'"}}}'
           echo
-          R=$(curl -s -X POST "https://us-east1-$PROYECTO.cloudfunctions.net/login" \
+          R=$(curl -s -X POST "https://$REGION-$PROYECTO.cloudfunctions.net/login" \
             -H 'Content-Type: application/json' -d '{"data":{"username":"'$U'","pin":"'$PIN'"}}')
           echo "$R" | grep -q '"token"' || { echo "$R"; echo "::error::El login correcto no entregó el token"; exit 1; }
           echo "Login correcto: el servidor entregó el token de acceso."
 
-      - name: Registro de errores del login (si algo falló)
+      - name: Las demás funciones responden
+        run: |
+          for F in $FUNCIONES; do
+            [ "$F" = login ] && continue
+            R=$(curl -s -X POST "https://$REGION-$PROYECTO.cloudfunctions.net/$F" -H 'Content-Type: application/json' -d '{"data":{}}')
+            echo "$F: $R"
+            echo "$R" | grep -q 'UNAUTHENTICATED' || { echo "::error::$F no respondió"; exit 1; }
+          done
+
+      - name: Registro de errores (si algo falló)
         if: failure()
         run: |
-          gcloud functions logs read login --region us-east1 --gen2 --limit 40 --project "$PROYECTO" || true
-          echo "--- Detalle de los errores del servidor ---"
-          gcloud logging read 'resource.type="cloud_run_revision" AND resource.labels.service_name="login" AND severity>=WARNING' \
-            --limit 30 --freshness 1d --project "$PROYECTO" \
-            --format='value(timestamp,severity,textPayload,jsonPayload.message,protoPayload.status.message)' || true
+          gcloud logging read 'resource.type="cloud_run_revision" AND severity>=WARNING' \
+            --limit 30 --freshness 1h --project "$PROYECTO" \
+            --format='table[no-heading](timestamp,severity,resource.labels.service_name,textPayload,jsonPayload.message)' || true

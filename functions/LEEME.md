@@ -13,6 +13,12 @@ Se publican solas desde GitHub Actions (`.github/workflows/firebase-funciones.ym
 cuando cambia algo de `functions/` en `main`, o a mano en Actions → "Publicar
 funciones de Firebase" → Run workflow.
 
+Se publican con `gcloud functions deploy` y la imagen base fija
+(`--runtime-update-policy=on-deploy`), no con `firebase deploy`. El 22-10-2026,
+con la base en actualización automática (lo que deja `firebase deploy`),
+ninguna función lograba arrancar y el login estuvo caído una hora. No volver a
+publicarlas con `firebase deploy`.
+
 Configuración (una sola vez):
 
 1. En Google Cloud Console, proyecto **innova-950ff** → IAM y administración →
