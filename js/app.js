@@ -567,23 +567,47 @@ const CAMP_LABEL_AVISO = {
   Caracterizacion:'Caracterización', ReclamosSIGET:'Reclamos SIGET', OTC:'OTC',
 };
 
+// Solicitudes pendientes y las que ya tienen un despacho esperando que el
+// técnico acepte: esas ya se atendieron y no cuentan en el globo rojo.
+let __solicPend = [];                 // [{id, area}]
+let __solicEnviadas = new Set();      // solicitudId de despachos por aceptar
+let __unsubDespSolic = null;
+
+function recontarSolicitudes(){
+  const porCampana={};
+  __solicPend.forEach(s=>{
+    if (__solicEnviadas.has(s.id)) return;
+    porCampana[s.area]=(porCampana[s.area]||0)+1;
+  });
+  window.__solicPorCampana=porCampana;
+  pintarBadgeSolicitudes();
+}
+window.__recontarSolicitudes = recontarSolicitudes;
+
 function iniciarAvisoSolicitudes(session){
   try{
     // Cerrar listener anterior si lo hubiera
     if (__unsubSolic) { try{ __unsubSolic(); }catch{} __unsubSolic=null; }
+    if (__unsubDespSolic) { try{ __unsubDespSolic(); }catch{} __unsubDespSolic=null; }
+
+    __unsubDespSolic = db.collection('despachos_pendientes')
+      .onSnapshot(snap=>{
+        __solicEnviadas=new Set(snap.docs.map(d=>d.data().solicitudId).filter(Boolean));
+        recontarSolicitudes();
+      }, err=>{
+        console.warn('[app] Listener de despachos por aceptar falló:', err.message);
+      });
 
     __unsubSolic = db.collection('solicitudes_material')
       .where('estado','==','pendiente')
       .onSnapshot(snap=>{
-        const porCampana={};
         const idsActuales=new Set();
+        __solicPend=[];
         snap.forEach(doc=>{
           const s=doc.data();
           idsActuales.add(doc.id);
-          const c=s.area||'CAMBIOS';
-          porCampana[c]=(porCampana[c]||0)+1;
+          __solicPend.push({id:doc.id, area:s.area||'CAMBIOS'});
         });
-        window.__solicPorCampana=porCampana;
 
         // Detectar solicitudes NUEVAS (no en la primera carga)
         if (__solicConocidas !== null){
@@ -593,7 +617,7 @@ function iniciarAvisoSolicitudes(session){
         }
         __solicConocidas=idsActuales;
 
-        pintarBadgeSolicitudes();
+        recontarSolicitudes();
       }, err=>{
         console.warn('[app] Listener de solicitudes falló:', err.message);
       });

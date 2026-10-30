@@ -24,11 +24,14 @@ export async function recalcularStats() {
   try {
     const hoy = new Date(); hoy.setHours(0,0,0,0);
 
-    const [cmSnap, otcSnap, solSnap] = await Promise.all([
+    const [cmSnap, otcSnap, solSnap, despSnap] = await Promise.all([
       db.collection('cambios_ordenes').get(),
       db.collection('otc_ordenes').get(),
       db.collection('solicitudes_material').where('estado', '==', 'pendiente').get(),
+      db.collection('despachos_pendientes').get(),
     ]);
+    // Las que ya tienen el material enviado (esperando que el técnico acepte) ya se atendieron
+    const enviadas = new Set(despSnap.docs.map(d => d.data().solicitudId).filter(Boolean));
 
     const cmDocs = cmSnap.docs.map(d => d.data());
 
@@ -52,7 +55,7 @@ export async function recalcularStats() {
       cmTotal,
       cmAprobadas,
       otcActivas,
-      solicitudesPendientes: solSnap.size,
+      solicitudesPendientes: solSnap.docs.filter(d => !enviadas.has(d.id)).length,
       actualizadoEn: firebase.firestore.Timestamp.now(),
     };
 

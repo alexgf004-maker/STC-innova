@@ -1236,6 +1236,7 @@ body {
 .estado-badge.warn       { color: var(--warn-light); border-color: rgba(245,158,11,.3); background: rgba(245,158,11,.08); }
 .estado-badge.crit       { color: var(--crit-light); border-color: rgba(239,68,68,.3);  background: rgba(239,68,68,.08); }
 .estado-badge.muted      { color: var(--text-3);     border-color: var(--border);       background: var(--glass); }
+.estado-badge.info       { color: #7dd3fc;           border-color: rgba(56,189,248,.3); background: rgba(56,189,248,.08); }
 
 .detail-section { display: flex; flex-direction: column; gap: 8px; }
 .detail-label {

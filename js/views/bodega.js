@@ -95,6 +95,11 @@ let serialesCache_ = {};     // itemId -> [seriales disponibles] para validació
 let allItems_    = [];
 let salidas_     = [];
 let despachosPendientes_ = [];  // despachos esperando aceptación del técnico
+// Una solicitud "pendiente" cuyo material ya se envió y espera que el técnico
+// lo acepte. Al aceptarlo pasa a "aprobado"; si lo rechaza, el despacho se
+// borra y la solicitud vuelve a quedar pendiente.
+const despachoDeSolicitud = s => despachosPendientes_.find(p => p.solicitudId && p.solicitudId === s.id) || null;
+const porAtender = s => (s.estado||'pendiente')==='pendiente' && !despachoDeSolicitud(s);
 let invFiltro_ = 'todos';       // inventario: todos | agotados | bajos
 
 // Cantidad ya comprometida en despachos enviados que el técnico todavía no
@@ -172,7 +177,7 @@ function renderShell() {
         // Globo rojo en la pestaña Solicitudes con las pendientes de esta campaña
         let badge='';
         if(t.id==='solicitudes'){
-          const n=solicitudes_.filter(s=>(s.area||'CAMBIOS')===areaFiltro_ && (s.estado||'pendiente')==='pendiente').length;
+          const n=solicitudes_.filter(s=>(s.area||'CAMBIOS')===areaFiltro_ && porAtender(s)).length;
           if(n>0) badge=`<span class="bod-tab-badge" style="margin-left:6px;min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:#ef4444;color:#fff;font-size:10px;font-weight:800;line-height:18px;display:inline-block;text-align:center;vertical-align:middle">${n>99?'99+':n}</span>`;
         }
         return `<div class="cambios-tab bod ${t.id===activeTab_?'active':''}" data-tab="${t.id}">${t.label}${badge}</div>`;
@@ -222,6 +227,18 @@ async function loadData(miMontaje) {
     } catch(e) {
       console.warn('[bodega] No se pudieron cargar técnicos:',e);
     }
+    // El técnico: los despachos que le enviaron y aún no acepta (para que sus
+    // pedidos digan "Por aceptar" en vez de "Pendiente")
+    if (esTec) {
+      try {
+        const pendSnap = await db.collection('despachos_pendientes').where('tecnicoRecibeUid','==',uid_).get();
+        if (miMontaje !== undefined && !sigueActiva(miMontaje)) return;
+        despachosPendientes_ = pendSnap.docs.map(d=>({id:d.id,...d.data()}));
+        if (despachosPendientes_.length && activeTab_==='mis-solic') renderMisSolicitudes();
+      } catch(e) {
+        console.warn('[bodega] No se pudieron cargar tus despachos por aceptar:',e);
+      }
+    }
     // Cargar despachos pendientes de aceptación (admin/asistente)
     if (role_==='admin' || role_==='asistente') {
       try {
@@ -229,6 +246,8 @@ async function loadData(miMontaje) {
         if (miMontaje !== undefined && !sigueActiva(miMontaje)) return;
         despachosPendientes_ = pendSnap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(b.fecha?.seconds||0)-(a.fecha?.seconds||0));
         if (despachosPendientes_.length && activeTab_==='historial') renderHistorial();
+        if (activeTab_==='solicitudes') renderSolicitudes();
+        actualizarBadgeSolicitudes();
       } catch(e) {
         console.warn('[bodega] No se pudieron cargar despachos pendientes:',e);
       }
@@ -800,7 +819,7 @@ function renderFormSolicitar() {
 function renderMisSolicitudes() {
   const content  = document.getElementById('bod-content');
   const misSolic = solicitudes_.filter(s=>s.usuarioUid===uid_);
-  const BADGE={pendiente:{cls:'warn',border:'rgba(251,191,36,.3)',label:'Pendiente'},aprobado:{cls:'ok',border:'var(--border)',label:'Aprobado'},rechazado:{cls:'crit',border:'var(--border)',label:'Rechazado'}};
+  const BADGE={pendiente:{cls:'warn',border:'rgba(251,191,36,.3)',label:'Pendiente'},enviada:{cls:'info',border:'rgba(56,189,248,.3)',label:'Por aceptar'},aprobado:{cls:'ok',border:'var(--border)',label:'Aprobado'},rechazado:{cls:'crit',border:'var(--border)',label:'Rechazado'}};
 
   content.innerHTML=`
     <div class="anim-up">
@@ -808,7 +827,8 @@ function renderMisSolicitudes() {
       ${!misSolic.length?`<div class="dev-module"><div class="dev-title">Sin pedidos</div><p>Aún no has solicitado material.</p></div>`:`
       <div class="flex-col gap-8">
         ${misSolic.map(s=>{
-          const b=BADGE[s.estado]||BADGE.pendiente;
+          const porAceptar=!porAtender(s)&&(s.estado||'pendiente')==='pendiente';
+          const b=porAceptar?BADGE.enviada:(BADGE[s.estado]||BADGE.pendiente);
           const cc=CAMPANA_COLORS[s.area];
           return `<div class="ds-card" style="border-color:${b.border}">
             <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:10px">
@@ -822,6 +842,7 @@ function renderMisSolicitudes() {
               ${(s.materiales||[]).map(m=>`<div style="display:flex;justify-content:space-between;gap:10px;font-size:13px"><span style="color:var(--text-2)">${tcH(m.nombre||m.name||'—')}</span><span style="font-weight:600;white-space:nowrap">${m.cantidad} ${safeStr(m.unit||m.unidad,'')}</span></div>`).join('')}
             </div>
             ${s.estado==='rechazado'&&s.notas?`<div style="font-size:12px;color:var(--text-3);margin-top:10px">Motivo: ${escapeHtml(s.notas)}</div>`:''}
+            ${porAceptar?`<div style="font-size:12px;color:var(--text-3);margin-top:10px">Bodega ya te envió este material. Revísalo y acéptalo en el aviso de material.</div>`:''}
           </div>`;
         }).join('')}
       </div>`}
@@ -917,7 +938,7 @@ function setCampana(area) {
 function actualizarBadgeSolicitudes(){
   const tab = container_?.querySelector('.cambios-tab.bod[data-tab="solicitudes"]');
   if(!tab) return;
-  const n = solicitudes_.filter(s=>(s.area||'CAMBIOS')===areaFiltro_ && (s.estado||'pendiente')==='pendiente').length;
+  const n = solicitudes_.filter(s=>(s.area||'CAMBIOS')===areaFiltro_ && porAtender(s)).length;
   let badge = tab.querySelector('.bod-tab-badge');
   if(n>0){
     if(!badge){
@@ -1438,13 +1459,15 @@ function renderStockUsuarios() {
 function renderSolicitudes() {
   const content    = document.getElementById('bod-content');
   const solicCampana = solicitudes_.filter(s => (s.area || 'CAMBIOS') === areaFiltro_);
-  const pendientes = solicCampana.filter(s=>s.estado==='pendiente');
-  const resto      = solicCampana.filter(s=>s.estado!=='pendiente');
-  const BADGE={pendiente:{cls:'warn',border:'rgba(251,191,36,.3)',label:'Pendiente'},aprobado:{cls:'ok',border:'var(--border)',label:'Aprobada'},rechazado:{cls:'crit',border:'var(--border)',label:'Rechazada'}};
+  const pendientes = solicCampana.filter(porAtender);
+  const enviadas   = solicCampana.filter(s=>(s.estado||'pendiente')==='pendiente' && despachoDeSolicitud(s));
+  const resto      = solicCampana.filter(s=>(s.estado||'pendiente')!=='pendiente');
+  const BADGE={pendiente:{cls:'warn',border:'rgba(251,191,36,.3)',label:'Pendiente'},enviada:{cls:'info',border:'rgba(56,189,248,.3)',label:'Enviada'},aprobado:{cls:'ok',border:'var(--border)',label:'Aprobada'},rechazado:{cls:'crit',border:'var(--border)',label:'Rechazada'}};
   const sec = (titulo, n) => `<div class="bod-sec"><div class="ds-sec">${titulo}</div><span class="bod-count">${n}</span></div>`;
 
   function cardSolicitud(s, actions) {
-    const b=BADGE[s.estado]||BADGE.pendiente;
+    const desp=despachoDeSolicitud(s);
+    const b=(desp&&(s.estado||'pendiente')==='pendiente')?BADGE.enviada:(BADGE[s.estado]||BADGE.pendiente);
     return `<div class="ds-card" style="border-color:${b.border}">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:10px">
         <div style="min-width:0">
@@ -1462,6 +1485,7 @@ function renderSolicitudes() {
         </button>
         <button class="btn-action danger" style="flex:1;height:40px;font-size:12px" onclick="window.__bodega.rechazarSolicitud('${s.id}')">Rechazar</button>
       </div>`:''}
+      ${b===BADGE.enviada?`<div style="font-size:12px;color:var(--text-3);margin-top:10px;line-height:1.45">Enviado a <b style="color:var(--text-2)">${escapeHtml(safeStr(desp.usuarioResponsable,'el técnico'))}</b> por ${escapeHtml(safeStr(desp.entregadoPor,'bodega'))}${desp.fecha?` · ${fmtDate(desp.fecha)}`:''}<br>Falta que lo acepte en su app.</div>`:''}
       ${s.aprobadoPor?`<div style="font-size:11px;color:var(--text-4);margin-top:8px">${b.label} por ${escapeHtml(s.aprobadoPor)}</div>`:''}
     </div>`;
   }
@@ -1469,6 +1493,7 @@ function renderSolicitudes() {
   content.innerHTML=`
     <div class="flex-col gap-12">
       ${pendientes.length?`<div class="anim-up d1">${sec('Pendientes',pendientes.length)}<div class="flex-col gap-8">${pendientes.map(s=>cardSolicitud(s,true)).join('')}</div></div>`:''}
+      ${enviadas.length?`<div class="anim-up d1">${sec('Esperando que el técnico acepte',enviadas.length)}<div class="flex-col gap-8">${enviadas.map(s=>cardSolicitud(s,false)).join('')}</div></div>`:''}
       ${resto.length?`<div class="anim-up d2">${sec('Respondidas',resto.length)}<div class="flex-col gap-8">${resto.map(s=>cardSolicitud(s,false)).join('')}</div></div>`:''}
       ${!solicCampana.length?`<div class="dev-module anim-up d1"><div class="dev-title">Sin solicitudes</div><p>Cuando un técnico pida material para esta campaña, aparecerá aquí.</p></div>`:''}
     </div>`;
@@ -2280,9 +2305,12 @@ function abrirDespacho(solicitud=null) {
           fecha:firebase.firestore.FieldValue.serverTimestamp(),
         };
         const pendRef=await db.collection('despachos_pendientes').add(pendData);
-        despachosPendientes_.unshift({id:pendRef.id,...pendData});
+        despachosPendientes_.unshift({id:pendRef.id,...pendData,fecha:firebase.firestore.Timestamp.now()});
         ov.remove();
         toast('Enviado al técnico para aceptación','ok');
+        if(activeTab_==='solicitudes') renderSolicitudes();
+        actualizarBadgeSolicitudes();
+        window.__recontarSolicitudes?.();
       }catch(err){
         console.error('[bodega] Error despacho pendiente:',err);
         if(errEl){errEl.textContent=`Error: ${err.message}`;errEl.style.display='block';}
