@@ -206,7 +206,7 @@ async function cargarParejasActivas() {
     parejasActivas_ = [...set];
   } catch { parejasActivas_ = []; }
 }
-// Activas + las que ya tengan puntos; si no hay ninguna, las 3 de siempre.
+// Activas + las que ya tengan puntos; si no hay ninguna, las 4 de siempre.
 function parejasDisponibles() {
   const num = x => parseInt(String(x).replace(/\D/g, ''), 10) || 0;
   const set = new Set([...parejasActivas_, ...ordenes_.map(o => o.pareja), ...retiros_.map(r => r.pareja)].filter(Boolean));
@@ -1046,7 +1046,7 @@ function updateStat() {
 //  asignan a la pareja elegida.
 // ══════════════════════════════════════════════════════════════
 
-const PAREJAS_CRC = ['Pareja 1','Pareja 2','Pareja 3'];
+const PAREJAS_CRC = ['Pareja 1','Pareja 2','Pareja 3','Pareja 4'];
 
 // Solo se cuentan/asignan por zona los puntos aún pendientes. Los ya hechos
 // (instalación por_confirmar/confirmada, retiro retirado/no_retirado) siguen

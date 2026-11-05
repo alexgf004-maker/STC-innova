@@ -13,7 +13,7 @@ const AREAS    = ['CAMBIOS', 'Caracterizacion', 'Reclamos', 'AMI', 'Factibilidad
 const SIN_PAREJA = { Factibilidades: 'Individual' };
 const DESTINOS = {
   CAMBIOS: ['Pareja 1', 'Pareja 2', 'Pareja 3', 'Pareja 4'],
-  Caracterizacion: ['Pareja 1', 'Pareja 2', 'Pareja 3'],
+  Caracterizacion: ['Pareja 1', 'Pareja 2', 'Pareja 3', 'Pareja 4'],
   Reclamos: ['Pareja 1', 'Pareja 2'],
   AMI: ['Pareja 1', 'Pareja 2', 'Pareja 3', 'Pareja 4', 'Pareja 5', 'Pareja 6'],
   OTC:     ['NALVAR', 'RGONZA', 'JPEREZ'],
