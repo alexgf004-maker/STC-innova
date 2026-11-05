@@ -2669,6 +2669,9 @@ body[data-area="fb"] {           /* Factibilidades: rosa */
 .fb-modo.on { border-color: rgba(239,68,68,.45); background: rgba(239,68,68,.12); color: #fca5a5; }
 .fb-modo.on .fb-modo-sw { background: #ef4444; }
 .fb-modo.on .fb-modo-sw::after { transform: translateX(12px); }
+/* Variante violeta (seguimiento del técnico: no es una alerta) */
+.fb-modo.seg.on { border-color: rgba(167,139,250,.45); background: rgba(139,92,246,.14); color: #c4b5fd; }
+.fb-modo.seg.on .fb-modo-sw { background: #8b5cf6; }
 .fb-aviso-modo {
   display: flex; align-items: flex-start; gap: 8px; padding: 10px 12px; margin-bottom: 12px; border-radius: 12px;
   background: rgba(239,68,68,.1); border: 1px solid rgba(239,68,68,.35); color: #fecaca; font-size: 12.5px; line-height: 1.4;

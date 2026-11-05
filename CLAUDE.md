@@ -72,7 +72,8 @@ js/
     reclamos.js             bitácora Reclamos SIGET
     factibilidades.js + factibilidades_mapa.js   área Factibilidades (técnico individual, semáforo de días)
     factibilidades_cerradas.js  pestaña Cerradas (oficina: aprobar / corregir / devolver) e historial
-                           del técnico (sus cierres de 14 días). El mapa asigna por zona (polígono)
+                           completo del técnico (filtro por mes/resultado, Excel, nota `notaTecnico` y
+                           `seguimiento`, que solo escribe él: las reglas se lo permiten). El mapa asigna por zona
   factibilidades_comun.js  listeners compartidos de órdenes abiertas de Factibilidades
                            y modo atrasadas por técnico (config general.modoAtrasadas {uid: true},
                            radioCercanas): el técnico solo ve sus rojas + las cercanas; sin rojas, amarillas

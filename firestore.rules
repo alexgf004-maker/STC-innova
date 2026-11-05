@@ -85,7 +85,8 @@ service cloud.firestore {
             && resource.data.asignadoUid == request.auth.uid
             && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
                  'estado','resultado','observacion','visitas','fechaHecha','hechaPor',
-                 'latitud','longitud','coordCorregida','corregidaPor','fechaCorreccion']));
+                 'latitud','longitud','coordCorregida','corregidaPor','fechaCorreccion',
+                 'notaTecnico','notaTecnicoFecha','seguimiento']));
     }
     match /factibilidades_config/{id} {
       allow read: if isActive();
