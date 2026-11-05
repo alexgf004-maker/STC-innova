@@ -16,7 +16,7 @@
 import { db } from '../firebase.js';
 import { tecnicosActivos } from '../vivo.js';
 import { suscribirAbiertas, suscribirConfig, suscribirCerradas, guardarConfig, META_DEFECTO, AREA, COL_ORDENES, aplicarModoAtrasadas, textoModoAtrasadas, RADIO_CERCANAS_DEFECTO } from '../factibilidades_comun.js';
-import { semaforoOrden, SEMAFORO, aFecha, claveDia } from '../dias_habiles.js';
+import { semaforoOrden, SEMAFORO, aFecha, claveDia, diasHabiles } from '../dias_habiles.js';
 import { toast, escapeHtml } from '../ui.js';
 import { abrirResultado, abrirReasignar, puedeActuar, cerrarHojas, corregirUbicacion } from './factibilidades_acciones.js';
 import { abrirImportar, abrirAsignarCodigos } from './factibilidades_importar.js';
@@ -154,11 +154,12 @@ function renderShell() {
         + hoja('fb-sheet-acciones', 'Acciones de Factibilidades', `<div class="flex-col gap-8">
             ${accion('fb-a-importar', ICO.subir, 'Importar Excel', 'Órdenes nuevas; asigna por usuario DELSUR')}
             ${accion('fb-a-codigos', ICO.lista, 'Asignar por usuario DELSUR', 'Todas las de DGUERR, AAPERE… a un técnico')}
-            ${accion('fb-a-excel', ICO.bajar, 'Exportar a Excel', 'Días hábiles, resultado y coordenada corregida')}
+            ${accion('fb-a-dia', ICO.bajar, 'Excel del día', 'Cierres y visitas del día que elijas, con resumen por técnico')}
+            ${accion('fb-a-excel', ICO.bajar, 'Excel de todas las órdenes', 'Abiertas con su semáforo y cerradas desde una fecha')}
             ${accion('fb-a-meta', ICO.meta, 'Meta diaria', 'Órdenes cerradas por técnico al día')}
             ${accion('fb-a-festivos', ICO.cal, 'Días festivos', 'No cuentan como días hábiles')}
           </div>`)
-        + hoja('fb-sheet-excel', 'Exportar a Excel', '') : ''}
+        + hoja('fb-sheet-excel', 'Excel de todas las órdenes', '') + hoja('fb-sheet-dia', 'Excel del día', '') : ''}
     </div>`;
   container_.querySelectorAll('.fb-tab').forEach(t => { t.onclick = () => setTab(t.dataset.tab, true); });
   container_.querySelectorAll('.sheet-backdrop').forEach(sh => sh.addEventListener('click', e => { if (e.target === sh) sh.classList.remove('open'); }));
@@ -169,6 +170,7 @@ function renderShell() {
   container_.querySelector('#fb-a-importar').onclick = async () => { cerrarH('fb-sheet-acciones'); abrirImportar(session_, await refrescarTecnicos()); };
   container_.querySelector('#fb-a-codigos').onclick = async () => { cerrarH('fb-sheet-acciones'); abrirAsignarCodigos(session_, await refrescarTecnicos(), ordenes_); };
   container_.querySelector('#fb-a-excel').onclick = () => { cerrarH('fb-sheet-acciones'); abrirExportar(); };
+  container_.querySelector('#fb-a-dia').onclick = () => { cerrarH('fb-sheet-acciones'); abrirExcelDia(); };
   container_.querySelector('#fb-a-meta').onclick = () => { cerrarH('fb-sheet-acciones'); abrirMeta(); };
   container_.querySelector('#fb-a-festivos').onclick = () => { cerrarH('fb-sheet-acciones'); abrirFestivos(); };
 }
@@ -495,6 +497,143 @@ async function exportarExcel(desde) {
   XLSX.utils.book_append_sheet(wb, ws, 'Factibilidades');
   XLSX.writeFile(wb, `Factibilidades_${claveDia(new Date())}.xlsx`);
   toast(`Excel descargado · ${filas.length} órdenes`, 'ok');
+}
+
+// ── Excel del día (como en AMI) ───────────────────
+// Lo que se trabajó un día: cada cierre (factible / no factible) y cada
+// visita sin acceso, con la información de la orden, y un resumen por
+// técnico contra la meta. Una consulta puntual: las cerradas DESDE ese día
+// (así salen también las visitas de órdenes que se cerraron después); las
+// abiertas ya están en memoria.
+async function datosDelDia(dia) {
+  const ini = aFecha(dia);
+  const fin = new Date(ini); fin.setDate(fin.getDate() + 1);
+  const snap = await db.collection(COL_ORDENES).where('fechaHecha', '>=', firebase.firestore.Timestamp.fromDate(ini)).get();
+  const cerradas = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(o => o.estado === 'cerrada');
+  const enDia = v => { const d = aFecha(v); return !!d && d >= ini && d < fin; };
+  const todas = new Map([...ordenes_, ...cerradas].map(o => [o.id, o]));
+  const eventos = [];
+  todas.forEach(o => {
+    if (o.estado === 'cerrada' && enDia(o.fechaHecha))
+      eventos.push({ o, tipo: o.resultado, ts: o.fechaHecha, tecnico: o.hechaPor || o.asignadoNombre || '', obs: o.observacion || '' });
+    (Array.isArray(o.visitas) ? o.visitas : []).forEach(v => {
+      if (enDia(v.fecha)) eventos.push({ o, tipo: 'sin_acceso', ts: v.fecha, tecnico: v.tecnico || o.asignadoNombre || '', obs: v.observacion || '' });
+    });
+  });
+  return eventos.sort((a, b) => (aFecha(a.ts) || 0) - (aFecha(b.ts) || 0));
+}
+
+const EVENTO_TXT = { factible: 'Factible', no_factible: 'No factible', sin_acceso: 'Sin acceso' };
+
+function resumenDelDia(eventos) {
+  const filas = new Map();
+  eventos.forEach(e => {
+    const k = e.tecnico || 'Sin nombre';
+    if (!filas.has(k)) filas.set(k, { 'Técnico': k, 'Cerradas': 0, 'Factibles': 0, 'No factibles': 0, 'Sin acceso (visitas)': 0 });
+    const r = filas.get(k);
+    if (e.tipo === 'sin_acceso') r['Sin acceso (visitas)']++;
+    else { r['Cerradas']++; r[e.tipo === 'factible' ? 'Factibles' : 'No factibles']++; }
+  });
+  return [...filas.values()].sort((a, b) => b['Cerradas'] - a['Cerradas'] || String(a['Técnico']).localeCompare(String(b['Técnico']), 'es'));
+}
+
+function abrirExcelDia() {
+  const hoy = claveDia(new Date());
+  const body = container_.querySelector('#fb-sheet-dia-body');
+  body.innerHTML = `
+    <div class="form-field">
+      <div class="form-label">Día</div>
+      <input class="form-input" id="fb-dia-fecha" type="date" value="${hoy}" max="${hoy}"/>
+    </div>
+    <div class="ds-card" id="fb-dia-resumen" style="margin-bottom:12px"></div>
+    <div class="form-error" id="fb-dia-error"></div>
+    <button class="btn-primary full" id="fb-dia-btn"><span id="fb-dia-lbl">Descargar Excel</span></button>`;
+  const inp = body.querySelector('#fb-dia-fecha');
+  const btn = body.querySelector('#fb-dia-btn');
+  const lbl = body.querySelector('#fb-dia-lbl');
+  const res = body.querySelector('#fb-dia-resumen');
+  let eventos = [], pedido = 0;
+  const pintar = async () => {
+    const dia = inp.value;
+    btn.disabled = true; btn.style.opacity = '.45';
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dia)) { res.innerHTML = '<div style="font-size:13px;color:var(--text-3)">Elige el día.</div>'; return; }
+    const mio = ++pedido;
+    res.innerHTML = '<div style="padding:10px 0;text-align:center"><div class="spinner" style="margin:0 auto"></div></div>';
+    try {
+      const ev = await datosDelDia(dia);
+      if (mio !== pedido) return;   // se cambió de día mientras cargaba
+      eventos = ev;
+    } catch (e) {
+      if (mio !== pedido) return;
+      console.error('[factibilidades] excel del día:', e);
+      res.innerHTML = `<div style="font-size:13px;color:#f87171">No se pudo leer ese día: ${esc(e.message)}</div>`;
+      return;
+    }
+    const cierres = eventos.filter(e => e.tipo !== 'sin_acceso');
+    const n = t => eventos.filter(e => e.tipo === t).length;
+    const fila = (k, v, color) => `<div style="display:flex;justify-content:space-between;font-size:13px;padding:5px 0"><span style="color:var(--text-3)">${k}</span><span style="font-weight:600;${color ? 'color:' + color : ''}">${v}</span></div>`;
+    const tecs = resumenDelDia(eventos);
+    res.innerHTML = fila('Cerradas', cierres.length) + fila('Factibles', n('factible'), '#22c55e') + fila('No factibles', n('no_factible'), '#f87171') + fila('Visitas sin acceso', n('sin_acceso'), '#fbbf24')
+      + (tecs.length ? `<div style="height:1px;background:var(--border);margin:6px 0"></div>`
+        + tecs.map(t => fila(esc(t['Técnico']), `${t['Cerradas']} / ${cfg_.meta}${t['Sin acceso (visitas)'] ? ` · ${t['Sin acceso (visitas)']} sin acceso` : ''}`, t['Cerradas'] >= cfg_.meta ? '#22c55e' : '')).join('') : '');
+    const vacio = !eventos.length;
+    btn.disabled = vacio; btn.style.opacity = vacio ? '.45' : '';
+    lbl.textContent = vacio ? 'No hay trabajo registrado ese día' : 'Descargar Excel';
+  };
+  inp.addEventListener('change', pintar);
+  btn.onclick = () => {
+    const err = body.querySelector('#fb-dia-error');
+    try {
+      excelDelDia(inp.value, eventos);
+      container_.querySelector('#fb-sheet-dia').classList.remove('open');
+    } catch (e) {
+      console.error('[factibilidades] excel del día:', e);
+      err.textContent = 'No se pudo generar: ' + e.message; err.style.display = 'block';
+    }
+  };
+  container_.querySelector('#fb-sheet-dia').classList.add('open');
+  pintar();
+}
+
+function excelDelDia(dia, eventos) {
+  if (typeof XLSX === 'undefined') throw new Error('falta la librería de Excel (revisa la conexión)');
+  if (!eventos.length) throw new Error('no hay trabajo registrado ese día');
+  const hora = v => { const d = aFecha(v); return d ? d.toLocaleTimeString('es-SV', { hour: '2-digit', minute: '2-digit' }) : ''; };
+  const f = v => { const d = aFecha(v); return d ? d.toLocaleDateString('es-SV', { day: '2-digit', month: '2-digit', year: 'numeric' }) : ''; };
+  const num = v => { const n = parseFloat(v); return isFinite(n) ? n : ''; };
+  const ESTADO = { null: 'Abierta', visita: 'Abierta (sin acceso)', cerrada: 'Cerrada' };
+  const trabajo = eventos.map(({ o, tipo, ts, tecnico, obs }) => ({
+    'Hora': hora(ts),
+    'Resultado': EVENTO_TXT[tipo] || tipo || '',
+    'Orden': o.numeroOrden || '',
+    'Tipo': o.claseActividad || '',
+    'Cliente': o.cliente || '',
+    'Dirección': o.direccion || '',
+    'Técnico': tecnico,
+    'Observación': obs,
+    // Días hábiles desde la liberación hasta ese cierre o esa visita
+    'Días hábiles': aFecha(o.fechaLiberacion) && aFecha(ts) ? diasHabiles(o.fechaLiberacion, ts, cfg_.festivosSet) : '',
+    'Fecha liberación': f(o.fechaLiberacion),
+    'Estado actual': ESTADO[o.estado ?? null] || o.estado || '',
+    'Revisión': o.estado === 'cerrada' ? (o.revision === 'aprobada' ? 'Revisada' : 'Por revisar') : o.revision === 'devuelta' ? 'Devuelta al técnico' : '',
+    'Coordenada corregida': o.coordCorregida ? 'Sí' : 'No',
+    'Latitud': num(o.latitud),
+    'Longitud': num(o.longitud),
+  }));
+  const resumen = resumenDelDia(eventos).map(r => ({ ...r, 'Meta': cfg_.meta, 'Cumplimiento': cfg_.meta ? `${Math.round(r['Cerradas'] / cfg_.meta * 100)}%` : '' }));
+  const tot = { 'Técnico': 'Total', 'Cerradas': 0, 'Factibles': 0, 'No factibles': 0, 'Sin acceso (visitas)': 0, 'Meta': '', 'Cumplimiento': '' };
+  resumen.forEach(r => ['Cerradas', 'Factibles', 'No factibles', 'Sin acceso (visitas)'].forEach(c => { tot[c] += r[c]; }));
+  resumen.push(tot);
+  const hojaXls = (filas, anchos) => {
+    const ws = XLSX.utils.json_to_sheet(filas);
+    ws['!cols'] = Object.keys(filas[0]).map(k => ({ wch: anchos[k] || Math.max(10, k.length + 2) }));
+    return ws;
+  };
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, hojaXls(trabajo, { 'Hora': 8, 'Orden': 13, 'Cliente': 28, 'Dirección': 40, 'Técnico': 22, 'Observación': 36, 'Fecha liberación': 14, 'Estado actual': 20 }), 'Trabajo del día');
+  XLSX.utils.book_append_sheet(wb, hojaXls(resumen, { 'Técnico': 24, 'Sin acceso (visitas)': 20 }), 'Resumen');
+  XLSX.writeFile(wb, `Factibilidades_${dia}.xlsx`);
+  toast(`Excel del ${dia.split('-').reverse().join('/')} descargado`, 'ok');
 }
 
 // ── Festivos (admin / asistente) ──────────────────
