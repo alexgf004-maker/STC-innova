@@ -9,8 +9,8 @@
  * Exporta: init(container, session), cleanup(), initHomeTecnico(container, session)
  *
  * Roles:
- *   admin / asistente -> Panel, todas las órdenes y mapa completo
- *   tecnico           -> Resumen y sus órdenes abiertas
+ *   admin / asistente -> Panel, todas las órdenes, cerradas (revisión) y mapa
+ *   tecnico           -> sus órdenes abiertas y su historial de cerradas
  */
 
 import { db } from '../firebase.js';
@@ -20,6 +20,7 @@ import { semaforoOrden, SEMAFORO, aFecha, claveDia } from '../dias_habiles.js';
 import { toast, escapeHtml } from '../ui.js';
 import { abrirResultado, abrirReasignar, puedeActuar, cerrarHojas, corregirUbicacion } from './factibilidades_acciones.js';
 import { abrirImportar, abrirAsignarCodigos } from './factibilidades_importar.js';
+import { porRevisar, renderCerradasOficina, renderHistorialTecnico, filtrarCerradas, cerrarHojasCerradas } from './factibilidades_cerradas.js';
 
 const ICO = {
   subir:  '<path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>',
@@ -49,7 +50,7 @@ let off_ = null, offCfg_ = null, mapaMod_ = null;   // mapaMod_: mapa abierto co
 let cfg_ = { festivos: [], festivosSet: new Set(), meta: META_DEFECTO, modoAtrasadas: {}, radioCercanas: RADIO_CERCANAS_DEFECTO };
 let filtroSem_ = 'todas', busq_ = '', limite_ = 40;
 let filtroPedido_ = null;          // el inicio del técnico pide abrir la lista ya filtrada
-let cerradas_ = [], offCerr_ = null, tecnicos_ = [];   // oficina: cerradas del mes y técnicos del área
+let cerradas_ = [], offCerr_ = null, tecnicos_ = [];   // oficina: cerradas desde el mes pasado y técnicos del área
 let tecF_ = 'todos', modoSel_ = false, selec_ = new Set();   // oficina: filtro por técnico y selección para reasignar
 
 // Días hábiles y color de cada orden (una sola función compartida)
@@ -92,12 +93,14 @@ export function init(container, session) {
     repintar();
   });
   if (esAdmin_) {
-    // Cerradas del mes: cerradas hoy contra la meta y promedio de atención
+    // Cerradas desde el mes pasado: cerradas hoy contra la meta, promedio de
+    // atención del mes y la pestaña Cerradas (revisión). Desde el mes pasado
+    // para que los cierres por revisar de fin de mes no se pierdan el día 1.
     const hoy = new Date();
-    offCerr_ = suscribirCerradas(session, new Date(hoy.getFullYear(), hoy.getMonth(), 1), (lista, err) => {
+    offCerr_ = suscribirCerradas(session, new Date(hoy.getFullYear(), hoy.getMonth() - 1, 1), (lista, err) => {
       if (err) { console.warn('[factibilidades] cerradas:', err.message); return; }
       cerradas_ = lista;
-      if (activeTab_ === 'panel') repintar();
+      if (activeTab_ === 'panel' || activeTab_ === 'cerradas') repintar();
     });
     refrescarTecnicos().then(() => { if (activeTab_ === 'panel') repintar(); });
   }
@@ -108,6 +111,7 @@ export function cleanup() {
   if (offCfg_) { try { offCfg_(); } catch {} offCfg_ = null; }
   if (offCerr_) { try { offCerr_(); } catch {} offCerr_ = null; }
   cerrarHojas();
+  cerrarHojasCerradas();
   cerrarMapa();
 }
 
@@ -129,8 +133,8 @@ async function refrescarTecnicos() {
 
 function renderShell() {
   const tabs = esAdmin_
-    ? [{ id: 'panel', label: 'Panel' }, { id: 'ordenes', label: 'Órdenes' }, { id: 'mapa', label: 'Mapa' }]
-    : [{ id: 'ordenes', label: 'Órdenes' }];
+    ? [{ id: 'panel', label: 'Panel' }, { id: 'ordenes', label: 'Órdenes' }, { id: 'cerradas', label: 'Cerradas' }, { id: 'mapa', label: 'Mapa' }]
+    : [{ id: 'ordenes', label: 'Abiertas' }, { id: 'cerradas', label: 'Cerradas' }];
 
   container_.innerHTML = `
     <div class="fb-scope" style="max-width:1100px;margin:0 auto">
@@ -156,7 +160,7 @@ function renderShell() {
           </div>`)
         + hoja('fb-sheet-excel', 'Exportar a Excel', '') : ''}
     </div>`;
-  container_.querySelectorAll('.fb-tab').forEach(t => { t.onclick = () => setTab(t.dataset.tab); });
+  container_.querySelectorAll('.fb-tab').forEach(t => { t.onclick = () => setTab(t.dataset.tab, true); });
   container_.querySelectorAll('.sheet-backdrop').forEach(sh => sh.addEventListener('click', e => { if (e.target === sh) sh.classList.remove('open'); }));
   if (!esAdmin_) return;
   const abrirH = id => container_.querySelector('#' + id).classList.add('open');
@@ -184,7 +188,9 @@ function hoja(id, titulo, cuerpo) {
     </div>`;
 }
 
-function setTab(tab) {
+// desdeClic: la persona tocó la pestaña (el historial del técnico se vuelve
+// a leer); sin él es un repintado por datos en vivo.
+function setTab(tab, desdeClic = false) {
   if (tab !== 'mapa') cerrarMapa();
   activeTab_ = tab;
   container_.querySelectorAll('.fb-tab').forEach(t => {
@@ -207,8 +213,14 @@ function setTab(tab) {
   if (!cargado_) { cont.innerHTML = `<div style="padding:32px 0;text-align:center"><div class="spinner" style="margin:0 auto"></div></div>`; return; }
   if (error_) { cont.innerHTML = `<div class="dev-module"><div class="dev-title">No se pudieron cargar las órdenes</div><p>${esc(error_.message)}</p></div>`; return; }
   if (tab === 'panel') renderPanel(cont);
+  else if (tab === 'cerradas') {
+    if (esAdmin_) renderCerradasOficina(cont, session_, ctxCerradas());
+    else renderHistorialTecnico(cont, session_, ctxCerradas(), desdeClic);
+  }
   else renderOrdenes(cont);
 }
+
+const ctxCerradas = () => ({ cerradas: cerradas_, tecnicos: tecnicos_, sem, textoDias });
 
 // ── Panel (admin / asistente) ─────────────────────
 const esHoy = v => { const d = aFecha(v); return !!d && claveDia(d) === claveDia(new Date()); };
@@ -232,8 +244,9 @@ function resumenTecnicos() {
     if (c) f[c]++;
     if (c === 'rojo') f.rojas++;
   });
+  const iniMes = new Date(); iniMes.setDate(1); iniMes.setHours(0, 0, 0, 0);
   cerradas_.forEach(o => {
-    if (!o.asignadoUid) return;
+    if (!o.asignadoUid || !(aFecha(o.fechaHecha) >= iniMes)) return;
     const f = fila(o.asignadoUid, o.asignadoNombre || o.hechaPor || 'Sin nombre');
     if (esHoy(o.fechaHecha)) f.hoy++;
     const d = sem(o).dias;
@@ -250,6 +263,7 @@ function renderPanel(cont) {
   const meta = cfg_.meta;
   const filas = resumenTecnicos();
   const hoyTotal = cerradas_.filter(o => esHoy(o.fechaHecha)).length;
+  const nRevisar = cerradas_.filter(porRevisar).length;
   const prom = arr => arr.length ? (arr.reduce((a, b) => a + b, 0) / arr.length).toFixed(1) : '—';
 
   cont.innerHTML = `
@@ -271,6 +285,11 @@ function renderPanel(cont) {
       ${sinAsignar.length ? `<div class="cm-fila" data-ir="sin">
         <div class="cm-fila-ic warn">${svg(ICO.alerta, 17)}</div>
         <div style="flex:1;min-width:0"><div class="cm-fila-t">${sinAsignar.length} sin asignar</div><div class="cm-fila-s">No cruzaron con ningún técnico al importar</div></div>
+        ${svg(ICO.chev, 16, 'style="color:var(--text-3);flex-shrink:0"')}
+      </div>` : ''}
+      ${nRevisar ? `<div class="cm-fila" id="fb-ir-revisar">
+        <div class="cm-fila-ic warn">${svg(ICO.check, 17)}</div>
+        <div style="flex:1;min-width:0"><div class="cm-fila-t">${nRevisar} cierre${nRevisar !== 1 ? 's' : ''} por revisar</div><div class="cm-fila-s">Aprobar, corregir el resultado o devolver al técnico</div></div>
         ${svg(ICO.chev, 16, 'style="color:var(--text-3);flex-shrink:0"')}
       </div>` : ''}
       <div class="cm-fila" id="fb-por-codigo">
@@ -330,6 +349,7 @@ function renderPanel(cont) {
       </div>
     </div>`;
   cont.querySelector('#fb-abrir-festivos').onclick = abrirFestivos;
+  cont.querySelector('#fb-ir-revisar')?.addEventListener('click', () => { filtrarCerradas('revisar'); setTab('cerradas'); });
   const porCod = cont.querySelector('#fb-por-codigo');
   if (porCod) porCod.onclick = async () => abrirAsignarCodigos(session_, await refrescarTecnicos(), ordenes_);
   cont.querySelector('#fb-abrir-meta').onclick = abrirMeta;
@@ -456,6 +476,9 @@ async function exportarExcel(desde) {
       'Visitas sin acceso': visitas.length || '',
       'Fecha cierre': fh(o.fechaHecha),
       'Cerrada por': o.hechaPor || '',
+      'Revisión': o.estado === 'cerrada' ? (o.revision === 'aprobada' ? 'Revisada' : 'Por revisar') : o.revision === 'devuelta' ? 'Devuelta al técnico' : '',
+      'Revisada por': o.revision === 'aprobada' ? (o.revisadaPor || '') : '',
+      'Motivo devolución': o.revision === 'devuelta' ? (o.motivoDevolucion || '') : '',
       'Coordenada corregida': o.coordCorregida ? 'Sí' : 'No',
       'Corregida por': o.corregidaPor || '',
       'Fecha corrección': fh(o.fechaCorreccion),
@@ -466,7 +489,7 @@ async function exportarExcel(desde) {
     };
   });
   const ws = filas.length ? XLSX.utils.json_to_sheet(filas) : XLSX.utils.aoa_to_sheet([['Sin órdenes']]);
-  const anchos = { 'Orden': 13, 'Cliente': 28, 'Dirección': 40, 'Técnico': 22, 'Fecha liberación': 14, 'Semáforo': 12, 'Estado': 20, 'Observación': 36, 'Fecha cierre': 18, 'Cerrada por': 20, 'Corregida por': 20, 'Fecha corrección': 18 };
+  const anchos = { 'Orden': 13, 'Cliente': 28, 'Dirección': 40, 'Técnico': 22, 'Fecha liberación': 14, 'Semáforo': 12, 'Estado': 20, 'Observación': 36, 'Fecha cierre': 18, 'Cerrada por': 20, 'Revisada por': 20, 'Motivo devolución': 36, 'Corregida por': 20, 'Fecha corrección': 18 };
   if (filas.length) ws['!cols'] = Object.keys(filas[0]).map(k => ({ wch: anchos[k] || Math.max(10, k.length + 2) }));
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Factibilidades');
@@ -655,8 +678,10 @@ function tarjeta(o) {
         <span class="cm-wo">${esc(o.numeroOrden || '—')}</span>
         <span class="cm-pill ${s ? s.pill : 'muted'}">${textoDias(dias)}</span>
         ${o.estado === 'visita' ? '<span class="cm-pill muted">Sin acceso</span>' : ''}
+        ${o.revision === 'devuelta' ? '<span class="cm-pill crit">Devuelta</span>' : ''}
         ${foco_?.cercanasIds.has(o.id) ? '<span class="cm-pill violet">Cercana</span>' : ''}
       </div>
+      ${o.revision === 'devuelta' && o.motivoDevolucion ? `<div class="cm-meta" style="color:#fca5a5">Devuelta por ${esc(o.devueltaPor || 'la oficina')}: ${esc(o.motivoDevolucion)}</div>` : ''}
       ${o.cliente ? `<div class="cm-cli">${esc(o.cliente)}</div>` : ''}
       ${o.direccion ? `<div class="cm-meta">${esc(o.direccion)}</div>` : ''}
       <div class="cm-meta">${o.claseActividad ? esc(o.claseActividad) + ' · ' : ''}Liberada ${fmtFecha(o.fechaLiberacion)}</div>

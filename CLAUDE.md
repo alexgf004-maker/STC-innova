@@ -71,6 +71,8 @@ js/
                                    bloquea 2 días antes y después (js/lectura.js), como Cambios
     reclamos.js             bitácora Reclamos SIGET
     factibilidades.js + factibilidades_mapa.js   área Factibilidades (técnico individual, semáforo de días)
+    factibilidades_cerradas.js  pestaña Cerradas (oficina: aprobar / corregir / devolver) e historial
+                           del técnico (sus cierres de 14 días). El mapa asigna por zona (polígono)
   factibilidades_comun.js  listeners compartidos de órdenes abiertas de Factibilidades
                            y modo atrasadas por técnico (config general.modoAtrasadas {uid: true},
                            radioCercanas): el técnico solo ve sus rojas + las cercanas; sin rojas, amarillas
@@ -115,6 +117,11 @@ XLSX (SheetJS) y Firebase compat son **globales** (`XLSX.utils.*`,
   abierta) → `'cerrada'`, con `resultado` `'factible'` / `'no_factible'` /
   `'sin_acceso'`. Toda orden nueva se guarda con `estado: null` EXPLÍCITO
   (las consultas de abiertas usan `== null` y no encuentran el campo faltante)
+  Revisión de la oficina (campo `revision`, solo lo escribe la oficina):
+  cerrada sin `revision` (o con `'devuelta'`) = por revisar → `'aprobada'`.
+  "Devolver al técnico" reabre la orden (`estado` null o `'visita'`, borra
+  `fechaHecha`/`hechaPor`) con `revision: 'devuelta'` y `motivoDevolucion`.
+  Cada acción queda en el arreglo `revisiones` (ver factibilidades_cerradas.js)
 
 ## Sistema de diseño (rediseño premium en curso, ir por partes)
 

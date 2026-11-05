@@ -2,7 +2,8 @@
  * js/views/factibilidades_mapa.js
  * Mapa de Factibilidades: Leaflet + Google Maps Hybrid.
  * Base tomada de ami_mapa.js, sin lo que no aplica a esta área (parejas,
- * asignación por polígono, residuos ni padrón de ya cambiados).
+ * residuos ni padrón de ya cambiados). La oficina asigna por zona: dibuja un
+ * polígono y las órdenes abiertas dentro se asignan a un técnico.
  * Exporta: init(container, session), cleanup()
  *
  * Roles:
@@ -33,6 +34,8 @@ let off_ = null, offCfg_ = null;
 let cfg_ = { festivos: [], festivosSet: new Set(), meta: META_DEFECTO };
 let geoMarker_ = null, geoCircle_ = null, watchId_ = null;
 let pendiente_ = null;   // orden que pidió abrir la lista ("Ver en el mapa")
+// Asignar por zona (oficina): puntos del polígono que se está dibujando
+let zonaPts_ = [], zonaCapa_ = null, dibujando_ = false;
 // Última lectura del GPS del mapa, para "Corregir ubicación" (así no se abre
 // un segundo GPS en el teléfono y la lectura sale al instante).
 let ultimaPos_ = null, errorGps_ = null;
@@ -125,6 +128,7 @@ export function cleanup() {
   if (watchId_ != null && navigator.geolocation) { navigator.geolocation.clearWatch(watchId_); watchId_ = null; }
   if (map_) { try { map_.remove(); } catch {} map_ = null; }
   lienzo_ = null; markers_ = []; geoMarker_ = null; geoCircle_ = null;
+  zonaPts_ = []; zonaCapa_ = null; dibujando_ = false;
   ultimaPos_ = null; errorGps_ = null; oyentesGps_.clear();
 }
 
@@ -147,6 +151,9 @@ function renderShell(container) {
         ${role_ !== 'tecnico' ? `
         <button class="mapa-btn-icon" id="fbm-filtro" title="Filtrar" style="border-color:var(--fb-border);color:var(--fb-light)">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+        </button>
+        <button class="mapa-btn-icon" id="fbm-zona" title="Asignar zona a un técnico" style="border-color:var(--fb-border);color:var(--fb-light)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><polygon points="12 2 22 9 18 21 6 21 2 9 12 2"/></svg>
         </button>` : ''}
         <button class="mapa-btn-icon" id="fbm-mi-ubicacion" title="Mi ubicación">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>
@@ -164,6 +171,16 @@ function renderShell(container) {
           <button id="fbm-buscar-cerrar" style="padding:9px 12px;border-radius:9px;border:1px solid var(--border);background:var(--glass);color:#94a3b8;font-size:12px;cursor:pointer;font-family:inherit">Cerrar</button>
         </div>
         <div id="fbm-buscar-res" style="margin-top:8px;max-height:45vh;overflow-y:auto"></div>
+      </div>
+
+      <!-- Asignar por zona (oficina): controles mientras se dibuja -->
+      <div id="fbm-zona-ctrl" style="display:none;position:absolute;left:12px;right:12px;bottom:calc(var(--nav-espacio, 0px) + 16px);z-index:900;background:rgba(13,17,23,.96);border:1px solid var(--fb-border);border-radius:14px;padding:10px 12px;box-shadow:0 6px 24px rgba(0,0,0,.45)">
+        <div id="fbm-zona-txt" style="font-size:12.5px;color:#e2e8f0;margin-bottom:8px;line-height:1.4">Toca el mapa para marcar las esquinas de la zona.</div>
+        <div style="display:flex;gap:8px">
+          <button id="fbm-zona-cancelar" style="flex:1;padding:10px;border-radius:10px;border:1px solid var(--border);background:var(--glass);color:#cbd5e1;font-size:13px;font-weight:700;font-family:inherit;cursor:pointer">Cancelar</button>
+          <button id="fbm-zona-deshacer" style="flex:1;padding:10px;border-radius:10px;border:1px solid var(--border);background:var(--glass);color:#cbd5e1;font-size:13px;font-weight:700;font-family:inherit;cursor:pointer" disabled>Deshacer</button>
+          <button id="fbm-zona-asignar" style="flex:1.4;padding:10px;border-radius:10px;border:none;background:var(--fb-light);color:#0d1117;font-size:13px;font-weight:800;font-family:inherit;cursor:pointer;opacity:.45" disabled>Asignar</button>
+        </div>
       </div>
 
       <div class="mapa-panel" id="mapa-panel">
@@ -192,6 +209,11 @@ function renderShell(container) {
   };
   const btnF = container.querySelector('#fbm-filtro');
   if (btnF) btnF.onclick = abrirFiltro;
+  const btnZ = container.querySelector('#fbm-zona');
+  if (btnZ) btnZ.onclick = () => (dibujando_ ? terminarZona() : empezarZona());
+  container.querySelector('#fbm-zona-cancelar').onclick = terminarZona;
+  container.querySelector('#fbm-zona-deshacer').onclick = () => { zonaPts_.pop(); pintarZona(); };
+  container.querySelector('#fbm-zona-asignar').onclick = asignarZona;
   // Buscador: solo se repintan los resultados (el campo no se vuelve a crear,
   // así el teclado que se esté usando no cambia al escribir)
   const caja = container.querySelector('#fbm-buscar-box');
@@ -229,7 +251,7 @@ function initMap() {
   capa.on('tileerror', () => {});
   L.control.zoom({ position: 'bottomright' }).addTo(map_);
 
-  map_.on('click', cerrarPanel);
+  map_.on('click', e => (dibujando_ ? agregarPuntoZona(e.latlng) : cerrarPanel()));
   map_.on('zoomend', () => plotMarkers());
   // Al pellizcar, Leaflet solo estira la imagen del lienzo: las gotas se
   // agrandaban y, en el mapa con giro (técnico), se corrían de su lugar y al
@@ -334,7 +356,7 @@ function plotMarkers() {
       dashArray: o.ubicacionAprox && !o.coordCorregida && cerca ? '3 3' : null,
     });
     m._ordenId = o.id;
-    m.on('click', e => tocarPunto(ordenMasCercana(e, o.id)));
+    m.on('click', e => (dibujando_ ? agregarPuntoZona(e.latlng) : tocarPunto(ordenMasCercana(e, o.id))));
     m.addTo(map_);
     markers_.push(m);
     if (conEtiquetas && vista.contains(ll)) {
@@ -343,6 +365,7 @@ function plotMarkers() {
     }
   });
   if (etiquetas.length) markers_.push(...ponerEtiquetas(map_, etiquetas, puntos, r));
+  if (dibujando_) pintarZona();   // el conteo de la zona sigue a los datos y al filtro
 }
 
 function actualizarChip() {
@@ -453,9 +476,11 @@ function verOrden(id) {
         </div>
         <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0">
           ${o.estado === 'visita' ? '<div class="estado-badge warn">Sin acceso</div>' : ''}
+          ${o.revision === 'devuelta' ? '<div class="estado-badge crit">Devuelta</div>' : ''}
           ${foco_?.cercanasIds.has(o.id) ? '<div class="estado-badge" style="color:#c4b5fd;border-color:rgba(167,139,250,.45);background:rgba(139,92,246,.15)">Cercana</div>' : ''}
         </div>
       </div>
+      ${o.revision === 'devuelta' && o.motivoDevolucion ? `<div style="font-size:12px;line-height:1.45;color:#fecaca;background:rgba(239,68,68,.14);border:1px solid rgba(239,68,68,.4);border-radius:10px;padding:8px 10px;margin:-2px 0 11px"><b>Devuelta por ${esc(o.devueltaPor || 'la oficina')}:</b> ${esc(o.motivoDevolucion)}</div>` : ''}
       ${foco_?.cercanasIds.has(o.id) ? `<div style="font-size:12px;color:#c4b5fd;margin:-4px 0 11px">Está cerca de una de tus ${foco_.nivel === 'rojo' ? 'atrasadas' : 'por vencer'}: aprovecha y hazla de paso.</div>` : ''}
       <div style="display:flex;align-items:center;gap:12px;border-radius:12px;padding:10px 12px;margin-bottom:11px;background:${s ? s.color + '1f' : 'var(--glass)'};border:1px solid ${s ? s.color + '66' : 'var(--border)'}">
         <div style="font-size:30px;font-weight:600;line-height:1;color:${s ? s.color : '#fff'}">${dias ?? '—'}</div>
@@ -529,6 +554,85 @@ function abrirGoogleMaps(lat, lng) {
 }
 
 // ── Filtros de la oficina ─────────────────────────
+// ── Asignar por zona (oficina) ────────────────────
+// Como en Cambios, AMI y Caracterización: se dibuja un polígono tocando el
+// mapa y las órdenes abiertas que caen dentro (respetando el filtro activo)
+// se asignan a un técnico con la misma hoja de "Reasignar".
+function dentroDe(ll, poli) {
+  let dentro = false;
+  for (let i = 0, j = poli.length - 1; i < poli.length; j = i++) {
+    const [yi, xi] = [poli[i].lat, poli[i].lng], [yj, xj] = [poli[j].lat, poli[j].lng];
+    if ((xi > ll[1]) !== (xj > ll[1]) && ll[0] < (yj - yi) * (ll[1] - xi) / (xj - xi) + yi) dentro = !dentro;
+  }
+  return dentro;
+}
+const ordenesEnZona = () => zonaPts_.length < 3 ? [] : visibles().filter(o => {
+  const ll = latLngDe(o);
+  return coordValida(ll[0], ll[1]) && dentroDe(ll, zonaPts_);
+});
+
+function empezarZona() {
+  if (!map_) return;
+  cerrarPanel();
+  dibujando_ = true;
+  zonaPts_ = [];
+  map_.doubleClickZoom.disable();
+  map_.getContainer().style.cursor = 'crosshair';
+  document.getElementById('fbm-zona-ctrl').style.display = 'block';
+  const bz = document.getElementById('fbm-zona'); if (bz) bz.style.background = 'rgba(244,114,182,.28)';
+  // La barra de la zona tapa los botones + / - (se sigue pudiendo pellizcar)
+  const zc = map_.getContainer().querySelector('.leaflet-control-zoom'); if (zc) zc.style.display = 'none';
+  pintarZona();
+}
+
+function terminarZona() {
+  dibujando_ = false;
+  zonaPts_ = [];
+  if (zonaCapa_ && map_) { map_.removeLayer(zonaCapa_); }
+  zonaCapa_ = null;
+  if (map_) { map_.doubleClickZoom.enable(); map_.getContainer().style.cursor = ''; }
+  const ctrl = document.getElementById('fbm-zona-ctrl');
+  if (ctrl) ctrl.style.display = 'none';
+  const bz = document.getElementById('fbm-zona'); if (bz) bz.style.background = '';
+  const zc = map_?.getContainer().querySelector('.leaflet-control-zoom'); if (zc) zc.style.display = '';
+}
+
+function agregarPuntoZona(ll) {
+  const ultimo = zonaPts_[zonaPts_.length - 1];
+  if (ultimo && map_.latLngToContainerPoint(ultimo).distanceTo(map_.latLngToContainerPoint(ll)) < 8) return;
+  zonaPts_.push(ll);
+  pintarZona();
+}
+
+function pintarZona() {
+  if (!map_) return;
+  if (zonaCapa_) map_.removeLayer(zonaCapa_);
+  zonaCapa_ = null;
+  const color = '#f472b6';
+  if (zonaPts_.length === 1) zonaCapa_ = L.circleMarker(zonaPts_[0], { radius: 6, color, fillColor: color, fillOpacity: 1, weight: 2, interactive: false });
+  else if (zonaPts_.length === 2) zonaCapa_ = L.polyline(zonaPts_, { color, weight: 3, dashArray: '6 5', interactive: false });
+  else if (zonaPts_.length >= 3) zonaCapa_ = L.polygon(zonaPts_, { color, weight: 3, fillColor: color, fillOpacity: .14, interactive: false });
+  if (zonaCapa_) zonaCapa_.addTo(map_);
+  const n = ordenesEnZona().length;
+  const filtrado = semF_ !== 'todas' || tecF_ !== 'todos';
+  const txt = document.getElementById('fbm-zona-txt');
+  if (txt) txt.innerHTML = zonaPts_.length < 3
+    ? `Toca el mapa para marcar las esquinas de la zona${zonaPts_.length ? ` (${zonaPts_.length} de al menos 3)` : ''}.`
+    : `<b style="color:#f9a8d4">${n} ${n === 1 ? 'orden abierta' : 'órdenes abiertas'}</b> dentro de la zona${filtrado ? ' (con el filtro activo)' : ''}. Sigue tocando para ajustarla.`;
+  const asig = document.getElementById('fbm-zona-asignar');
+  if (asig) { asig.disabled = !n; asig.style.opacity = n ? '1' : '.45'; asig.textContent = n ? `Asignar ${n}` : 'Asignar'; }
+  const desh = document.getElementById('fbm-zona-deshacer');
+  if (desh) desh.disabled = !zonaPts_.length;
+}
+
+function asignarZona() {
+  const lista = ordenesEnZona();
+  if (!lista.length) return;
+  tecnicosActivos(db).then(l => { tecnicos_ = l.filter(u => u.asignacionActual?.area === AREA); })
+    .catch(() => {})
+    .then(() => abrirReasignar(lista, session_, tecnicos_, () => terminarZona()));
+}
+
 function abrirFiltro() {
   document.getElementById('fbm-sheet-filtro')?.remove();
   const tecs = new Map(tecnicos_.map(u => [u.id, u.displayName]));
