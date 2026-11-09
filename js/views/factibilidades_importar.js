@@ -15,6 +15,14 @@
  * (usuario DELSUR) y Lat/Long (solo para los que ya tienen medidor: se usan
  * tal cual). El departamento sale del municipio (DEPTO_DE).
  *
+ * Reemplazar mapa (por defecto, como en Cambios): DELSUR manda cada vez el
+ * listado vigente. Lo cerrado no se toca; lo que sigue en el archivo se
+ * actualiza; lo nuevo entra; y las ABIERTAS que ya no vienen salen del mapa.
+ * No se borran: quedan con estado 'quitada' (y estadoAntesDeQuitar), así se
+ * conserva su historial de visitas, y si DELSUR las vuelve a mandar, se
+ * reactivan solas. Las devueltas por la oficina se conservan aunque no
+ * vengan. "Solo agregar y actualizar" no quita nada.
+ *
  * Asignación: cada usuario DELSUR (DGUERR, AAPERE…) se cruza con un técnico
  * del área; el cruce se guarda en factibilidades_config/general.codigosDelsur
  * y se recuerda para la próxima. Lo reasignado a mano en la app
@@ -50,7 +58,7 @@ const DEPTO_DE = {};
   ['San Vicente', 'San Vicente, Tecoluca, Apastepeque, Guadalupe, San Cayetano Istepeque, Verapaz, Tepetitan, San Ildefonso, Santa Clara, San Esteban Catarina, San Sebastian, Santo Domingo, San Lorenzo'],
 ].forEach(([dep, lista]) => lista.split(',').forEach(m => { DEPTO_DE[norm(m)] = dep; }));
 
-let filas_ = [], plan_ = null, tecnicos_ = [], session_ = null, mapeo_ = {}, archivo_ = '', usarGoogle_ = false;
+let filas_ = [], plan_ = null, tecnicos_ = [], session_ = null, mapeo_ = {}, archivo_ = '', usarGoogle_ = false, modo_ = 'reemplazar';
 
 // ── Lectura del Excel ─────────────────────────────
 function fechaExcel(v) {
@@ -165,11 +173,22 @@ async function existentesPorOrden(nums) {
 const hayQueUbicar = o => !o.coordCorregida && (!o.latitud || !o.longitud || o.ubicacionAprox);
 
 async function armarPlan(filas) {
-  const [ex, cfg, clave] = await Promise.all([
+  const [ex, cfg, clave, abNull, abVisita] = await Promise.all([
     existentesPorOrden(filas.map(f => f.numeroOrden)),
     db.collection(COL_CONFIG).doc('general').get().catch(() => null),
     leerClave().catch(() => ''),
+    db.collection(COL_ORDENES).where('estado', '==', null).get(),
+    db.collection(COL_ORDENES).where('estado', '==', 'visita').get(),
   ]);
+  // Abiertas que ya no vienen en el archivo (salen al reemplazar el mapa).
+  // Las que la oficina devolvió al técnico se conservan.
+  const enArchivo = new Set(filas.map(f => f.numeroOrden));
+  const quitar = [], conservadas = [];
+  [...abNull.docs, ...abVisita.docs].forEach(d => {
+    const o = { id: d.id, ...d.data() };
+    if (enArchivo.has(String(o.numeroOrden ?? '').trim())) return;
+    (o.revision === 'devuelta' ? conservadas : quitar).push(o);
+  });
   mapeo_ = { ...(cfg?.exists ? (cfg.data().codigosDelsur || {}) : {}) };
   // Si un código coincide con el usuario de la app de un técnico, se cruza solo.
   const codigos = [...new Set(filas.map(f => f.codigoTecnico).filter(Boolean))].sort();
@@ -202,7 +221,9 @@ async function armarPlan(filas) {
   const porFuente = {};
   porPadron.forEach(u => { porFuente[u.fuente] = (porFuente[u.fuente] || 0) + 1; });
   return {
-    nuevas, existentes, codigos, hayClave: !!clave,
+    nuevas, existentes, codigos, hayClave: !!clave, quitar, conservadas,
+    reactivar: existentes.filter(({ o }) => o.estado === 'quitada').length,
+    cerradasEnArchivo: existentes.filter(({ o }) => o.estado === 'cerrada').length,
     aUbicar: aUbicar.length, conCoordArchivo, porPadron, porFuente, porMotivo, resumenPadron, fuentes, sinPadronUbic: !fuentes.includes('ubicaciones'),
     porCodigo: Object.fromEntries(codigos.map(c => [c, filas.filter(f => f.codigoTecnico === c).length])),
     sinCodigo: filas.filter(f => !f.codigoTecnico).length,
@@ -240,11 +261,11 @@ function hoja() {
 export function abrirImportar(session, tecnicos) {
   session_ = session;
   tecnicos_ = [...(tecnicos || [])].sort((a, b) => String(a.displayName).localeCompare(String(b.displayName), 'es'));
-  filas_ = []; plan_ = null;
+  filas_ = []; plan_ = null; modo_ = 'reemplazar';
   const sh = hoja();
   sh.querySelector('#fbi-cuerpo').innerHTML = `
     <div style="font-size:12px;color:var(--text-4);margin-bottom:14px;line-height:1.6">
-      Excel de clientes nuevos (Orden, Aviso, Población, Distrito, Calle…). Las órdenes que ya están no se duplican; lo reasignado a mano se respeta.
+      Excel de DELSUR (Orden, Aviso, Población, Distrito, Calle…). Reemplaza el mapa: lo cerrado se conserva, las órdenes que ya están no se duplican y lo reasignado a mano se respeta.
     </div>
     <div class="import-dropzone" id="fbi-zona">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" width="32" height="32" style="color:var(--text-4)"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
@@ -296,10 +317,23 @@ function pintarPlan() {
       <div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:600">${txt}</div>${sub ? `<div style="font-size:11.5px;color:var(--text-3);margin-top:2px">${sub}</div>` : ''}</div>
     </div>`;
   const tecOpc = sel => `<option value="">Sin asignar</option>` + tecnicos_.map(t => `<option value="${esc(t.id)}" ${t.id === sel ? 'selected' : ''}>${esc(t.displayName)}</option>`).join('');
+  const reemplazar = modo_ === 'reemplazar';
+  const siguen = p.existentes.length - p.reactivar - p.cerradasEnArchivo;
+  const qAsig = p.quitar.filter(o => o.asignadoUid).length, qVisita = p.quitar.filter(o => o.estado === 'visita').length;
   document.getElementById('fbi-plan').innerHTML = `
     <div style="font-size:11px;color:var(--text-4);margin:10px 0 6px">${esc(archivo_)} · ${filas_.length} órdenes</div>
+    <div style="display:flex;gap:6px;margin-bottom:6px">
+      <button class="cm-est ${reemplazar ? 'active' : ''}" data-modo="reemplazar" style="flex:1">Reemplazar mapa</button>
+      <button class="cm-est ${reemplazar ? '' : 'active'}" data-modo="agregar" style="flex:1">Solo agregar y actualizar</button>
+    </div>
     ${fila(p.nuevas.length, 'Órdenes nuevas', 'Entran abiertas, con la fecha de liberación del Excel', 'var(--fb-light, #f472b6)')}
-    ${fila(p.existentes.length, 'Ya estaban en la app', 'Se actualizan sus datos; estado, resultado y reasignaciones manuales se respetan', '#60a5fa')}
+    ${fila(siguen, 'Siguen en el mapa', 'Se actualizan sus datos; estado, resultado y reasignaciones manuales se respetan', '#60a5fa')}
+    ${p.reactivar ? fila(p.reactivar, 'Vuelven al mapa', 'Se habían quitado en una carga anterior y DELSUR las vuelve a mandar', '#a78bfa') : ''}
+    ${p.cerradasEnArchivo ? fila(p.cerradasEnArchivo, 'Ya cerradas', 'Se quedan como están (resultado e historial intactos)', '#22c55e') : ''}
+    <div style="${reemplazar ? '' : 'opacity:.4'}">${fila(p.quitar.length, 'Abiertas que ya no vienen', reemplazar
+      ? `Salen del mapa y de las listas${qAsig ? ` · ${qAsig} estaban asignadas a un técnico` : ''}${qVisita ? ` · ${qVisita} con visita sin acceso` : ''}. No se borran: si vuelven en otra carga, se reactivan`
+      : 'Con "Solo agregar y actualizar" se quedan', '#f87171')}</div>
+    ${p.conservadas.length ? fila(p.conservadas.length, 'Devueltas por la oficina fuera del archivo', 'Se conservan', 'var(--text-3)') : ''}
     ${p.conCoordArchivo ? fila(p.conCoordArchivo, 'Con coordenadas en el archivo', 'Ya tienen medidor: se ubican en su punto exacto (no se toca una ubicación corregida en el sitio)', '#22c55e') : ''}
     ${p.aUbicar ? fila(p.porPadron.size, 'Ubicadas con el padrón', Object.entries(p.porFuente).map(([f, n]) => `${n} por ${esc(f)}`).join(' · ') || 'Ninguna referencia se encontró en los padrones', '#22c55e') : ''}
     ${p.aUbicar - p.porPadron.size ? fila(p.aUbicar - p.porPadron.size, 'Sin encontrar en el padrón', textoMotivos(p.porMotivo) + (usarGoogle_ ? 'Se ubican por dirección con Google (muy aproximado).' : 'Entran sin punto nuevo en el mapa; el técnico fija la ubicación en el sitio.')
@@ -319,6 +353,7 @@ function pintarPlan() {
     ${!tecnicos_.length ? '<div style="font-size:11.5px;color:#fbbf24;margin-top:6px">No hay técnicos activos en Factibilidades: asígnalos en Usuarios para poder cruzarlos.</div>'
       : '<div style="font-size:11.5px;color:var(--text-3);margin-top:6px">¿No aparece un técnico? Asígnale el área Factibilidades en Usuarios.</div>'}`;
   document.querySelectorAll('#fbi-plan select[data-cod]').forEach(s => s.onchange = () => { mapeo_[s.dataset.cod] = s.value; });
+  document.querySelectorAll('#fbi-plan [data-modo]').forEach(b => b.onclick = () => { modo_ = b.dataset.modo; pintarPlan(); });
   const chk = document.getElementById('fbi-google');
   if (chk) chk.onchange = () => { usarGoogle_ = chk.checked; pintarPlan(); };
   const lnk = document.getElementById('fbi-clave');
@@ -332,13 +367,21 @@ function pintarPlan() {
   const btn = document.getElementById('fbi-ok');
   btn.style.display = '';
   btn.disabled = !filas_.length;
-  document.getElementById('fbi-ok-lbl').textContent = p.nuevas.length ? `Importar ${p.nuevas.length} nueva${p.nuevas.length !== 1 ? 's' : ''}` : 'Actualizar datos';
+  document.getElementById('fbi-ok-lbl').textContent = textoBoton();
 }
+
+const textoBoton = () => modo_ === 'reemplazar' ? 'Reemplazar mapa'
+  : plan_?.nuevas.length ? `Importar ${plan_.nuevas.length} nueva${plan_.nuevas.length !== 1 ? 's' : ''}` : 'Actualizar datos';
 
 // ── Guardar ───────────────────────────────────────
 async function importar() {
   const p = plan_;
   if (!p) return;
+  const reemplazar = modo_ === 'reemplazar';
+  if (reemplazar && p.quitar.length) {
+    const asig = p.quitar.filter(o => o.asignadoUid).length;
+    if (!confirm(`Saldrán del mapa ${p.quitar.length} órdenes abiertas que ya no vienen en el archivo${asig ? ` (${asig} asignadas a técnicos)` : ''}.\n\nLo cerrado no se toca y no se borra nada: si vuelven en otra carga, se reactivan. ¿Reemplazar el mapa?`)) return;
+  }
   const btn = document.getElementById('fbi-ok');
   const lbl = document.getElementById('fbi-ok-lbl');
   btn.disabled = true;
@@ -386,8 +429,14 @@ async function importar() {
         importadaEn: ahora, importadaPor: session_.displayName,
       }));
     });
+    const borrar = firebase.firestore.FieldValue.delete();
     p.existentes.forEach(({ f, o }) => {
       const upd = { ...datos(f), actualizadaEn: ahora };
+      // Quitada en una carga anterior y DELSUR la vuelve a mandar: se reactiva
+      if (o.estado === 'quitada') Object.assign(upd, {
+        estado: o.estadoAntesDeQuitar === 'visita' ? 'visita' : null,
+        estadoAntesDeQuitar: borrar, quitadaEn: borrar, quitadaPor: borrar, quitadaArchivo: borrar, reactivadaEn: ahora,
+      });
       // Coordenadas del archivo: mandan, salvo que alguien corrigió el punto en el sitio
       if (f._coord ? !o.coordCorregida : hayQueUbicar(o)) Object.assign(upd, coord(f));
       if (!o.asignacionManual && o.estado !== 'cerrada') {
@@ -397,6 +446,10 @@ async function importar() {
       }
       ops.push(b => b.update(db.collection(COL_ORDENES).doc(o.id), upd));
     });
+    if (reemplazar) p.quitar.forEach(o => ops.push(b => b.update(db.collection(COL_ORDENES).doc(o.id), {
+      estado: 'quitada', estadoAntesDeQuitar: o.estado ?? null,
+      quitadaEn: ahora, quitadaPor: session_.displayName, quitadaArchivo: archivo_,
+    })));
     lbl.textContent = 'Guardando…';
     for (let i = 0; i < ops.length; i += 400) {
       const lote = db.batch();
@@ -408,14 +461,14 @@ async function importar() {
 
     document.getElementById(ID).classList.remove('open');
     const sinPunto = aUbicar.length - p.porPadron.size - geo.size;
-    toast(`Factibilidades: ${p.nuevas.length} nuevas, ${p.existentes.length} actualizadas`
+    toast(`Factibilidades: ${p.nuevas.length} nuevas, ${p.existentes.length} actualizadas${reemplazar && p.quitar.length ? `, ${p.quitar.length} quitadas del mapa` : ''}${p.reactivar ? `, ${p.reactivar} de vuelta` : ''}`
       + (aUbicar.length ? ` · ${p.porPadron.size} ubicadas con el padrón` + (geo.size ? `, ${geo.size} por dirección` : '') + (sinPunto ? `, ${sinPunto} sin punto nuevo` : '') : ''), 'ok', 6000);
   } catch (e) {
     console.error('[factibilidades] importar:', e);
     error('No se pudo importar: ' + e.message + '. Lo que alcanzó a guardarse queda; puedes volver a subir el archivo.');
   } finally {
     btn.disabled = false;
-    if (plan_) lbl.textContent = 'Importar';
+    if (plan_) lbl.textContent = textoBoton();
   }
 }
 

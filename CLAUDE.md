@@ -123,6 +123,9 @@ XLSX (SheetJS) y Firebase compat son **globales** (`XLSX.utils.*`,
   "Devolver al técnico" reabre la orden (`estado` null o `'visita'`, borra
   `fechaHecha`/`hechaPor`) con `revision: 'devuelta'` y `motivoDevolucion`.
   Cada acción queda en el arreglo `revisiones` (ver factibilidades_cerradas.js)
+  `'quitada'`: al reemplazar el mapa (importador), las abiertas que ya no vienen
+  en el Excel no se borran; quedan así (con `estadoAntesDeQuitar`) y no salen en
+  ninguna lista. Si vuelven en otra carga, se reactivan solas
 
 ## Sistema de diseño (rediseño premium en curso, ir por partes)
 

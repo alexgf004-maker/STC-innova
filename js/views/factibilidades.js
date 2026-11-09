@@ -502,14 +502,21 @@ async function exportarExcel(desde) {
 // ── Excel del día (como en AMI) ───────────────────
 // Lo que se trabajó un día: cada cierre (factible / no factible) y cada
 // visita sin acceso, con la información de la orden, y un resumen por
-// técnico contra la meta. Una consulta puntual: las cerradas DESDE ese día
-// (así salen también las visitas de órdenes que se cerraron después); las
-// abiertas ya están en memoria.
+// técnico contra la meta. Consultas puntuales: las cerradas DESDE ese día
+// (así salen también las visitas de órdenes que se cerraron después) y las
+// quitadas del mapa desde ese día; las abiertas ya están en memoria.
 async function datosDelDia(dia) {
   const ini = aFecha(dia);
   const fin = new Date(ini); fin.setDate(fin.getDate() + 1);
-  const snap = await db.collection(COL_ORDENES).where('fechaHecha', '>=', firebase.firestore.Timestamp.fromDate(ini)).get();
-  const cerradas = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(o => o.estado === 'cerrada');
+  const desde = firebase.firestore.Timestamp.fromDate(ini);
+  // Además de las cerradas, las que se quitaron del mapa desde ese día (al
+  // reemplazarlo): sus visitas sin acceso de ese día también cuentan.
+  const [snap, snapQ] = await Promise.all([
+    db.collection(COL_ORDENES).where('fechaHecha', '>=', desde).get(),
+    db.collection(COL_ORDENES).where('quitadaEn', '>=', desde).get(),
+  ]);
+  const cerradas = [...snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(o => o.estado === 'cerrada'),
+                    ...snapQ.docs.map(d => ({ id: d.id, ...d.data() })).filter(o => o.estado === 'quitada')];
   const enDia = v => { const d = aFecha(v); return !!d && d >= ini && d < fin; };
   const todas = new Map([...ordenes_, ...cerradas].map(o => [o.id, o]));
   const eventos = [];
@@ -601,7 +608,7 @@ function excelDelDia(dia, eventos) {
   const hora = v => { const d = aFecha(v); return d ? d.toLocaleTimeString('es-SV', { hour: '2-digit', minute: '2-digit' }) : ''; };
   const f = v => { const d = aFecha(v); return d ? d.toLocaleDateString('es-SV', { day: '2-digit', month: '2-digit', year: 'numeric' }) : ''; };
   const num = v => { const n = parseFloat(v); return isFinite(n) ? n : ''; };
-  const ESTADO = { null: 'Abierta', visita: 'Abierta (sin acceso)', cerrada: 'Cerrada' };
+  const ESTADO = { null: 'Abierta', visita: 'Abierta (sin acceso)', cerrada: 'Cerrada', quitada: 'Quitada del mapa' };
   const trabajo = eventos.map(({ o, tipo, ts, tecnico, obs }) => ({
     'Hora': hora(ts),
     'Resultado': EVENTO_TXT[tipo] || tipo || '',
