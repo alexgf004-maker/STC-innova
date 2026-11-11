@@ -16,22 +16,41 @@
  *   - Si nadie lo usa en ese tiempo se cierra. Al reabrirlo antes de 30 min,
  *     Firestore (con la persistencia activada en firebase.js) solo cobra lo
  *     que cambió mientras estuvo cerrado.
+ *
+ * Copia del teléfono vs servidor: con la persistencia, la PRIMERA respuesta
+ * de un listener suele venir de la copia guardada en el teléfono (puede ser
+ * de horas atrás) y la del servidor llega después. leer() espera la del
+ * servidor (si hay conexión, hasta ESPERA_SERVIDOR_MS); antes tomaba la
+ * primera y los paneles salían desfasados hasta recargar varias veces.
  */
 
 const CERRAR_TRAS_MS = 15 * 60 * 1000;
+const ESPERA_SERVIDOR_MS = 8000;
 const canales = new Map();   // clave -> canal
 
 function abrir(clave, crearQuery) {
-  const c = { datos: new Map(), listo: false, subs: new Set(), unsub: null, timer: null };
+  // servidor: ya llegó una respuesta del servidor (no solo la copia local)
+  const c = { datos: new Map(), listo: false, servidor: false, alServidor: new Set(), subs: new Set(), unsub: null, timer: null };
   canales.set(clave, c);
-  c.unsub = crearQuery().onSnapshot(snap => {
+  // includeMetadataChanges: para enterarse de cuando la respuesta pasa de
+  // "copia del teléfono" a "confirmada por el servidor" aunque los datos no
+  // cambien (sin esto no llegaría ningún aviso en ese caso).
+  c.unsub = crearQuery().onSnapshot({ includeMetadataChanges: true }, snap => {
     const cambios = [];
     snap.docChanges().forEach(ch => {
       const d = { id: ch.doc.id, ...ch.doc.data() };
       if (ch.type === 'removed') c.datos.delete(d.id); else c.datos.set(d.id, d);
       cambios.push({ type: ch.type, doc: d, local: ch.doc.metadata.hasPendingWrites });
     });
+    const primera = !c.listo;
     c.listo = true;
+    if (!snap.metadata.fromCache && !c.servidor) {
+      c.servidor = true;
+      [...c.alServidor].forEach(fn => { try { fn(); } catch (e) { console.error('[vivo]', e); } });
+      c.alServidor.clear();
+    }
+    // Un aviso solo de metadatos (sin documentos que cambien) no se reparte
+    if (!cambios.length && !primera) return;
     const lista = [...c.datos.values()];
     [...c.subs].forEach(fn => { try { fn(lista, cambios, null); } catch (e) { console.error('[vivo]', e); } });
   }, err => {
@@ -77,15 +96,32 @@ export function suscribir(clave, crearQuery, cb) {
  * Lee una vez (para paneles y listas): devuelve la lista actual. Si el
  * listener ya está abierto no cuesta lecturas; si no, lo abre y lo deja vivo
  * un rato para la siguiente pantalla.
+ * Con conexión espera la respuesta del servidor (hasta ESPERA_SERVIDOR_MS);
+ * sin conexión, o si tarda más, entrega la copia del teléfono.
  */
 export function leer(clave, crearQuery) {
   return new Promise((resolve, reject) => {
-    let off = null, hecho = false;
-    const cb = (lista, _c, err) => {
+    let off = null, hecho = false, tm = null;
+    const terminar = (err) => {
       if (hecho) return;
       hecho = true;
+      clearTimeout(tm);
+      const c = canales.get(clave);
+      if (c) c.alServidor.delete(alServidor);
+      const lista = c ? [...c.datos.values()] : [];
       if (off) off(); else setTimeout(() => off && off(), 0);
       err ? reject(err) : resolve(lista);
+    };
+    const alServidor = () => terminar(null);
+    const cb = (_lista, _c, err) => {
+      if (err) { terminar(err); return; }
+      const c = canales.get(clave);
+      if (!c || c.servidor || !navigator.onLine) { terminar(null); return; }
+      // Solo la copia del teléfono: esperar al servidor (con un límite)
+      if (!tm) {
+        c.alServidor.add(alServidor);
+        tm = setTimeout(() => terminar(null), ESPERA_SERVIDOR_MS);
+      }
     };
     off = suscribir(clave, crearQuery, cb);
     if (hecho) off();

@@ -9,7 +9,7 @@
  */
 
 import { db } from '../firebase.js';
-import { leer, tecnicosActivos } from '../vivo.js';
+import { leer, suscribir, tecnicosActivos } from '../vivo.js';
 import { toast, escapeHtml } from '../ui.js';
 import { avisoOrdenDuplicada } from './orden_duplicada.js';
 import { geocodificar, leerClave, guardarClave } from '../geocodificar.js';
@@ -516,21 +516,55 @@ async function loadCalendario() {
   }
 }
 
+// En vivo: lo que marcan los técnicos se ve sin salir ni recargar. Antes el
+// panel leía una sola vez (y a veces la copia vieja del teléfono): había que
+// recargar varias veces para ver las barras al día.
+let offOrdenes_ = null, claveOrdenes_ = null, repintarTm_ = null;
+
+export function cleanup() {
+  if (offOrdenes_) { try { offOrdenes_(); } catch {} offOrdenes_ = null; claveOrdenes_ = null; }
+  clearTimeout(repintarTm_);
+}
+
+// Repinta la pestaña sin cerrar las parejas que estaban desplegadas
+function repintarEnVivo() {
+  if (!document.getElementById('cambios-content')) return;   // ya no está en Cambios
+  if (activeTab === 'mapa') { recargarAlSalirMapa_ = true; return; }
+  if (document.querySelector('.sheet-backdrop.open')) { clearTimeout(repintarTm_); repintarTm_ = setTimeout(repintarEnVivo, 2000); return; }
+  const abiertos = [...document.querySelectorAll('#cambios-content [id^="body-"]')].filter(b => b.style.display !== 'none').map(b => b.id);
+  renderTab();
+  abiertos.forEach(id => {
+    const b = document.getElementById(id);
+    if (b && b.style.display === 'none') toggleAcordeon(id.slice(5).replace('-', ' '));
+  });
+}
+
 async function loadOrdenes() {
-  if (cacheValid('ordenes')) {
-    ordenes = cache.ordenes.data;
-    renderTab();
-    return;
-  }
   try {
     // Mismo listener que el mapa y el inicio (js/vivo.js): si ya está
     // abierto no cuesta lecturas; si no, lo abre y queda vivo un rato.
+    // leer() espera la respuesta del servidor, no la copia del teléfono.
     const tec = role_ === 'tecnico' && pareja_;
-    ordenes = await leer(tec ? `cambios_ordenes|${pareja_}` : 'cambios_ordenes|*',
-      () => tec ? db.collection('cambios_ordenes').where('pareja', '==', pareja_) : db.collection('cambios_ordenes'));
+    const clave = tec ? `cambios_ordenes|${pareja_}` : 'cambios_ordenes|*';
+    const consulta = () => tec ? db.collection('cambios_ordenes').where('pareja', '==', pareja_) : db.collection('cambios_ordenes');
+    ordenes = await leer(clave, consulta);
     cache.ordenes.data = ordenes;
     cache.ordenes.ts   = Date.now();
     renderTab();
+    if (claveOrdenes_ !== clave) {
+      if (offOrdenes_) { try { offOrdenes_(); } catch {} }
+      claveOrdenes_ = clave;
+      let primera = true;   // la primera llamada repite lo que ya se pintó
+      offOrdenes_ = suscribir(clave, consulta, (lista, _cambios, err) => {
+        if (err || !lista) return;
+        if (primera) { primera = false; return; }
+        ordenes = lista;
+        cache.ordenes.data = lista;
+        cache.ordenes.ts   = Date.now();
+        clearTimeout(repintarTm_);
+        repintarTm_ = setTimeout(repintarEnVivo, 700);
+      });
+    }
   } catch (err) {
     console.error('[cambios] Error cargando órdenes:', err);
     document.getElementById('cambios-content').innerHTML = `
