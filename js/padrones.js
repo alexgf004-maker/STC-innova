@@ -5,7 +5,9 @@
  * Antes eran archivos públicos del sitio (caracterizacion_padron.json y
  * contiguos.json): cualquiera con el enlace podía descargar los datos de
  * miles de clientes sin iniciar sesión. Ahora viven en Firestore, en la
- * colección `padrones`, y las reglas solo dejan leerlos a usuarios activos.
+ * colección `padrones`. Las reglas solo dejan leerlos a la oficina (admin y
+ * asistente); los técnicos de Cambios y AMI leen solo "contiguos" (Buscar
+ * contiguos en el mapa). Ver puedeLeerPadron en firestore.rules.
  *
  * Un documento de Firestore admite ~1 MB, así que cada padrón se guarda en
  * partes de texto JSON:

@@ -1445,7 +1445,7 @@ async function cargarContiguosData() {
   }
   contiguosLoading_ = true;
   try {
-    // Vive en Firestore (solo usuarios activos, ver padrones.js). Antes era
+    // Vive en Firestore (oficina y técnicos de Cambios y AMI, ver padrones.js). Antes era
     // un archivo público del sitio.
     contiguosData_ = await leerPadron('contiguos');
     if (!contiguosData_) throw new Error('La base de contiguos no está cargada');

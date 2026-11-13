@@ -305,13 +305,20 @@ service cloud.firestore {
     }
 
     // [FASE 3] Padrones de clientes (antes archivos públicos del sitio).
-    // Solo los leen usuarios activos; solo el admin los sube.
+    // Solo la oficina lee los padrones. Los técnicos de Cambios y AMI leen
+    // únicamente "contiguos" (botón Buscar contiguos de Pedir ayuda en el
+    // mapa). Ubicaciones y Caracterización solo los usan los importadores.
+    function puedeLeerPadron(nombre) {
+      return isAdminOrAsistente()
+        || (nombre == "contiguos" && isActive()
+            && miAsignacion().get("area", "") in ["CAMBIOS", "AMI"]);
+    }
     match /padrones/{nombre} {
-      allow read: if isActive();
+      allow read: if puedeLeerPadron(nombre);
       allow write: if hasRole("admin");
     }
     match /padrones/{nombre}/partes/{parte} {
-      allow read: if isActive();
+      allow read: if puedeLeerPadron(nombre);
       allow write: if hasRole("admin");
     }
 
