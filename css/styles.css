@@ -2302,6 +2302,7 @@ body {
 .cm-pill.crit   { color: #f87171; background: rgba(239,68,68,.14); border-color: rgba(239,68,68,.3); }
 .cm-pill.orange { color: #fb923c; background: rgba(249,115,22,.13); border-color: rgba(249,115,22,.28); }
 .cm-pill.violet { color: #a78bfa; background: rgba(139,92,246,.14); border-color: rgba(139,92,246,.3); }
+.cm-pill.naranja { color: #fb923c; background: rgba(249,115,22,.15); border-color: rgba(249,115,22,.4); }
 .cm-pill.muted  { color: var(--text-2); background: rgba(255,255,255,.06); border-color: var(--border); }
 .cm-verif { display: flex; align-items: center; gap: 10px; padding: 11px 12px; border-radius: 14px; background: rgba(255,255,255,.04); border: 1px solid var(--border); }
 .cm-wo { font-size: 14px; font-weight: 700; letter-spacing: -.01em; }

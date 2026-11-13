@@ -13,6 +13,9 @@
  *   - No hábiles: sábados, domingos y los festivos (lista 'AAAA-MM-DD' que
  *     mantiene el admin en factibilidades_config).
  *   - Semáforo: 1 a 3 verde, 4 a 5 amarillo, más de 5 rojo.
+ *   - Vencimiento: el plazo es de 5 días hábiles. El día 5 es el último
+ *     ("vence hoy"), con 4 días vence el próximo día hábil ("vence mañana")
+ *     y desde el día 6 está vencida.
  *
  * Sin dependencias (ni Firebase ni DOM) para poder probarlo con Node:
  *   TZ=America/El_Salvador node --test tests/*.test.mjs
@@ -22,7 +25,7 @@
 export const SEMAFORO = {
   verde:    { color: '#22c55e', pill: 'ok',   texto: 'A tiempo' },
   amarillo: { color: '#fbbf24', pill: 'warn', texto: 'Por vencer' },
-  rojo:     { color: '#ef4444', pill: 'crit', texto: 'Atrasada' },
+  rojo:     { color: '#ef4444', pill: 'crit', texto: 'Vencida' },
 };
 
 // Timestamp de Firestore, Date, milisegundos o texto 'AAAA-MM-DD' -> Date
@@ -97,4 +100,75 @@ export function diasOrden(o, festivos, ahora = new Date()) {
 export function semaforoOrden(o, festivos, ahora = new Date()) {
   const dias = diasOrden(o, festivos, ahora);
   return { dias, color: dias == null ? null : semaforo(dias) };
+}
+
+// ── Vencimiento ───────────────────────────────────
+export const DIAS_PLAZO = 5;
+const DIA_SEM = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
+
+/** Siguiente día hábil después de `v`. */
+export function proximoHabil(v, festivos) {
+  const fest = comoSet(festivos);
+  const d = aFecha(v);
+  if (!d) return null;
+  const dia = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  for (let i = 0; i < 30; i++) {
+    dia.setDate(dia.getDate() + 1);
+    if (esHabil(dia, fest)) return dia;
+  }
+  return null;
+}
+
+/** Último día del plazo: el 5º día hábil, contando la liberación como día 1. */
+export function fechaVence(o, festivos) {
+  const lib = aFecha(o?.fechaLiberacion);
+  if (!lib) return null;
+  const fest = comoSet(festivos);
+  const dia = new Date(lib.getFullYear(), lib.getMonth(), lib.getDate());
+  let n = 0;
+  for (let i = 0; i < 60; i++) {
+    if (esHabil(dia, fest) && ++n === DIAS_PLAZO) return dia;
+    dia.setDate(dia.getDate() + 1);
+  }
+  return null;
+}
+
+/**
+ * Vencimiento de una orden abierta:
+ *   { estado: 'vencida' | 'hoy' | 'manana' | null, dias, fecha, atraso }
+ * estado null = a tiempo (o cerrada, o sin fecha de liberación).
+ * fecha = último día del plazo; atraso = días hábiles de más.
+ */
+export function vencimiento(o, festivos, ahora = new Date()) {
+  if (!o || o.estado === 'cerrada') return { estado: null, dias: null, fecha: null, atraso: 0 };
+  const dias = diasOrden(o, festivos, ahora);
+  const fecha = fechaVence(o, festivos);
+  if (dias == null) return { estado: null, dias: null, fecha, atraso: 0 };
+  const estado = dias > DIAS_PLAZO ? 'vencida' : dias === DIAS_PLAZO ? 'hoy' : dias === DIAS_PLAZO - 1 ? 'manana' : null;
+  return { estado, dias, fecha, atraso: Math.max(0, dias - DIAS_PLAZO) };
+}
+
+/**
+ * Texto corto del vencimiento: "Vence hoy", "Vence mañana", "Vence el lunes",
+ * "Vencida hace 2 días hábiles". '' si está a tiempo.
+ * En fin de semana o festivo, la que va en su último día se cuenta como
+ * "Vence antes del lunes" (si se cierra hoy, sigue dentro del plazo).
+ */
+export function textoVence(v, festivos, ahora = new Date()) {
+  if (!v?.estado) return '';
+  if (v.estado === 'vencida') return `Vencida hace ${v.atraso} día${v.atraso !== 1 ? 's' : ''} hábil${v.atraso !== 1 ? 'es' : ''}`;
+  const sig = proximoHabil(ahora, festivos);
+  if (v.estado === 'hoy') return esHabil(ahora, festivos) ? 'Vence hoy' : `Vence antes del ${sig ? DIA_SEM[sig.getDay()] : 'próximo día hábil'}`;
+  // 'manana': vence el próximo día hábil
+  const f = v.fecha || sig;
+  const manana = new Date(aFecha(ahora)); manana.setDate(manana.getDate() + 1);
+  if (f && claveDia(f) === claveDia(manana)) return 'Vence mañana';
+  return f ? `Vence el ${DIA_SEM[f.getDay()]} ${f.getDate()}` : 'Vence el próximo día hábil';
+}
+
+/** 'mañana' si el próximo día hábil es mañana; si no, 'el lunes' (fin de semana, festivo). */
+export function cuandoProximoHabil(festivos, ahora = new Date()) {
+  const sig = proximoHabil(ahora, festivos);
+  const manana = new Date(aFecha(ahora)); manana.setDate(manana.getDate() + 1);
+  return !sig || claveDia(sig) === claveDia(manana) ? 'mañana' : `el ${DIA_SEM[sig.getDay()]}`;
 }

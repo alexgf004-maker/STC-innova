@@ -10,6 +10,7 @@ import { toast as __appToast } from './ui.js';
 import { PADRONES, infoPadron, subirPadron } from './padrones.js';
 import { leerPadronUbicaciones, olvidarIndiceUbicaciones } from './ubicaciones.js';
 import { iniciarAvisoMaterial } from './aviso_material.js';
+import { iniciarAvisoVencimientos } from './aviso_vencimientos.js';
 
 const SESSION_KEY = 'innova_session';
 const LOGIN_PATH  = '/STC-innova/login.html';
@@ -540,6 +541,9 @@ window.addEventListener('DOMContentLoaded', async () => {
 
   // Material por recibir (técnico): aviso en cualquier pantalla, no solo el Inicio
   iniciarAvisoMaterial(session);
+
+  // Factibilidades: lo que vence hoy, mañana o ya venció (una vez al día)
+  iniciarAvisoVencimientos(session);
 
   // Aviso de solicitudes de material (admin/asistente)
   if (session.role === 'admin' || session.role === 'asistente') {

@@ -14,7 +14,7 @@
 import { db } from '../firebase.js';
 import { tecnicosActivos } from '../vivo.js';
 import { suscribirAbiertas, suscribirConfig, META_DEFECTO, AREA, aplicarModoAtrasadas } from '../factibilidades_comun.js';
-import { semaforoOrden, SEMAFORO, aFecha } from '../dias_habiles.js';
+import { semaforoOrden, SEMAFORO, aFecha, vencimiento, textoVence } from '../dias_habiles.js';
 import { escapeHtml } from '../ui.js';
 import { ponerEtiquetas } from './etiquetas_mapa.js';
 import { abrirResultado, corregirUbicacion, abrirReasignar, puedeActuar, cerrarHojas } from './factibilidades_acciones.js';
@@ -379,7 +379,7 @@ function actualizarChip() {
       + (foco_.cercanas ? ` · <span style="color:#a78bfa">${foco_.cercanas} cercana${foco_.cercanas !== 1 ? 's' : ''}</span>` : '');
     return;
   }
-  el.innerHTML = `${vis.length}${filtrado ? ' de ' + ordenes_.length : ''} abierta${ordenes_.length !== 1 ? 's' : ''}${rojas ? ` · <span style="color:${SEMAFORO.rojo.color}">${rojas} en rojo</span>` : ''}`;
+  el.innerHTML = `${vis.length}${filtrado ? ' de ' + ordenes_.length : ''} abierta${ordenes_.length !== 1 ? 's' : ''}${rojas ? ` · <span style="color:${SEMAFORO.rojo.color}">${rojas} vencida${rojas !== 1 ? 's' : ''}</span>` : ''}`;
   document.getElementById('fbm-filtro')?.style.setProperty('background', filtrado ? 'var(--fb-glass)' : '');
 }
 
@@ -487,6 +487,7 @@ function verOrden(id) {
         <div style="flex:1;min-width:0">
           <div style="font-size:13px;font-weight:700;color:#fff">${dias == null ? 'Sin fecha de liberación' : `día${dias !== 1 ? 's' : ''} hábil${dias !== 1 ? 'es' : ''} · ${s.texto}`}</div>
           <div style="font-size:12px;color:rgba(255,255,255,.75);margin-top:2px">${lib ? 'Liberada el ' + lib.toLocaleDateString('es-SV', { weekday: 'short', day: 'numeric', month: 'short' }) : ''}</div>
+          ${(() => { const v = vencimiento(o, cfg_.festivosSet); return v.estado ? `<div style="font-size:13px;font-weight:800;margin-top:4px;color:${v.estado === 'vencida' ? '#fca5a5' : v.estado === 'hoy' ? '#fdba74' : '#fde68a'}">${esc(textoVence(v, cfg_.festivosSet))}</div>` : ''; })()}
         </div>
       </div>
       ${o.direccion ? `

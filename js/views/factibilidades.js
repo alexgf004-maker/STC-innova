@@ -16,7 +16,7 @@
 import { db } from '../firebase.js';
 import { tecnicosActivos } from '../vivo.js';
 import { suscribirAbiertas, suscribirConfig, suscribirCerradas, guardarConfig, META_DEFECTO, AREA, COL_ORDENES, aplicarModoAtrasadas, textoModoAtrasadas, RADIO_CERCANAS_DEFECTO } from '../factibilidades_comun.js';
-import { semaforoOrden, SEMAFORO, aFecha, claveDia, diasHabiles } from '../dias_habiles.js';
+import { semaforoOrden, SEMAFORO, aFecha, claveDia, diasHabiles, vencimiento, textoVence, cuandoProximoHabil } from '../dias_habiles.js';
 import { toast, escapeHtml } from '../ui.js';
 import { abrirResultado, abrirReasignar, puedeActuar, cerrarHojas, corregirUbicacion } from './factibilidades_acciones.js';
 import { abrirImportar, abrirAsignarCodigos } from './factibilidades_importar.js';
@@ -50,11 +50,27 @@ let off_ = null, offCfg_ = null, mapaMod_ = null;   // mapaMod_: mapa abierto co
 let cfg_ = { festivos: [], festivosSet: new Set(), meta: META_DEFECTO, modoAtrasadas: {}, radioCercanas: RADIO_CERCANAS_DEFECTO };
 let filtroSem_ = 'todas', busq_ = '', limite_ = 40;
 let filtroPedido_ = null;          // el inicio del técnico pide abrir la lista ya filtrada
+let tecPedido_ = null;             // y, desde el aviso de vencimientos, de un técnico
+
+/** Abrir Factibilidades directo en la lista con ese filtro (lo usa el aviso de vencimientos). */
+export function pedirLista(filtro, tec = null) { filtroPedido_ = filtro; tecPedido_ = tec; }
 let cerradas_ = [], offCerr_ = null, tecnicos_ = [];   // oficina: cerradas desde el mes pasado y técnicos del área
 let tecF_ = 'todos', modoSel_ = false, selec_ = new Set();   // oficina: filtro por técnico y selección para reasignar
 
 // Días hábiles y color de cada orden (una sola función compartida)
 const sem = o => semaforoOrden(o, cfg_.festivosSet);
+// Vencimiento: 'vencida' | 'hoy' | 'manana' | null (plazo de 5 días hábiles)
+const venc = o => vencimiento(o, cfg_.festivosSet);
+// Lo que más urge, en este orden: vence hoy, vence mañana, vencidas
+const VENCE = {
+  hoy:     { t: 'Vencen hoy',    uno: 'Vence hoy',    pill: 'naranja', color: '#fb923c', sub: 'Último día del plazo: atenderlas hoy' },
+  manana:  { t: 'Vencen mañana', uno: 'Vence mañana', pill: 'warn',    color: '#fbbf24', sub: 'Vencen el próximo día hábil' },
+  vencida: { t: 'Vencidas',      uno: 'Vencida',      pill: 'crit',    color: '#ef4444', sub: 'Pasaron los 5 días hábiles' },
+};
+// "Vencen mañana", o "Vencen el lunes" si mañana no es día hábil
+const tituloVence = (k, uno = false, fest = cfg_.festivosSet) => k === 'manana'
+  ? `${uno ? 'Vence' : 'Vencen'} ${cuandoProximoHabil(fest)}` : (uno ? VENCE[k].uno : VENCE[k].t);
+const pillVence = o => { const v = venc(o); return v.estado ? `<span class="cm-pill ${VENCE[v.estado].pill}" style="font-weight:700">${esc(textoVence(v, cfg_.festivosSet))}</span>` : ''; };
 const textoDias = n => n == null ? 'Sin fecha' : `${n} día${n !== 1 ? 's' : ''} hábil${n !== 1 ? 'es' : ''}`;
 const fmtFecha = v => { const d = aFecha(v); return d ? d.toLocaleDateString('es-SV', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'; };
 // Más días primero (rojas arriba); las que no traen fecha, al final
@@ -66,11 +82,11 @@ export function init(container, session) {
   container_ = container;
   session_   = session;
   esAdmin_   = session.role === 'admin' || session.role === 'asistente';
-  activeTab_ = esAdmin_ ? 'panel' : 'ordenes';
+  activeTab_ = esAdmin_ && !filtroPedido_ ? 'panel' : 'ordenes';
   ordenes_ = []; todas_ = []; foco_ = null; cargado_ = false; error_ = null;
   filtroSem_ = filtroPedido_ || 'todas'; filtroPedido_ = null; busq_ = ''; limite_ = 40;
   cerradas_ = []; tecnicos_ = [];
-  tecF_ = 'todos'; modoSel_ = false; selec_ = new Set();
+  tecF_ = tecPedido_ || 'todos'; tecPedido_ = null; modoSel_ = false; selec_ = new Set();
 
   renderShell();
   setTab(activeTab_);
@@ -234,7 +250,7 @@ const barra = (n, meta, color) => `<div class="ds-bar" style="height:5px;margin-
 function resumenTecnicos() {
   const filas = new Map();
   const fila = (uid, nombre) => {
-    if (!filas.has(uid)) filas.set(uid, { uid, nombre, pend: 0, rojas: 0, verde: 0, amarillo: 0, rojo: 0, hoy: 0, dias: [] });
+    if (!filas.has(uid)) filas.set(uid, { uid, nombre, pend: 0, rojas: 0, verde: 0, amarillo: 0, rojo: 0, hoy: 0, dias: [], vence: { hoy: 0, manana: 0, vencida: 0 } });
     return filas.get(uid);
   };
   tecnicos_.forEach(u => fila(u.id, u.displayName));
@@ -245,6 +261,8 @@ function resumenTecnicos() {
     const c = sem(o).color;
     if (c) f[c]++;
     if (c === 'rojo') f.rojas++;
+    const v = venc(o).estado;
+    if (v) f.vence[v]++;
   });
   const iniMes = new Date(); iniMes.setDate(1); iniMes.setHours(0, 0, 0, 0);
   cerradas_.forEach(o => {
@@ -261,6 +279,27 @@ function renderPanel(cont) {
   const sinAsignar = ordenes_.filter(o => !o.asignadoUid);
   const n = { verde: 0, amarillo: 0, rojo: 0 };
   ordenes_.forEach(o => { const c = sem(o).color; if (c) n[c]++; });
+  // Prioridad: por cada vencimiento, cuántas tiene cada técnico
+  const nv = { hoy: 0, manana: 0, vencida: 0 }, porTec = { hoy: new Map(), manana: new Map(), vencida: new Map() };
+  ordenes_.forEach(o => {
+    const v = venc(o).estado;
+    if (!v) return;
+    nv[v]++;
+    const k = o.asignadoUid || '';
+    const m = porTec[v];
+    if (!m.has(k)) m.set(k, { uid: k, nombre: o.asignadoNombre || 'Sin asignar', n: 0 });
+    m.get(k).n++;
+  });
+  const prioridad = ['hoy', 'manana', 'vencida'].filter(k => nv[k]).map(k => `
+    <div class="cm-fila" style="flex-wrap:wrap;row-gap:8px;cursor:default;box-shadow:inset 3px 0 0 ${VENCE[k].color}">
+      <div style="flex:1;min-width:0;cursor:pointer" data-ir="${k}">
+        <div class="cm-fila-t" style="color:${VENCE[k].color}">${nv[k]} ${tituloVence(k, nv[k] === 1).toLowerCase()}</div>
+        <div class="cm-fila-s">${VENCE[k].sub}</div>
+      </div>
+      <div style="flex-basis:100%;display:flex;flex-wrap:wrap;gap:6px">
+        ${[...porTec[k].values()].sort((a, b) => b.n - a.n).map(t => `<button class="filter-chip" data-ir="${k}" data-tecir="${esc(t.uid || 'sin')}" style="margin:0;${t.uid ? '' : 'color:#fbbf24'}">${esc(t.nombre)} · ${t.n}</button>`).join('')}
+      </div>
+    </div>`).join('');
   const proximos = cfg_.festivos.filter(f => f >= claveDia(new Date()));
   const meta = cfg_.meta;
   const filas = resumenTecnicos();
@@ -271,16 +310,17 @@ function renderPanel(cont) {
   cont.innerHTML = `
     <div class="ds-pcard fb" style="margin-bottom:14px">
       <div style="display:flex;justify-content:space-between;align-items:flex-start">
-        <div class="ds-pcard-lbl">Atrasadas · más de 5 días hábiles</div>
+        <div class="ds-pcard-lbl">Vencidas · más de 5 días hábiles</div>
         <div class="ds-pcard-badge">${new Date().toLocaleDateString('es-SV', { day: 'numeric', month: 'short' })}</div>
       </div>
       <div style="font-size:38px;font-weight:500;letter-spacing:-.02em;line-height:1;color:#fff;margin-top:6px">${n.rojo}<span style="font-size:18px;color:rgba(255,255,255,.7)"> de ${ordenes_.length} pendientes</span></div>
       <div style="font-size:12px;color:rgba(255,255,255,.85);margin-top:8px">${hoyTotal} cerrada${hoyTotal !== 1 ? 's' : ''} hoy${sinAsignar.length ? ` · ${sinAsignar.length} sin asignar` : ''}</div>
     </div>
-    <div class="ds-mini" style="margin-bottom:22px">
-      ${['rojo', 'amarillo', 'verde'].map(c => `
-        <div class="ds-m" data-ir="${c}" style="cursor:pointer"><div class="ds-num-md" style="color:${SEMAFORO[c].color}">${n[c]}</div><div class="ds-lbl-sm" style="margin-top:6px">${SEMAFORO[c].texto}</div></div>`).join('')}
+    <div class="ds-mini" style="margin-bottom:${prioridad ? 14 : 22}px">
+      ${['hoy', 'manana', 'vencida'].map(k => `
+        <div class="ds-m" data-ir="${k}" style="cursor:pointer"><div class="ds-num-md" style="color:${nv[k] ? VENCE[k].color : 'var(--text-4)'}">${nv[k]}</div><div class="ds-lbl-sm" style="margin-top:6px">${tituloVence(k)}</div></div>`).join('')}
     </div>
+    ${prioridad ? `<div class="ds-sec" style="margin-top:0">Prioridad</div><div class="cm-lista" style="margin-bottom:22px">${prioridad}</div>` : ''}
 
     ${ordenes_.length ? `
     <div class="cm-lista" style="margin-bottom:22px">
@@ -326,11 +366,11 @@ function renderPanel(cont) {
           <div style="flex-basis:100%;padding-left:48px">
             <div class="ds-bar" style="height:5px;margin-top:9px;display:flex;overflow:hidden">${['verde', 'amarillo', 'rojo'].map(c => f[c] ? `<i style="width:${(f[c] / f.pend * 100).toFixed(1)}%;background:${SEMAFORO[c].color}"></i>` : '').join('')}</div>
             <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:8px">
-              ${['verde', 'amarillo', 'rojo'].map(c => `
-                <div class="fb-sem" data-tec="${esc(f.uid)}" data-color="${c}" style="cursor:pointer;text-align:center;padding:6px 4px;border-radius:10px;border:1px solid ${SEMAFORO[c].color}${f[c] ? '55' : '22'};background:${SEMAFORO[c].color}${f[c] ? '1a' : '06'}">
-                  <div style="font-size:17px;font-weight:700;line-height:1.1;color:${f[c] ? SEMAFORO[c].color : 'var(--text-4)'}">${f[c]}</div>
-                  <div style="font-size:10.5px;font-weight:600;color:${f[c] ? 'var(--text-2)' : 'var(--text-4)'};margin-top:2px">${SEMAFORO[c].texto}</div>
-                </div>`).join('')}
+              ${['hoy', 'manana', 'vencida'].map(k => { const x = f.vence[k], col = VENCE[k].color; return `
+                <div class="fb-sem" data-tec="${esc(f.uid)}" data-color="${k}" style="cursor:pointer;text-align:center;padding:6px 4px;border-radius:10px;border:1px solid ${col}${x ? '55' : '22'};background:${col}${x ? '1a' : '06'}">
+                  <div style="font-size:17px;font-weight:700;line-height:1.1;color:${x ? col : 'var(--text-4)'}">${x}</div>
+                  <div style="font-size:10.5px;font-weight:600;color:${x ? 'var(--text-2)' : 'var(--text-4)'};margin-top:2px">${tituloVence(k)}</div>
+                </div>`; }).join('')}
             </div>
           </div>` : ''}
         </div>`).join('')}
@@ -355,9 +395,13 @@ function renderPanel(cont) {
   const porCod = cont.querySelector('#fb-por-codigo');
   if (porCod) porCod.onclick = async () => abrirAsignarCodigos(session_, await refrescarTecnicos(), ordenes_);
   cont.querySelector('#fb-abrir-meta').onclick = abrirMeta;
-  cont.querySelectorAll('[data-ir]').forEach(el => el.onclick = () => el.dataset.ir === 'sin' ? irALista('todas', 'sin') : irALista(el.dataset.ir));
+  cont.querySelectorAll('[data-ir]').forEach(el => el.onclick = e => {
+    e.stopPropagation();
+    if (el.dataset.ir === 'sin') irALista('todas', 'sin');
+    else irALista(el.dataset.ir, el.dataset.tecir || 'todos');
+  });
   cont.querySelectorAll('.cm-fila[data-tec]').forEach(el => el.onclick = () => irALista('todas', el.dataset.tec));
-  // Tocar "3 atrasadas" de un técnico abre su lista ya filtrada por ese color
+  // Tocar "2 vencen hoy" de un técnico abre su lista ya filtrada
   cont.querySelectorAll('.fb-sem').forEach(el => el.onclick = e => { e.stopPropagation(); irALista(el.dataset.color, el.dataset.tec); });
   cont.querySelectorAll('.fb-modo').forEach(b => b.onclick = e => { e.stopPropagation(); cambiarModoAtrasadas(b.dataset.modo); });
 }
@@ -702,9 +746,13 @@ async function guardarFestivos(lista) {
 // ── Órdenes ───────────────────────────────────────
 const FILTROS = [
   { id: 'todas',    t: 'Todas',      f: () => true },
-  { id: 'rojo',     t: 'Atrasadas',  f: o => sem(o).color === 'rojo' },
-  { id: 'amarillo', t: 'Por vencer', f: o => sem(o).color === 'amarillo' },
-  { id: 'verde',    t: 'A tiempo',   f: o => sem(o).color === 'verde' },
+  { id: 'hoy',      t: 'Vencen hoy',    f: o => venc(o).estado === 'hoy' },
+  { id: 'manana',   get t() { return tituloVence('manana'); }, f: o => venc(o).estado === 'manana' },
+  { id: 'vencida',  t: 'Vencidas',      f: o => venc(o).estado === 'vencida' },
+  { id: 'verde',    t: 'A tiempo',      f: o => sem(o).color === 'verde' },
+  // Se siguen aceptando (el mapa y avisos viejos piden por color); no salen como botón
+  { id: 'rojo',     t: 'Vencidas',      f: o => sem(o).color === 'rojo', oculto: true },
+  { id: 'amarillo', t: 'Por vencer',    f: o => sem(o).color === 'amarillo', oculto: true },
   { id: 'visita',   t: 'Sin acceso', f: o => o.estado === 'visita' },
 ];
 
@@ -759,7 +807,7 @@ function renderOrdenes(cont) {
     </div>` : ''}
     ${q ? `<div style="font-size:12px;color:var(--text-3);margin:2px 2px 10px">${mostrar.length} resultado${mostrar.length !== 1 ? 's' : ''}</div>` : `
     <div class="cm-tabs-est">
-      ${FILTROS.map(x => { const n = base.filter(x.f).length; return `<div class="cm-est ${x.id === filtroSem_ ? 'active' : ''} ${n ? '' : 'vacio'}" data-sem="${x.id}">${x.t}<span>${n}</span></div>`; }).join('')}
+      ${FILTROS.filter(x => !x.oculto || x.id === filtroSem_).map(x => { const n = base.filter(x.f).length; return `<div class="cm-est ${x.id === filtroSem_ ? 'active' : ''} ${n ? '' : 'vacio'}" data-sem="${x.id}">${x.t}<span>${n}</span></div>`; }).join('')}
     </div>`}
     ${esAdmin_ && mostrar.length ? (modoSel_ ? `
     <div class="ds-card" style="position:sticky;top:0;z-index:5;display:flex;align-items:center;gap:8px;padding:10px 12px;margin-bottom:12px">
@@ -823,6 +871,7 @@ function tarjeta(o) {
         ${sel ? `<span style="width:20px;height:20px;border-radius:6px;flex-shrink:0;display:flex;align-items:center;justify-content:center;border:1.5px solid ${marcada ? 'var(--fb-light)' : 'var(--border-md)'};background:${marcada ? 'var(--fb-light)' : 'transparent'};color:#fff">${marcada ? svg(ICO.marcar, 13) : ''}</span>` : ''}
         <span class="cm-wo">${esc(o.numeroOrden || '—')}</span>
         <span class="cm-pill ${s ? s.pill : 'muted'}">${textoDias(dias)}</span>
+        ${pillVence(o)}
         ${o.estado === 'visita' ? '<span class="cm-pill muted">Sin acceso</span>' : ''}
         ${o.revision === 'devuelta' ? '<span class="cm-pill crit">Devuelta</span>' : ''}
         ${foco_?.cercanasIds.has(o.id) ? '<span class="cm-pill violet">Cercana</span>' : ''}
@@ -874,10 +923,9 @@ export function initHomeTecnico(container, session) {
       </div>
 
       <div class="ds-mini" style="margin-bottom:10px">
-        <div class="ds-m" data-ir="rojo" style="cursor:pointer"><div class="ds-num-md" id="fbh-rojo" style="color:${SEMAFORO.rojo.color}">—</div><div class="ds-lbl-sm" style="margin-top:6px">Atrasadas</div></div>
-        <div class="ds-m" data-ir="amarillo" style="cursor:pointer"><div class="ds-num-md" id="fbh-amarillo" style="color:${SEMAFORO.amarillo.color}">—</div><div class="ds-lbl-sm" style="margin-top:6px">Por vencer</div></div>
-        <div class="ds-m" data-ir="todas" style="cursor:pointer"><div class="ds-num-md" id="fbh-abiertas">—</div><div class="ds-lbl-sm" style="margin-top:6px">Abiertas</div></div>
+        ${['hoy', 'manana', 'vencida'].map(k => `<div class="ds-m" data-ir="${k}" style="cursor:pointer"><div class="ds-num-md" id="fbh-v-${k}" style="color:${VENCE[k].color}">—</div><div class="ds-lbl-sm" id="fbh-v-${k}-t" style="margin-top:6px">${tituloVence(k, false, new Set())}</div></div>`).join('')}
       </div>
+      <div id="fbh-prioridad"></div>
       <div style="font-size:12px;color:var(--text-3);margin:0 4px 6px" id="fbh-aviso"></div>
 
       <div class="ds-acts" style="margin:22px 0 26px;grid-template-columns:repeat(2,1fr)">
@@ -931,13 +979,28 @@ export function initHomeTecnico(container, session) {
     if (abiertas) {
       // Con modo atrasadas solo cuenta lo que tiene a la vista
       const { lista, foco } = aplicarModoAtrasadas(abiertas, cfg, session.uid);
-      const c = { rojo: 0, amarillo: 0 };
-      lista.forEach(o => { const k = semaforoOrden(o, cfg.festivosSet).color; if (k in c) c[k]++; });
-      q('#fbh-rojo').textContent = c.rojo;
-      q('#fbh-amarillo').textContent = c.amarillo;
-      q('#fbh-abiertas').textContent = lista.length;
+      const c = { hoy: 0, manana: 0, vencida: 0 };
+      lista.forEach(o => { const k = vencimiento(o, cfg.festivosSet).estado; if (k) c[k]++; });
+      q('#fbh-v-manana-t').textContent = tituloVence('manana', false, cfg.festivosSet);
+      ['hoy', 'manana', 'vencida'].forEach(k => {
+        const el = q('#fbh-v-' + k);
+        el.textContent = c[k];
+        el.style.color = c[k] ? VENCE[k].color : 'var(--text-4)';
+      });
+      // Aviso de prioridad: lo que vence hoy primero
+      const partes = [
+        c.hoy && `<b style="color:${VENCE.hoy.color}">${c.hoy} ${c.hoy === 1 ? 'vence' : 'vencen'} hoy</b>`,
+        c.manana && `<b style="color:${VENCE.manana.color}">${c.manana} ${tituloVence('manana', c.manana === 1, cfg.festivosSet).toLowerCase()}</b>`,
+        c.vencida && `<b style="color:${VENCE.vencida.color}">${c.vencida} ${c.vencida === 1 ? 'ya está vencida' : 'ya están vencidas'}</b>`,
+      ].filter(Boolean);
+      q('#fbh-prioridad').innerHTML = partes.length ? `
+        <div class="ds-card" data-ir="${c.hoy ? 'hoy' : c.vencida ? 'vencida' : 'manana'}" style="cursor:pointer;display:flex;gap:10px;align-items:flex-start;padding:12px 14px;margin-bottom:10px;border-color:${(c.hoy ? VENCE.hoy : c.vencida ? VENCE.vencida : VENCE.manana).color}66">
+          <div style="color:${(c.hoy ? VENCE.hoy : c.vencida ? VENCE.vencida : VENCE.manana).color};flex-shrink:0;margin-top:1px">${svg(ICO.alerta, 18)}</div>
+          <div style="font-size:13px;line-height:1.5;color:var(--text-2)">${partes.join(' · ')}.<br><span style="color:var(--text-3)">${c.hoy ? 'Atiende primero las que vencen hoy.' : c.vencida ? 'Atiende las vencidas cuanto antes.' : `Planifícalas para ${cuandoProximoHabil(cfg.festivosSet)}.`} Toca para verlas.</span></div>
+        </div>` : '';
+      q('#fbh-prioridad').querySelectorAll('[data-ir]').forEach(el => el.onclick = () => { filtroPedido_ = el.dataset.ir; window.__router.navigateTo('factibilidades'); });
       if (foco) q('#fbh-aviso').innerHTML = avisoModo(foco);
-      else q('#fbh-aviso').textContent = c.rojo ? `Empieza por las ${c.rojo} atrasada${c.rojo !== 1 ? 's' : ''}: llevan más de 5 días hábiles.` : '';
+      else q('#fbh-aviso').textContent = '';
     }
   };
 
