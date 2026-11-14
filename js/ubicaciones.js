@@ -127,39 +127,61 @@ function nuevoIndice() {
 
 let indice_ = null, conContiguos_ = false;
 
+// Por qué no se pudo leer un padrón: 'permiso', 'conexion', 'incompleto' u 'otro'.
+function motivoError(err) {
+  const code = String(err?.code || '');
+  if (code.includes('permission-denied')) return 'permiso';
+  if (err?.message === 'Padrón incompleto') return 'incompleto';
+  if (globalThis.navigator?.onLine === false || /unavailable|deadline-exceeded|cancelled|resource-exhausted/.test(code)) return 'conexion';
+  return 'otro';
+}
+
+// Lee un padrón sin lanzar error: { datos } (null si no está subido) o
+// { error, detalle } si la lectura falló.
+const leer = nombre => leerPadron(nombre).then(datos => ({ datos }), err => {
+  console.warn(`[ubicaciones] no se pudo leer el padrón ${nombre}:`, err);
+  return { error: motivoError(err), detalle: err?.message || String(err) };
+});
+
 /**
  * Carga el índice. Primero el padrón de ubicaciones y Caracterización; el de
  * Contiguos (el más pesado) solo si `faltan(indice)` dice que sigue habiendo
- * órdenes sin encontrar. Devuelve { indice, fuentes: [...] }.
+ * órdenes sin encontrar. Devuelve { indice, fuentes: [...], resumen, fallos },
+ * donde fallos dice qué padrón no se pudo leer y por qué
+ * ({ ubicaciones: { error, detalle } }). Si alguno falló, el índice no se
+ * guarda: la próxima vez se vuelve a intentar.
  */
 export async function cargarIndiceUbicaciones(faltan) {
   if (!indice_) {
     const idx = nuevoIndice();
-    const fuentes = [];
-    const [ubic, crc] = await Promise.all([
-      leerPadron('ubicaciones').catch(() => null),
-      leerPadron('caracterizacion').catch(() => null),
-    ]);
+    const fuentes = [], fallos = {};
+    const [ubic, crc] = await Promise.all([leer('ubicaciones'), leer('caracterizacion')]);
     let resumen = null;
-    if (Array.isArray(ubic)) {
-      ubic.forEach(r => idx.agregar(r[0], r[1], r[2], r[3], r[4]));
+    if (ubic.error) fallos.ubicaciones = ubic;
+    else if (Array.isArray(ubic.datos)) {
+      const filas = ubic.datos;
+      filas.forEach(r => idx.agregar(r[0], r[1], r[2], r[3], r[4]));
       fuentes.push('ubicaciones');
-      resumen = { filas: ubic.length, nc: 0, md: 0, ds: 0 };
-      ubic.forEach(r => { if (r[0]) resumen.nc++; if (r[1]) resumen.md++; if (r[2]) resumen.ds++; });
+      resumen = { filas: filas.length, nc: 0, md: 0, ds: 0 };
+      filas.forEach(r => { if (r[0]) resumen.nc++; if (r[1]) resumen.md++; if (r[2]) resumen.ds++; });
     }
-    if (crc) { (Array.isArray(crc) ? crc : Object.values(crc)).forEach(r => idx.agregar(r.nc, r.medidor, r.ds, r.lat, r.lng)); fuentes.push('caracterizacion'); }
-    indice_ = { indice: idx, fuentes, resumen };
+    if (crc.error) fallos.caracterizacion = crc;
+    else if (crc.datos) { (Array.isArray(crc.datos) ? crc.datos : Object.values(crc.datos)).forEach(r => idx.agregar(r.nc, r.medidor, r.ds, r.lat, r.lng)); fuentes.push('caracterizacion'); }
+    indice_ = { indice: idx, fuentes, resumen, fallos };
   }
   if (!conContiguos_ && (!faltan || faltan(indice_.indice))) {
-    const cont = await leerPadron('contiguos').catch(() => null);
+    const cont = await leer('contiguos');
     // Contiguos: [nc, nombre, direccion, marca, aparato, lat, lng]
-    if (Array.isArray(cont)) {
-      cont.forEach(r => indice_.indice.agregar(r[0], r[4], '', r[5], r[6]));
+    if (cont.error) indice_.fallos.contiguos = cont;
+    else if (Array.isArray(cont.datos)) {
+      cont.datos.forEach(r => indice_.indice.agregar(r[0], r[4], '', r[5], r[6]));
       indice_.fuentes.push('contiguos');
       conContiguos_ = true;
     }
   }
-  return indice_;
+  const r = indice_;
+  if (Object.keys(r.fallos).length) olvidarIndiceUbicaciones();
+  return r;
 }
 
 /** Olvidar el índice (por ejemplo, después de subir un padrón nuevo). */

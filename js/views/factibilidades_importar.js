@@ -206,12 +206,13 @@ async function armarPlan(filas) {
   const conCoordArchivo = filas.filter(f => f._coord).length;
   const codigosDe = f => ({ nc: f.nc, medidor: f.serieActual, referencia: f.referencia, ds: f.dsct });
   const porPadron = new Map();
-  let fuentes = [], resumenPadron = null;
+  let fuentes = [], resumenPadron = null, fallos = {};
   const porMotivo = {};
   if (aUbicar.length) {
     const r = await cargarIndiceUbicaciones(idx => aUbicar.some(f => !ubicarPorCodigos(idx, codigosDe(f))));
     fuentes = r.fuentes;
     resumenPadron = r.resumen;
+    fallos = r.fallos || {};
     aUbicar.forEach(f => {
       const u = ubicarPorCodigos(r.indice, codigosDe(f));
       if (u) porPadron.set(f.numeroOrden, u);
@@ -224,7 +225,7 @@ async function armarPlan(filas) {
     nuevas, existentes, codigos, hayClave: !!clave, quitar, conservadas,
     reactivar: existentes.filter(({ o }) => o.estado === 'quitada').length,
     cerradasEnArchivo: existentes.filter(({ o }) => o.estado === 'cerrada').length,
-    aUbicar: aUbicar.length, conCoordArchivo, porPadron, porFuente, porMotivo, resumenPadron, fuentes, sinPadronUbic: !fuentes.includes('ubicaciones'),
+    aUbicar: aUbicar.length, conCoordArchivo, porPadron, porFuente, porMotivo, resumenPadron, fuentes, fallos, sinPadronUbic: !fuentes.includes('ubicaciones'),
     porCodigo: Object.fromEntries(codigos.map(c => [c, filas.filter(f => f.codigoTecnico === c).length])),
     sinCodigo: filas.filter(f => !f.codigoTecnico).length,
   };
@@ -309,6 +310,46 @@ async function cargarArchivo(file) {
   }
 }
 
+// Qué pasó con los padrones al buscar ubicaciones: el motivo real si una
+// lectura falló (conexión, permiso, padrón incompleto) o si no está subido.
+const NOMBRE_PADRON = { ubicaciones: 'ubicaciones', caracterizacion: 'Caracterización', contiguos: 'Contiguos' };
+const MOTIVO_FALLO = {
+  conexion: 'falló la conexión a internet',
+  permiso: 'tu usuario no tiene permiso para leerlo, según las reglas de Firestore',
+  incompleto: 'está incompleto, faltan partes de la última subida (vuelve a subirlo en el menú, Padrones de clientes)',
+};
+function avisoPadrones(p) {
+  const f = p.fallos || {};
+  const linea = (txt, color = '#fbbf24') => `<div style="font-size:11.5px;color:${color};margin-top:6px">${txt}</div>`;
+  const motivo = x => MOTIVO_FALLO[x.error] || `error al leerlo (${esc(x.detalle || 'desconocido')})`;
+  const partes = [];
+  if (f.ubicaciones) partes.push(linea(`No se pudo leer el padrón de ubicaciones: ${motivo(f.ubicaciones)}. Estas órdenes se buscaron solo en Caracterización y Contiguos.`, '#f87171'));
+  else if (p.sinPadronUbic) partes.push(linea('Todavía no está el padrón de ubicaciones: súbelo en el menú, Padrones de clientes. Por ahora solo se busca en Caracterización y Contiguos.'));
+  const otros = Object.keys(f).filter(k => k !== 'ubicaciones');
+  if (otros.length) partes.push(linea(`Tampoco se pudo leer: ${otros.map(k => `${NOMBRE_PADRON[k]} (${motivo(f[k])})`).join(' · ')}.`, '#f87171'));
+  if (Object.keys(f).length) partes.push(`<a href="#" id="fbi-reintentar" style="display:inline-block;margin-top:6px;font-size:12px;font-weight:600;color:#60a5fa">Volver a intentar</a>`);
+  return partes.join('');
+}
+
+// Vuelve a armar el plan (por ejemplo, después de una falla de conexión),
+// sin perder el modo ni los técnicos elegidos.
+async function reintentarPlan(e) {
+  e?.preventDefault();
+  const elegidos = { ...mapeo_ }, repetidas = plan_?.repetidas;
+  const plan = document.getElementById('fbi-plan');
+  plan.innerHTML = '<div class="import-info-box"><div class="import-info-label">Buscando ubicaciones otra vez…</div></div>';
+  document.getElementById('fbi-ok').style.display = 'none';
+  try {
+    plan_ = await armarPlan(filas_);
+    plan_.repetidas = repetidas;
+    Object.assign(mapeo_, elegidos);
+    pintarPlan();
+  } catch (er) {
+    plan.innerHTML = '';
+    error('No se pudo volver a comparar: ' + er.message);
+  }
+}
+
 function pintarPlan() {
   const p = plan_;
   const fila = (n, txt, sub, color) => `
@@ -340,7 +381,7 @@ function pintarPlan() {
       + (p.hayClave ? `<label style="display:flex;align-items:center;gap:8px;margin-top:6px;color:var(--text-2)"><input type="checkbox" id="fbi-google" ${usarGoogle_ ? 'checked' : ''}/> Ubicarlas por dirección con Google</label>`
         : ' <a href="#" id="fbi-clave" style="color:#60a5fa">Poner clave de Google</a>'), '#fbbf24') : ''}
     ${p.resumenPadron ? `<div style="font-size:11px;color:var(--text-4);margin-top:6px">Padrón de ubicaciones: ${n(p.resumenPadron.filas)} registros · con NC ${n(p.resumenPadron.nc)} · con medidor ${n(p.resumenPadron.md)} · con DS ${n(p.resumenPadron.ds)}</div>` : ''}
-    ${p.aUbicar && p.sinPadronUbic ? `<div style="font-size:11.5px;color:#fbbf24;margin-top:6px">Todavía no está el padrón de ubicaciones: súbelo en el menú, Padrones de clientes. Por ahora solo se busca en Caracterización y Contiguos.</div>` : ''}
+    ${p.aUbicar ? avisoPadrones(p) : ''}
     ${p.repetidas ? `<div style="font-size:11px;color:var(--text-4);margin-top:6px">${p.repetidas} órdenes repetidas en el archivo (se toma la primera).</div>` : ''}
     <div style="font-size:12px;font-weight:700;color:var(--text-2);margin:16px 0 4px">Asignar por usuario DELSUR</div>
     <div style="font-size:11.5px;color:var(--text-3);margin-bottom:8px">Se recuerda para la próxima. Después puedes reasignar orden por orden.</div>
@@ -354,6 +395,8 @@ function pintarPlan() {
       : '<div style="font-size:11.5px;color:var(--text-3);margin-top:6px">¿No aparece un técnico? Asígnale el área Factibilidades en Usuarios.</div>'}`;
   document.querySelectorAll('#fbi-plan select[data-cod]').forEach(s => s.onchange = () => { mapeo_[s.dataset.cod] = s.value; });
   document.querySelectorAll('#fbi-plan [data-modo]').forEach(b => b.onclick = () => { modo_ = b.dataset.modo; pintarPlan(); });
+  const reint = document.getElementById('fbi-reintentar');
+  if (reint) reint.onclick = reintentarPlan;
   const chk = document.getElementById('fbi-google');
   if (chk) chk.onchange = () => { usarGoogle_ = chk.checked; pintarPlan(); };
   const lnk = document.getElementById('fbi-clave');
