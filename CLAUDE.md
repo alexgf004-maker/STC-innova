@@ -126,6 +126,10 @@ XLSX (SheetJS) y Firebase compat son **globales** (`XLSX.utils.*`,
   `'quitada'`: al reemplazar el mapa (importador), las abiertas que ya no vienen
   en el Excel no se borran; quedan así (con `estadoAntesDeQuitar`) y no salen en
   ninguna lista. Si vuelven en otra carga, se reactivan solas
+  Importador: al actualizar una orden que ya existe, un dato vacío del Excel
+  no borra el guardado. Sin fecha (Liberación real / Fe.aviso) pero con
+  DíasTransc, la fecha se calcula (`fechaEstimada: true`, ver estimarFechas);
+  una fecha calculada nunca reemplaza una real
 
 ## Sistema de diseño (rediseño premium en curso, ir por partes)
 

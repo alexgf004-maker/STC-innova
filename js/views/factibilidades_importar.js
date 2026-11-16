@@ -41,6 +41,7 @@ import { toast, escapeHtml as esc } from '../ui.js';
 import { COL_ORDENES, COL_CONFIG } from '../factibilidades_comun.js';
 import { geocodificar, leerClave, guardarClave } from '../geocodificar.js';
 import { cargarIndiceUbicaciones, ubicarPorCodigos, motivoSinUbicar } from '../ubicaciones.js';
+import { diasHabiles, esHabil, aFecha } from '../dias_habiles.js';
 
 const ID = 'fb-sheet-importar';
 const norm = s => String(s ?? '').toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
@@ -104,6 +105,7 @@ export function leerExcel(rows) {
     marca: c('FABRICANTE', 'MARCA MD', 'MARCA'), dsct: c('UBIC.TECN.', 'DS/CT'),
     codigo: c('PTO.TBJO.RESP.', 'USUARIO'), clase: c('CLASE DE ACTIVIDAD PM'),
     lat: c('LAT', 'LATITUD'), lng: c('LONG', 'LONGITUD'),
+    dias: c('DIASTRANSC', 'DIAS TRANSC', 'DIAS TRANSC.', 'DIAS TRANSCURRIDOS'),
   };
   if (ix.calle === -1 && ix.poblacion === -1) return { error: 'No se encontraron las columnas de dirección (Calle, Distrito, Población).' };
   const v = (r, i) => (i >= 0 ? String(r[i] ?? '').trim() : '');
@@ -153,6 +155,8 @@ export function leerExcel(rows) {
       // El formato nuevo no trae liberación: los días (DíasTransc de DELSUR)
       // se cuentan desde el aviso, así que esa es la fecha base del semáforo.
       fechaLiberacion: fechaExcel(ix.fLib >= 0 ? r[ix.fLib] : (ix.fAviso >= 0 ? r[ix.fAviso] : '')),
+      // DíasTransc de DELSUR: si la fila no trae fecha, con esto se calcula (ver estimarFechas)
+      diasTransc: ix.dias >= 0 && String(r[ix.dias] ?? '').trim() !== '' && Number.isFinite(+r[ix.dias]) ? Math.round(+r[ix.dias]) : null,
     });
   });
   return { filas, repetidas };
@@ -189,6 +193,7 @@ async function armarPlan(filas) {
     if (enArchivo.has(String(o.numeroOrden ?? '').trim())) return;
     (o.revision === 'devuelta' ? conservadas : quitar).push(o);
   });
+  const fechasEstimadas = estimarFechas(filas, cfg?.exists ? (cfg.data().festivos || []) : []);
   mapeo_ = { ...(cfg?.exists ? (cfg.data().codigosDelsur || {}) : {}) };
   // Si un código coincide con el usuario de la app de un técnico, se cruza solo.
   const codigos = [...new Set(filas.map(f => f.codigoTecnico).filter(Boolean))].sort();
@@ -228,7 +233,42 @@ async function armarPlan(filas) {
     aUbicar: aUbicar.length, conCoordArchivo, porPadron, porFuente, porMotivo, resumenPadron, fuentes, fallos, sinPadronUbic: !fuentes.includes('ubicaciones'),
     porCodigo: Object.fromEntries(codigos.map(c => [c, filas.filter(f => f.codigoTecnico === c).length])),
     sinCodigo: filas.filter(f => !f.codigoTecnico).length,
+    fechasEstimadas, sinFecha: filas.filter(f => !f.fechaLiberacion).length,
   };
+}
+
+/**
+ * Filas sin fecha pero con DíasTransc de DELSUR: se calcula la fecha base
+ * contando esos días hábiles hacia atrás desde hoy, para que tengan semáforo.
+ * Se calibra con las filas que traen las dos cosas (DELSUR pudo sacar el
+ * archivo otro día, o contar distinto): se toma la diferencia más común entre
+ * lo que cuenta la app desde su fecha y su DíasTransc. Sin filas para
+ * calibrar, DíasTransc se toma como los días de hoy. Marca fechaEstimada.
+ * Devuelve cuántas fechas calculó.
+ */
+export function estimarFechas(filas, festivos, ahora = new Date()) {
+  const hoy = new Date(ahora.getFullYear(), ahora.getMonth(), ahora.getDate());
+  const dif = new Map();
+  filas.forEach(f => {
+    if (!f.fechaLiberacion || f.fechaEstimada || f.diasTransc == null) return;
+    const d = diasHabiles(f.fechaLiberacion, hoy, festivos) - f.diasTransc;
+    dif.set(d, (dif.get(d) || 0) + 1);
+  });
+  const ajuste = [...dif.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? 0;
+  let n = 0;
+  filas.forEach(f => {
+    if ((f.fechaLiberacion && !f.fechaEstimada) || f.diasTransc == null) return;
+    const meta = Math.max(1, f.diasTransc + ajuste);
+    // El día hábil más reciente desde el que la app contaría `meta` días hasta hoy
+    const d = new Date(hoy);
+    for (let i = 0; i < 180; i++, d.setDate(d.getDate() - 1)) {
+      if (esHabil(d, festivos) && diasHabiles(d, hoy, festivos) >= meta) {
+        f.fechaLiberacion = new Date(d); f.fechaEstimada = true; n++;
+        break;
+      }
+    }
+  });
+  return n;
 }
 
 const n = x => Number(x || 0).toLocaleString('es-SV');
@@ -375,6 +415,8 @@ function pintarPlan() {
       ? `Salen del mapa y de las listas${qAsig ? ` · ${qAsig} estaban asignadas a un técnico` : ''}${qVisita ? ` · ${qVisita} con visita sin acceso` : ''}. No se borran: si vuelven en otra carga, se reactivan`
       : 'Con "Solo agregar y actualizar" se quedan', '#f87171')}</div>
     ${p.conservadas.length ? fila(p.conservadas.length, 'Devueltas por la oficina fuera del archivo', 'Se conservan', 'var(--text-3)') : ''}
+    ${p.fechasEstimadas ? fila(p.fechasEstimadas, 'Fecha calculada con los días transcurridos', 'No traen fecha, pero sí DíasTransc de DELSUR: con eso se calcula su fecha para el semáforo', '#a78bfa') : ''}
+    ${p.sinFecha ? fila(p.sinFecha, 'Sin fecha ni días transcurridos', 'Quedan grises, sin semáforo ni vencimiento. Si ya estaban en el mapa con fecha, la conservan', '#94a3b8') : ''}
     ${p.conCoordArchivo ? fila(p.conCoordArchivo, 'Con coordenadas en el archivo', 'Ya tienen medidor: se ubican en su punto exacto (no se toca una ubicación corregida en el sitio)', '#22c55e') : ''}
     ${p.aUbicar ? fila(p.porPadron.size, 'Ubicadas con el padrón', Object.entries(p.porFuente).map(([f, n]) => `${n} por ${esc(f)}`).join(' · ') || 'Ninguna referencia se encontró en los padrones', '#22c55e') : ''}
     ${p.aUbicar - p.porPadron.size ? fila(p.aUbicar - p.porPadron.size, 'Sin encontrar en el padrón', textoMotivos(p.porMotivo) + (usarGoogle_ ? 'Se ubican por dirección con Google (muy aproximado).' : 'Entran sin punto nuevo en el mapa; el técnico fija la ubicación en el sitio.')
@@ -459,6 +501,7 @@ async function importar() {
       telefono: f.telefono, referencia: f.referencia, serieActual: f.serieActual, marca: f.marca, dsct: f.dsct,
       codigoTecnico: f.codigoTecnico, fechaAviso: ts(f.fechaAviso), fechaLiberacion: ts(f.fechaLiberacion),
       claseActividad: f.claseActividad || '',
+      ...(f.fechaEstimada ? { fechaEstimada: true } : {}),
     });
 
     // 2. Escrituras
@@ -473,8 +516,15 @@ async function importar() {
       }));
     });
     const borrar = firebase.firestore.FieldValue.delete();
+    const vacio = v => v == null || v === '';
     p.existentes.forEach(({ f, o }) => {
-      const upd = { ...datos(f), actualizadaEn: ahora };
+      // Un dato vacío en el archivo no borra lo que ya estaba guardado (antes
+      // un Excel sin fechas dejaba sin fecha las órdenes que sí la tenían).
+      const upd = { actualizadaEn: ahora };
+      Object.entries(datos(f)).forEach(([k, v]) => { if (!vacio(v)) upd[k] = v; });
+      // Una fecha calculada no reemplaza una fecha real; una real sí reemplaza a la calculada
+      if (f.fechaEstimada && aFecha(o.fechaLiberacion) && !o.fechaEstimada) { delete upd.fechaLiberacion; delete upd.fechaEstimada; }
+      if (!f.fechaEstimada && upd.fechaLiberacion && o.fechaEstimada) upd.fechaEstimada = borrar;
       // Quitada en una carga anterior y DELSUR la vuelve a mandar: se reactiva
       if (o.estado === 'quitada') Object.assign(upd, {
         estado: o.estadoAntesDeQuitar === 'visita' ? 'visita' : null,
@@ -482,7 +532,7 @@ async function importar() {
       });
       // Coordenadas del archivo: mandan, salvo que alguien corrigió el punto en el sitio
       if (f._coord ? !o.coordCorregida : hayQueUbicar(o)) Object.assign(upd, coord(f));
-      if (!o.asignacionManual && o.estado !== 'cerrada') {
+      if (!o.asignacionManual && o.estado !== 'cerrada' && f.codigoTecnico) {
         const t = tec(f.codigoTecnico);
         upd.asignadoUid = t ? t.id : null;
         upd.asignadoNombre = t ? t.displayName : null;
